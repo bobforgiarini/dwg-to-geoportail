@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Crosshair, FileUp, Layers3, LocateFixed, Map, PanelBottomClose, PanelTopOpen, Square, Trash2, Type, X } from 'lucide-react';
+import { Crosshair, FileUp, Layers3, LocateFixed, Map, PanelBottomOpen, Square, Trash2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AppHeader } from './components/AppHeader';
 import { LayerSheet } from './components/LayerSheet';
 import { MapCanvas } from './components/MapCanvas';
 import { SelectionPanel } from './components/SelectionPanel';
 import { SiteBanner } from './components/SiteBanner';
+import { BottomSheet } from './components/BottomSheet';
+import { CadVisibilityMenu } from './components/CadVisibilityMenu';
 import { useLocationTracking } from './hooks/useLocationTracking';
 import { cancelDwgImport, importDwg, RECOMMENDED_DWG_BYTES } from './lib/cad/importDwg';
+import { countHiddenCadObjects } from './lib/cad/visibility';
 import type { BasemapMode, DwgImportResult, SelectedCadObject } from './types/models';
 
 type ImportState = 'idle' | 'loading' | 'ready' | 'error' | 'cancelled';
+type DrawerState = 'closed' | 'object' | 'full';
 
 function translatedWarning(warning: string, t: (key: string, options?: Record<string, unknown>) => string): string {
   if (warning === '3d-flattened') return t('warning3d');
@@ -33,7 +37,7 @@ export default function App() {
   const [coordinate, setCoordinate] = useState<[number, number] | null>(null);
   const [selection, setSelection] = useState<SelectedCadObject | null>(null);
   const [hiddenFeatureIds, setHiddenFeatureIds] = useState<Set<string>>(new Set());
-  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [drawerState, setDrawerState] = useState<DrawerState>('full');
   const [cadTextVisible, setCadTextVisible] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
   const abortController = useRef<AbortController | null>(null);
@@ -48,6 +52,7 @@ export default function App() {
   }, [location.state.error, t]);
 
   const visibleLayers = useMemo(() => new Set(dwg?.layers.filter((layer) => layer.visible).map((layer) => layer.id) ?? []), [dwg]);
+  const hiddenObjectCount = useMemo(() => countHiddenCadObjects(dwg, hiddenFeatureIds), [dwg, hiddenFeatureIds]);
 
   const chooseFile = () => fileInput.current?.click();
   const handleFile = async (file: File | undefined) => {
@@ -69,7 +74,7 @@ export default function App() {
       setSelection(null);
       setHiddenFeatureIds(new Set(result.autoHiddenFeatureIds));
       setCadTextVisible(true);
-      setDrawerOpen(true);
+      setDrawerState('full');
       setImportState('ready');
       setMessage(null);
     } catch (error) {
@@ -107,16 +112,28 @@ export default function App() {
   const setAllLayers = (visible: boolean) => setDwg((current) => current ? {
     ...current, layers: current.layers.map((layer) => ({ ...layer, visible })),
   } : current);
+  const restoreAllHidden = () => {
+    setHiddenFeatureIds(new Set());
+    setAllLayers(true);
+  };
 
   const hideSelectedObject = () => {
     if (!selection) return;
     setHiddenFeatureIds((current) => new Set(current).add(selection.featureId));
     setSelection(null);
+    setDrawerState('closed');
   };
   const hideSelectedLayer = () => {
     if (!selection) return;
     setDwg((current) => current ? { ...current, layers: current.layers.map((layer) => layer.id === selection.layerId ? { ...layer, visible: false } : layer) } : current);
     setSelection(null);
+    setDrawerState('closed');
+  };
+
+  const handleCadSelect = (nextSelection: SelectedCadObject | null) => {
+    setSelection(nextSelection);
+    if (nextSelection) setDrawerState('object');
+    else setDrawerState((current) => current === 'object' ? 'closed' : current);
   };
 
   const useWmsFallback = useCallback(() => {
@@ -132,7 +149,7 @@ export default function App() {
   const locationLabel = location.state.follow === 'off' ? t('locationStart') : location.state.follow === 'paused' ? t('locationResume') : t('locationStop');
 
   return (
-    <main className={`app-shell ${drawerOpen ? 'drawer-open' : 'drawer-closed'}`}>
+    <main className={`app-shell drawer-${drawerState}`}>
       <AppHeader />
       <MapCanvas
         dwg={dwg}
@@ -144,7 +161,7 @@ export default function App() {
         onCoordinate={(value) => setCoordinate([value[0], value[1]])}
         hiddenFeatureIds={hiddenFeatureIds}
         selectedFeatureId={selection?.featureId ?? null}
-        onCadSelect={setSelection}
+        onCadSelect={handleCadSelect}
         cadTextVisible={cadTextVisible}
       />
 
@@ -158,25 +175,27 @@ export default function App() {
         <button onClick={() => setSheetOpen(true)} disabled={!dwg?.layers.length} aria-label={t('layers')} title={t('layers')}>
           <Layers3 size={22} /><span>{dwg?.layers.length ?? 0}</span>
         </button>
-        <button className={!cadTextVisible ? 'active' : ''} onClick={() => setCadTextVisible((visible) => !visible)} disabled={!dwg} aria-label={cadTextVisible ? t('hideTexts') : t('showTexts')} title={cadTextVisible ? t('hideTexts') : t('showTexts')}>
-          <Type size={22} />
-        </button>
+        <CadVisibilityMenu
+          disabled={!dwg}
+          cadTextVisible={cadTextVisible}
+          hiddenCount={hiddenObjectCount}
+          onToggleTexts={() => setCadTextVisible((visible) => !visible)}
+          onRestoreHidden={restoreAllHidden}
+        />
       </div>
 
-      {!drawerOpen && <button className="drawer-reopen" onClick={() => setDrawerOpen(true)} aria-label={t('openDrawer')} title={t('openDrawer')}><PanelTopOpen size={22} /></button>}
-      <section className={`import-card ${drawerOpen ? 'open' : 'closed'}`} aria-live="polite" aria-hidden={!drawerOpen}>
-        <button className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label={t('closeDrawer')} title={t('closeDrawer')}><span className="drawer-grip" aria-hidden="true" /><PanelBottomClose size={19} /></button>
-        {message && <div className="notice"><span>{message}</span><button onClick={() => setMessage(null)} aria-label={t('close')}><X size={17} /></button></div>}
+      {drawerState === 'closed' && <button className="drawer-reopen" onClick={() => setDrawerState('full')} aria-label={t('openDrawer')} title={t('openDrawer')}><PanelBottomOpen size={22} /></button>}
+      <BottomSheet open={drawerState !== 'closed'} className={`control-sheet ${drawerState}`} ariaLabel={drawerState === 'object' ? t('objectDetails') : t('openDrawer')} closeLabel={t('closeDrawer')} onClose={() => setDrawerState('closed')}>
+        <div aria-live="polite">
+        {drawerState === 'full' && message && <div className="notice"><span>{message}</span><button onClick={() => setMessage(null)} aria-label={t('close')}><X size={17} /></button></div>}
         <SelectionPanel
           selection={selection}
           layerName={dwg?.layers.find((layer) => layer.id === selection?.layerId)?.name ?? ''}
-          hiddenCount={hiddenFeatureIds.size}
-          onClose={() => setSelection(null)}
+          onClose={() => handleCadSelect(null)}
           onHideObject={hideSelectedObject}
           onHideLayer={hideSelectedLayer}
-          onRestoreHidden={() => setHiddenFeatureIds(new Set())}
         />
-        {importState === 'loading' ? (
+        {drawerState === 'full' && (importState === 'loading' ? (
           <div className="loading-row">
             <div className="spinner" aria-hidden="true" />
             <div><strong>{t('importing')}</strong><small>{progress}</small></div>
@@ -194,13 +213,14 @@ export default function App() {
             <div><strong>{t('noDwg')}</strong><small>{t('fileLocal')}</small></div>
             <button className="primary-button" onClick={chooseFile}><FileUp size={20} />{t('chooseDwg')}</button>
           </div>
-        )}
-        {location.state.follow === 'paused' && <button className="follow-banner" onClick={location.resume}><LocateFixed size={17} />{t('locationPaused')} · {t('locationResume')}</button>}
-        {location.state.accuracy !== null && <div className="accuracy-label">{t('accuracy', { meters: Math.round(location.state.accuracy) })}</div>}
-        {dwg && dwg.warnings.length > 0 && (
+        ))}
+        {drawerState === 'full' && location.state.follow === 'paused' && <button className="follow-banner" onClick={location.resume}><LocateFixed size={17} />{t('locationPaused')} · {t('locationResume')}</button>}
+        {drawerState === 'full' && location.state.accuracy !== null && <div className="accuracy-label">{t('accuracy', { meters: Math.round(location.state.accuracy) })}</div>}
+        {drawerState === 'full' && dwg && dwg.warnings.length > 0 && (
           <details className="warnings"><summary>{t('warnings')} ({dwg.warnings.length})</summary><ul>{dwg.warnings.map((warning) => <li key={warning}>{translatedWarning(warning, t)}</li>)}</ul></details>
         )}
-      </section>
+        </div>
+      </BottomSheet>
 
       <input ref={fileInput} className="visually-hidden" type="file" accept=".dwg,application/acad,application/x-dwg" onChange={(event) => void handleFile(event.target.files?.[0])} />
       <SiteBanner />

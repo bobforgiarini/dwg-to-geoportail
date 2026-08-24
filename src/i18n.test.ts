@@ -5,7 +5,7 @@ describe('translations', () => {
   afterAll(() => void i18n.changeLanguage('de'));
   it.each(['de', 'fr', 'en'])('contains the complete primary workflow in %s', async (language) => {
     await i18n.changeLanguage(language);
-    for (const key of ['appName', 'upload', 'layersTitle', 'locationStart', 'fileLocal', 'warning3d', 'alignNorth', 'objectDetails', 'hideObject', 'hideLayer', 'showHidden', 'hideTexts', 'showTexts', 'openDrawer', 'closeDrawer']) {
+    for (const key of ['appName', 'upload', 'layersTitle', 'locationStart', 'fileLocal', 'warning3d', 'alignNorth', 'objectDetails', 'hideObject', 'hideLayer', 'showHidden', 'hideTexts', 'showTexts', 'cadVisibility', 'openDrawer', 'closeDrawer']) {
       expect(i18n.t(key)).not.toBe(key);
       expect(i18n.t(key).length).toBeGreaterThan(3);
     }

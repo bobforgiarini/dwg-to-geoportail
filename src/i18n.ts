@@ -18,7 +18,7 @@ const resources = {
     warningUnsupported: 'Nicht unterstütztes Element: {{type}}', warningBlock: 'Ein Block konnte nicht vollständig aufgelöst werden.', warningHatchBoundary: 'Einige Schraffuren enthalten keine verwertbare Begrenzung und wurden ausgelassen.', warningHatchRawUnavailable: 'Erweiterte Schraffurdaten waren für diese DWG nicht lesbar; der kompatible Import wurde verwendet.',
     warningGeneric: '{{warning}}', basemapWmts: 'Satellit (WMTS)', basemapWms: 'Satellit (WMS)', language: 'Sprache', alignNorth: 'Nach Norden ausrichten',
     objectDetails: 'CAD-Objekt', cadLayer: 'Layer', hideObject: 'Objekt ausblenden', hideLayer: 'Layer ausblenden', showHidden: '{{count}} ausgeblendete Objekte wieder anzeigen',
-    hideTexts: 'CAD-Texte ausblenden', showTexts: 'CAD-Texte einblenden', openDrawer: 'Bedienbereich einblenden', closeDrawer: 'Bedienbereich ausblenden',
+    hideTexts: 'CAD-Texte ausblenden', showTexts: 'CAD-Texte einblenden', cadVisibility: 'CAD-Sichtbarkeit', openDrawer: 'Bedienbereich einblenden', closeDrawer: 'Bedienbereich ausblenden',
   }},
   fr: { translation: {
     appName: 'DWG → Geoportail',
@@ -36,7 +36,7 @@ const resources = {
     warningUnsupported: 'Élément non pris en charge : {{type}}', warningBlock: 'Un bloc n’a pas pu être résolu complètement.', warningHatchBoundary: 'Certaines hachures ne contiennent pas de limite exploitable et ont été omises.', warningHatchRawUnavailable: 'Les données de hachures avancées étaient illisibles pour ce DWG ; l’import compatible a été utilisé.',
     warningGeneric: '{{warning}}', basemapWmts: 'Satellite (WMTS)', basemapWms: 'Satellite (WMS)', language: 'Langue', alignNorth: 'Orienter vers le nord',
     objectDetails: 'Objet CAO', cadLayer: 'Calque', hideObject: 'Masquer l’objet', hideLayer: 'Masquer le calque', showHidden: 'Réafficher {{count}} objets masqués',
-    hideTexts: 'Masquer les textes CAO', showTexts: 'Afficher les textes CAO', openDrawer: 'Afficher le panneau', closeDrawer: 'Masquer le panneau',
+    hideTexts: 'Masquer les textes CAO', showTexts: 'Afficher les textes CAO', cadVisibility: 'Visibilité CAO', openDrawer: 'Afficher le panneau', closeDrawer: 'Masquer le panneau',
   }},
   en: { translation: {
     appName: 'DWG → Geoportail',
@@ -54,7 +54,7 @@ const resources = {
     warningUnsupported: 'Unsupported entity: {{type}}', warningBlock: 'A block could not be resolved completely.', warningHatchBoundary: 'Some hatches have no usable boundary and were omitted.', warningHatchRawUnavailable: 'Advanced hatch data could not be read for this DWG; the compatible import was used.',
     warningGeneric: '{{warning}}', basemapWmts: 'Satellite (WMTS)', basemapWms: 'Satellite (WMS)', language: 'Language', alignNorth: 'Align map to north',
     objectDetails: 'CAD object', cadLayer: 'Layer', hideObject: 'Hide object', hideLayer: 'Hide layer', showHidden: 'Show {{count}} hidden objects',
-    hideTexts: 'Hide CAD texts', showTexts: 'Show CAD texts', openDrawer: 'Show control panel', closeDrawer: 'Hide control panel',
+    hideTexts: 'Hide CAD texts', showTexts: 'Show CAD texts', cadVisibility: 'CAD visibility', openDrawer: 'Show control panel', closeDrawer: 'Hide control panel',
   }},
 } as const;
 

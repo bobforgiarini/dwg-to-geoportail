@@ -105,7 +105,7 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
     const map = new Map({
       target: target.current,
       layers: [base, cadLayer, locationLayer],
-      controls: defaultControls({ zoom: false, rotate: false }),
+      controls: defaultControls({ zoom: false, rotate: false, attribution: false }),
       view: new View({ center: fromLonLat([6.13, 49.61]), zoom: 12, minZoom: 7, maxZoom: 21 }),
     });
     mapRef.current = map;
@@ -113,8 +113,11 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
     map.on('moveend', updateCoordinate);
     map.on('pointerdrag', onManualMove);
     map.on('singleclick', (event) => {
-      const feature = map.forEachFeatureAtPixel(event.pixel, (candidate, layer) => layer === cadLayer ? candidate : undefined, { hitTolerance: 8 });
-      if (!(feature instanceof Feature)) {
+      const feature = map.forEachFeatureAtPixel(event.pixel, (candidate) => candidate, {
+        hitTolerance: 8,
+        layerFilter: (layer) => layer === cadLayer,
+      });
+      if (!feature || typeof feature.get !== 'function') {
         onCadSelectRef.current(null);
         return;
       }

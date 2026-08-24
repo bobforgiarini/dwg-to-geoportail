@@ -1,6 +1,7 @@
 import { Eye, EyeOff, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { CadOverlayLayer } from '../types/models';
+import { BottomSheet } from './BottomSheet';
 
 interface Props {
   open: boolean;
@@ -12,11 +13,8 @@ interface Props {
 
 export function LayerSheet({ open, layers, onClose, onToggle, onSetAll }: Props) {
   const { t } = useTranslation();
-  if (!open) return null;
   return (
-    <div className="sheet-backdrop" onPointerDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="bottom-sheet" role="dialog" aria-modal="true" aria-labelledby="layer-title">
-        <div className="sheet-handle" aria-hidden="true" />
+    <BottomSheet open={open} modal ariaLabel={t('layersTitle')} closeLabel={t('close')} onClose={onClose}>
         <header className="sheet-header">
           <div><h2 id="layer-title">{t('layersTitle')}</h2><span>{layers.length}</span></div>
           <button className="icon-button" onClick={onClose} aria-label={t('close')}><X /></button>
@@ -35,7 +33,6 @@ export function LayerSheet({ open, layers, onClose, onToggle, onSetAll }: Props)
             </label>
           ))}
         </div>
-      </section>
-    </div>
+    </BottomSheet>
   );
 }

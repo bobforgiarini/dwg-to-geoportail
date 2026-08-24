@@ -2,6 +2,21 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.1.4] – 2026-08-24
+
+### Hinzugefügt
+
+- gemeinsamen animierten Bottom-Sheet-Baustein für Bedien- und Ebenen-Drawer eingeführt
+- kompakten Objekt-Drawer ergänzt, der sich bei einer CAD-Auswahl automatisch öffnet
+- CAD-Sichtbarkeitsmenü ergänzt, das sich nach links zu Text- und Wiederherstellungsaktionen öffnet
+
+### Geändert
+
+- exaktes bereitgestelltes BF.lu-Logo im `site-info-banner` verwendet und Geoportail-Information dorthin verschoben
+- Wiederöffnungspfeil des unteren Drawers korrigiert und überflüssige Drawer-Icons entfernt
+- Zähler und Wiederherstellung berücksichtigen nun einzeln, automatisch und über Ebenen ausgeblendete Objekte
+- Geoportail-Attributionsschalter entfernt; Diensthinweis und Link bleiben im Banner sichtbar
+
 ## [0.1.3] – 2026-08-24
 
 ### Hinzugefügt

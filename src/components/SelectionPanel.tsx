@@ -1,20 +1,18 @@
-import { EyeOff, Layers3, RotateCcw, X } from 'lucide-react';
+import { EyeOff, Layers3, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { SelectedCadObject } from '../types/models';
 
 interface Props {
   selection: SelectedCadObject | null;
   layerName: string;
-  hiddenCount: number;
   onClose: () => void;
   onHideObject: () => void;
   onHideLayer: () => void;
-  onRestoreHidden: () => void;
 }
 
-export function SelectionPanel({ selection, layerName, hiddenCount, onClose, onHideObject, onHideLayer, onRestoreHidden }: Props) {
+export function SelectionPanel({ selection, layerName, onClose, onHideObject, onHideLayer }: Props) {
   const { t } = useTranslation();
-  if (!selection && hiddenCount === 0) return null;
+  if (!selection) return null;
   return (
     <section className="selection-panel" aria-label={t('objectDetails')}>
       {selection && <>
@@ -29,7 +27,6 @@ export function SelectionPanel({ selection, layerName, hiddenCount, onClose, onH
           <button onClick={onHideLayer}><Layers3 size={17} />{t('hideLayer')}</button>
         </div>
       </>}
-      {hiddenCount > 0 && <button className="restore-hidden" onClick={onRestoreHidden}><RotateCcw size={16} />{t('showHidden', { count: hiddenCount })}</button>}
     </section>
   );
 }

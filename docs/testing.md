@@ -12,6 +12,7 @@
 - Schraffuren aus normalisierten und LibreDWG-rohen Begrenzungspfaden
 - stabile CAD-Objekt-IDs und automatische LUREF-Ausreißerfilterung
 - Kennzeichnung von CAD-Texten für den globalen Sichtbarkeitsschalter
+- Zählung der Vereinigungsmenge aus einzeln und über Ebenen ausgeblendeten CAD-Objekten
 - zentrale UI-Texte in Deutsch, Französisch und Englisch
 
 `npm run build` führt zuerst TypeScript aus, erzeugt den Produktionsbuild und kopiert Worker/WASM nach `dist/wasm`.
@@ -55,3 +56,11 @@ Die Datei blieb ausschließlich im lokalen Browser-Arbeitsspeicher und wurde wed
 - geöffneter Drawer liegt wie vorgesehen über dem Banner
 - CAD-Textschalter mit `181013-15-002021.dwg` in beiden Zuständen geprüft
 - DWG-Import mit und ohne erweiterte HATCH-Rohdaten geprüft; inkompatible Rohdaten lösen automatisch den kompatiblen Zweitversuch aus
+
+## Mobile UI-Abnahme 0.1.4
+
+- `doheem.dwg` mit 237 Objekten und 13 Ebenen im Produktionsbuild verarbeitet
+- BF.lu-Logo, Geoportail-Link und fehlenden OpenLayers-Attributionsschalter geprüft
+- gemeinsamen animierten Bedien- und Ebenen-Drawer bei 390 × 844 Pixel geprüft
+- links ausklappendes CAD-Menü mit Text- und Wiederherstellungsaktion geprüft
+- Wiederherstellung von 230 automatisch ausgeblendeten Objekten und anschließende Zählung von 17 über eine Ebene ausgeblendeten Objekten geprüft
