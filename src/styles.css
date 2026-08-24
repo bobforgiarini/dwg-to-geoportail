@@ -54,6 +54,12 @@ button:disabled { cursor: default; opacity: .45; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .notice { min-height: 36px; margin-bottom: 8px; padding: 5px 5px 5px 9px; display: flex; align-items: center; gap: 8px; color: #fff; background: var(--navy-2); border-left: 4px solid var(--gold); border-radius: 7px; font-size: 12px; }
 .notice span { flex: 1; }.notice button { width: 36px; min-height: 36px; padding: 0; color: #fff; background: transparent; }
+.selection-panel { margin-bottom: 9px; padding: 9px; color: var(--navy); background: #fff8ef; border: 1px solid rgba(241,190,136,.8); border-radius: 9px; }
+.selection-panel header { min-height: 34px; display: flex; align-items: center; justify-content: space-between; }.selection-panel header > div { min-width: 0; display: flex; align-items: baseline; gap: 8px; }.selection-panel header strong { font-size: 13px; }.selection-panel header small { color: rgba(5,28,44,.58); font-size: 10px; }.selection-panel header .icon-button { width: 34px; height: 34px; min-height: 34px; }
+.selection-layer { min-height: 32px; display: flex; align-items: center; gap: 7px; font-size: 11px; }.selection-layer span { color: rgba(5,28,44,.58); }.selection-layer strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.selection-label { margin: 3px 0 7px; overflow: hidden; color: rgba(5,28,44,.68); white-space: nowrap; text-overflow: ellipsis; font-size: 11px; }
+.selection-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }.selection-actions button, .restore-hidden { min-height: 40px; padding: 0 9px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--navy); background: #fff; border: 1px solid var(--border); border-radius: 7px; font-size: 11px; font-weight: 750; }.selection-actions button:last-child { color: #fff; background: var(--navy); }
+.restore-hidden { width: 100%; margin-top: 7px; color: var(--navy); background: var(--gold); border: 0; }
 .follow-banner { width: 100%; min-height: 36px; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; color: #fff; background: var(--blue); border-radius: 7px; font-size: 12px; font-weight: 700; }
 .accuracy-label { margin-top: 6px; color: rgba(5,28,44,.62); text-align: center; font-size: 10px; }
 .warnings { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--border); color: rgba(5,28,44,.72); font-size: 11px; }

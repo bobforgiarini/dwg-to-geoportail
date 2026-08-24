@@ -1,4 +1,4 @@
-# Architektur 0.1.0
+# Architektur 0.1.2
 
 ## Überblick
 
@@ -8,11 +8,11 @@ Die Anwendung ist eine statisch auslieferbare React-Single-Page-App. Sie besitzt
 
 1. Der Nutzer wählt lokal eine `.dwg` aus.
 2. `importDwg` startet einen neuen `DwgWorkerClient`; ein vorheriger Import wird beendet.
-3. Der Worker lädt `/wasm/libredwg-web.wasm` und normalisiert die Zeichnung.
+3. Der Worker lädt `/wasm/libredwg-web.wasm` und normalisiert die Zeichnung. Parser-Rohdaten bleiben im Arbeitsspeicher verfügbar, damit HATCH-Begrenzungspfade ausgewertet werden können.
 4. `convertCadDocument` löst INSERT/Block-Verweise rekursiv bis maximal 32 Ebenen auf.
-5. Geometrien werden zunächst im WCS der DWG als LUREF behandelt. Die LUREF-Ausdehnung wird vor der Transformation ermittelt.
+5. Geometrien werden zunächst im WCS der DWG als LUREF behandelt. Die LUREF-Ausdehnung wird vor der Transformation ermittelt; die dichteste plausible Modellgruppe bestimmt den Startausschnitt.
 6. OpenLayers transformiert die Geometrien von `EPSG:2169` nach `EPSG:3857`.
-7. Eine gemeinsame Vektorquelle rendert alle Features. Die Style-Funktion prüft `layerId` gegen das sichtbare Layer-Set.
+7. Eine gemeinsame Vektorquelle rendert alle Features. Die Style-Funktion prüft `layerId`, automatisch erkannte Ausreißer und manuell ausgeblendete Objekt-IDs.
 8. Beim Ersetzen oder Entfernen werden alte Features und Dateireferenzen verworfen.
 
 DWG-Bytes und abgeleitete Geometrien leben nur im Arbeitsspeicher der laufenden Browser-Sitzung.
@@ -28,7 +28,9 @@ Die Proj4-Definition wurde aus der bestehenden Desktop-Integration übernommen. 
 
 ## CAD-Unterstützung
 
-Direkt umgesetzt sind Linien, Polylinien einschließlich Bulge-Bögen, Kreise, Bögen, Ellipsen, Splines als Stützpunktapproximation, Punkte, Texte, Solid/Hatch-Umrisse und rekursive Blöcke. Papierbereich wird verworfen. Z-Werte werden auf XY abgeflacht und gemeldet. Fehlende oder zyklische Blöcke sowie unbekannte Elementtypen erzeugen Hinweise.
+Direkt umgesetzt sind Linien, Polylinien einschließlich Bulge-Bögen, Kreise, Bögen, Ellipsen, Splines als Stützpunktapproximation, Punkte, Texte, Solid/Hatch-Umrisse und rekursive Blöcke. HATCH-Begrenzungen werden sowohl aus dem normalisierten Dokument als auch aus LibreDWG-Rohpfaden gelesen; nicht rekonstruierbare Schraffuren werden gemeldet. Papierbereich wird verworfen. Z-Werte werden auf XY abgeflacht und gemeldet. Fehlende oder zyklische Blöcke sowie unbekannte Elementtypen erzeugen Hinweise.
+
+Jedes Feature besitzt eine stabile Objekt-ID, einen CAD-Typ und eine `layerId`. Ein Kartentipp selektiert das oberste sichtbare CAD-Feature. Die Auswahl kann einzeln oder zusammen mit ihrem Layer ausgeblendet werden. Sobald nationale LUREF-Objekte vorhanden sind, werden Objekte mit Mittelpunkt außerhalb `[30000, 50000, 130000, 160000]` zunächst ausgeblendet; der Nutzer kann sie vollständig wiederherstellen.
 
 ## Standort
 

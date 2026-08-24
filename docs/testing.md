@@ -9,6 +9,8 @@
 - absolute LUREF-Ausdehnungen und Layer-Metadaten
 - Blocktranslation, Layervererbung und Zyklenerkennung
 - Kurvenapproximation sowie Warnungen für 3D und Papierbereich
+- Schraffuren aus normalisierten und LibreDWG-rohen Begrenzungspfaden
+- stabile CAD-Objekt-IDs und automatische LUREF-Ausreißerfilterung
 - zentrale UI-Texte in Deutsch, Französisch und Englisch
 
 `npm run build` führt zuerst TypeScript aus, erzeugt den Produktionsbuild und kopiert Worker/WASM nach `dist/wasm`.
@@ -36,3 +38,11 @@ Die folgenden lokal bereitgestellten Dateien wurden browserlokal mit dem Produkt
 - `251068-11-002021a.dwg`: 1.016 Objekte, 39 Layer
 
 Keine der DWG-Dateien wurde an einen externen Dienst übertragen oder in das Repository aufgenommen. Nicht unterstützte Inhalte wie Viewports, Multileader, externe Bilder und einzelne 3D-Z-Werte werden weiterhin als Hinweise gemeldet.
+
+## Reale DWG-Abnahme 0.1.2
+
+- `181013-15-002021.dwg`: 20.302 darstellbare Objekte, 86 Layer und 742 automatisch ausgeblendete räumliche Ausreißer
+- gegenüber dem Import ohne LibreDWG-HATCH-Rohpfade werden 1.186 zusätzliche Schraffurobjekte dargestellt
+- Startausschnitt liegt beim LUREF-Modell; Auswahl und Ausblenden eines Objekts beziehungsweise Layers wurden browserlokal geprüft
+
+Die Datei blieb ausschließlich im lokalen Browser-Arbeitsspeicher und wurde weder veröffentlicht noch in Git aufgenommen.

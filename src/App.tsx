@@ -4,9 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { AppHeader } from './components/AppHeader';
 import { LayerSheet } from './components/LayerSheet';
 import { MapCanvas } from './components/MapCanvas';
+import { SelectionPanel } from './components/SelectionPanel';
 import { useLocationTracking } from './hooks/useLocationTracking';
 import { cancelDwgImport, importDwg, RECOMMENDED_DWG_BYTES } from './lib/cad/importDwg';
-import type { BasemapMode, DwgImportResult } from './types/models';
+import type { BasemapMode, DwgImportResult, SelectedCadObject } from './types/models';
 
 type ImportState = 'idle' | 'loading' | 'ready' | 'error' | 'cancelled';
 
@@ -15,6 +16,7 @@ function translatedWarning(warning: string, t: (key: string, options?: Record<st
   if (warning === 'paper-space-ignored') return t('warningPaper');
   if (warning === 'missing-block' || warning === 'cyclic-block') return t('warningBlock');
   if (warning.startsWith('unsupported:')) return t('warningUnsupported', { type: warning.slice(12) });
+  if (warning === 'hatch-boundary-missing') return t('warningHatchBoundary');
   return t('warningGeneric', { warning });
 }
 
@@ -27,6 +29,8 @@ export default function App() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [basemapMode, setBasemapMode] = useState<BasemapMode>('wmts');
   const [coordinate, setCoordinate] = useState<[number, number] | null>(null);
+  const [selection, setSelection] = useState<SelectedCadObject | null>(null);
+  const [hiddenFeatureIds, setHiddenFeatureIds] = useState<Set<string>>(new Set());
   const fileInput = useRef<HTMLInputElement>(null);
   const abortController = useRef<AbortController | null>(null);
   const location = useLocationTracking();
@@ -58,6 +62,8 @@ export default function App() {
     try {
       const result = await importDwg(file, controller.signal, (event) => setProgress(event.phase));
       setDwg(result);
+      setSelection(null);
+      setHiddenFeatureIds(new Set(result.autoHiddenFeatureIds));
       setImportState('ready');
       setMessage(null);
     } catch {
@@ -81,6 +87,8 @@ export default function App() {
 
   const removeDwg = () => {
     setDwg(null);
+    setSelection(null);
+    setHiddenFeatureIds(new Set());
     setImportState('idle');
     setMessage(null);
   };
@@ -91,6 +99,17 @@ export default function App() {
   const setAllLayers = (visible: boolean) => setDwg((current) => current ? {
     ...current, layers: current.layers.map((layer) => ({ ...layer, visible })),
   } : current);
+
+  const hideSelectedObject = () => {
+    if (!selection) return;
+    setHiddenFeatureIds((current) => new Set(current).add(selection.featureId));
+    setSelection(null);
+  };
+  const hideSelectedLayer = () => {
+    if (!selection) return;
+    setDwg((current) => current ? { ...current, layers: current.layers.map((layer) => layer.id === selection.layerId ? { ...layer, visible: false } : layer) } : current);
+    setSelection(null);
+  };
 
   const useWmsFallback = useCallback(() => {
     setBasemapMode('wms');
@@ -115,6 +134,9 @@ export default function App() {
         onWmtsError={useWmsFallback}
         onManualMove={location.pause}
         onCoordinate={(value) => setCoordinate([value[0], value[1]])}
+        hiddenFeatureIds={hiddenFeatureIds}
+        selectedFeatureId={selection?.featureId ?? null}
+        onCadSelect={setSelection}
       />
 
       <div className="map-badge"><Map size={14} />{basemapMode === 'wmts' ? t('basemapWmts') : t('basemapWms')}</div>
@@ -131,6 +153,15 @@ export default function App() {
 
       <section className="import-card" aria-live="polite">
         {message && <div className="notice"><span>{message}</span><button onClick={() => setMessage(null)} aria-label={t('close')}><X size={17} /></button></div>}
+        <SelectionPanel
+          selection={selection}
+          layerName={dwg?.layers.find((layer) => layer.id === selection?.layerId)?.name ?? ''}
+          hiddenCount={hiddenFeatureIds.size}
+          onClose={() => setSelection(null)}
+          onHideObject={hideSelectedObject}
+          onHideLayer={hideSelectedLayer}
+          onRestoreHidden={() => setHiddenFeatureIds(new Set())}
+        />
         {importState === 'loading' ? (
           <div className="loading-row">
             <div className="spinner" aria-hidden="true" />

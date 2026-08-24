@@ -52,4 +52,50 @@ describe('CAD document conversion', () => {
     expect(result.features).toHaveLength(0);
     expect(result.warnings).toContain('cyclic-block');
   });
+
+  it('converts hatch command loops into selectable polygons', () => {
+    const result = convertCadDocument(documentWith([
+      {
+        id: 'hatch-1', type: 'HATCH', kind: 'hatch', layer: 'A', loops: [{ commands: [
+          { cmd: 'M', points: [{ x: 80_000, y: 100_000 }] },
+          { cmd: 'L', points: [{ x: 80_010, y: 100_000 }] },
+          { cmd: 'L', points: [{ x: 80_010, y: 100_010 }] },
+          { cmd: 'L', points: [{ x: 80_000, y: 100_010 }] },
+          { cmd: 'Z', points: [] },
+        ] }],
+      },
+    ]));
+    expect(result.features).toHaveLength(1);
+    expect(result.features[0].getGeometry()?.getType()).toBe('Polygon');
+    expect(result.features[0].get('featureId')).toBe('hatch-1-0');
+    expect(result.warnings).not.toContain('unsupported:HATCH');
+  });
+
+  it('converts LibreDWG raw hatch boundary paths', () => {
+    const result = convertCadDocument(documentWith([
+      {
+        id: 'raw-hatch', type: 'HATCH', kind: 'hatch', layer: 'A', raw: {
+          boundaryPaths: [{ isClosed: true, vertices: [
+            { x: 80_000, y: 100_000, bulge: 0 },
+            { x: 80_020, y: 100_000, bulge: 0 },
+            { x: 80_020, y: 100_020, bulge: 0 },
+            { x: 80_000, y: 100_020, bulge: 0 },
+          ] }],
+        },
+      },
+    ]));
+    expect(result.features).toHaveLength(1);
+    expect(result.features[0].getGeometry()?.getType()).toBe('Polygon');
+    expect(result.warnings).not.toContain('hatch-boundary-missing');
+  });
+
+  it('excludes extreme coordinate outliers from the initial LUREF fit extent', () => {
+    const result = convertCadDocument(documentWith([
+      { type: 'LINE', kind: 'line', layer: 'A', startPoint: { x: 80_000, y: 100_000 }, endPoint: { x: 80_100, y: 100_100 } },
+      { type: 'LINE', kind: 'line', layer: 'A', startPoint: { x: 4_000_000, y: -2_000_000 }, endPoint: { x: 4_000_100, y: -1_999_900 } },
+    ]));
+    expect(result.features).toHaveLength(2);
+    expect(result.lurefExtent).toEqual([80_000, 100_000, 80_100, 100_100]);
+    expect(result.autoHiddenFeatureIds).toEqual(['LINE-1']);
+  });
 });

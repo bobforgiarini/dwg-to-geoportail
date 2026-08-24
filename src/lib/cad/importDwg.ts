@@ -36,7 +36,9 @@ export async function importDwg(
       workerTimeoutMs: DWG_TIMEOUT_MS,
       includePaperSpace: false,
       maxInsertDepth: 32,
-      keepRaw: false,
+      // LibreDWG exposes HATCH boundary paths only on the parser-owned entity.
+      // Keep them for local conversion; nothing is uploaded or persisted.
+      keepRaw: true,
       signal,
       onProgress,
     });

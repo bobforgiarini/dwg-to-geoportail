@@ -15,7 +15,7 @@ import Stroke from 'ol/style/Stroke';
 import Fill from 'ol/style/Fill';
 import Text from 'ol/style/Text';
 import CircleStyle from 'ol/style/Circle';
-import { fromLonLat } from 'ol/proj';
+import { fromLonLat, transformExtent } from 'ol/proj';
 import type { Coordinate } from 'ol/coordinate';
 import type TileWMS from 'ol/source/TileWMS';
 import type WMTS from 'ol/source/WMTS';
@@ -23,7 +23,7 @@ import type Geometry from 'ol/geom/Geometry';
 import 'ol/ol.css';
 import { createBasemapLayer } from '../lib/geoportail';
 import { mapToLuref } from '../lib/crs';
-import type { BasemapMode, DwgImportResult, LocationTrackingState } from '../types/models';
+import type { BasemapMode, DwgImportResult, LocationTrackingState, SelectedCadObject } from '../types/models';
 
 interface Props {
   dwg: DwgImportResult | null;
@@ -33,9 +33,12 @@ interface Props {
   onWmtsError: () => void;
   onManualMove: () => void;
   onCoordinate: (coordinate: Coordinate) => void;
+  hiddenFeatureIds: Set<string>;
+  selectedFeatureId: string | null;
+  onCadSelect: (selection: SelectedCadObject | null) => void;
 }
 
-export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsError, onManualMove, onCoordinate }: Props) {
+export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsError, onManualMove, onCoordinate, hiddenFeatureIds, selectedFeatureId, onCadSelect }: Props) {
   const { t } = useTranslation();
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
@@ -43,16 +46,30 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
   const cadSource = useMemo(() => new VectorSource(), []);
   const locationSource = useMemo(() => new VectorSource(), []);
   const visibleRef = useRef(visibleLayers);
+  const hiddenRef = useRef(hiddenFeatureIds);
+  const selectedRef = useRef(selectedFeatureId);
+  const onCadSelectRef = useRef(onCadSelect);
   const [rotation, setRotation] = useState(0);
   visibleRef.current = visibleLayers;
+  hiddenRef.current = hiddenFeatureIds;
+  selectedRef.current = selectedFeatureId;
+  onCadSelectRef.current = onCadSelect;
 
   const cadLayer = useMemo(() => new VectorLayer({
     source: cadSource,
     declutter: true,
     style: (feature) => {
       if (!visibleRef.current.has(String(feature.get('layerId')))) return undefined;
+      const featureId = String(feature.get('featureId') ?? feature.getId() ?? '');
+      if (hiddenRef.current.has(featureId)) return undefined;
       const color = String(feature.get('cadColor') || '#f1be88');
       const label = String(feature.get('label') || '');
+      const selected = selectedRef.current === featureId;
+      const selection = new Style({
+        stroke: new Stroke({ color: '#f1be88', width: 8 }),
+        fill: new Fill({ color: 'rgba(241,190,136,.28)' }),
+        image: new CircleStyle({ radius: 10, fill: new Fill({ color: 'rgba(241,190,136,.25)' }), stroke: new Stroke({ color: '#f1be88', width: 3 }) }),
+      });
       const halo = new Style({ stroke: new Stroke({ color: 'rgba(0,0,0,.72)', width: 5 }) });
       const foreground = new Style({
         stroke: new Stroke({ color, width: 2 }),
@@ -66,7 +83,7 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
           offsetY: -10,
         }) : undefined,
       });
-      return [halo, foreground];
+      return selected ? [selection, halo, foreground] : [halo, foreground];
     },
   }), [cadSource]);
 
@@ -91,6 +108,21 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
     const updateCoordinate = () => onCoordinate(mapToLuref(map.getView().getCenter() ?? [0, 0]));
     map.on('moveend', updateCoordinate);
     map.on('pointerdrag', onManualMove);
+    map.on('singleclick', (event) => {
+      const feature = map.forEachFeatureAtPixel(event.pixel, (candidate, layer) => layer === cadLayer ? candidate : undefined, { hitTolerance: 8 });
+      if (!(feature instanceof Feature)) {
+        onCadSelectRef.current(null);
+        return;
+      }
+      const featureId = String(feature.get('featureId') ?? feature.getId() ?? '');
+      if (!featureId || hiddenRef.current.has(featureId)) return;
+      onCadSelectRef.current({
+        featureId,
+        layerId: String(feature.get('layerId') ?? '0'),
+        cadType: String(feature.get('cadType') ?? 'CAD'),
+        label: String(feature.get('label') ?? ''),
+      });
+    });
     const updateRotation = () => setRotation(map.getView().getRotation());
     map.getView().on('change:rotation', updateRotation);
     updateCoordinate();
@@ -114,11 +146,13 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
     cadSource.clear();
     if (!dwg) return;
     cadSource.addFeatures(dwg.features as Feature<Geometry>[]);
-    const extent = cadSource.getExtent();
+    const extent = dwg.lurefExtent
+      ? transformExtent(dwg.lurefExtent, 'EPSG:2169', 'EPSG:3857')
+      : cadSource.getExtent();
     if (extent.every(Number.isFinite)) mapRef.current?.getView().fit(extent, { padding: [96, 24, 190, 24], maxZoom: 20, duration: 500 });
   }, [cadSource, dwg]);
 
-  useEffect(() => { cadLayer.changed(); }, [cadLayer, visibleLayers]);
+  useEffect(() => { cadLayer.changed(); }, [cadLayer, hiddenFeatureIds, selectedFeatureId, visibleLayers]);
 
   useEffect(() => {
     locationSource.clear();

@@ -2,6 +2,22 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.1.2] – 2026-08-24
+
+### Hinzugefügt
+
+- CAD-Objektauswahl per Tipp mit Anzeige von Elementtyp und Layer
+- Aktionen zum Ausblenden eines einzelnen Objekts oder seines gesamten Layers
+- Wiederherstellung aller einzeln beziehungsweise automatisch ausgeblendeten Objekte
+- Darstellung von Schraffuren aus normalisierten und LibreDWG-rohen Begrenzungspfaden
+- automatische Erkennung und Ausblendung räumlicher Ausreißer außerhalb des Luxemburger LUREF-Bereichs
+
+### Geändert
+
+- Kartenausschnitt wird anhand der dichtesten plausiblen LUREF-Modellgruppe bestimmt
+- Hinweise für Schraffuren ohne verwertbare Begrenzung präzisiert
+- problematische reale DWG `181013-15-002021.dwg` erfolgreich mit 20.302 darstellbaren Objekten und 86 Layern geprüft
+
 ## [0.1.1] – 2026-08-24
 
 ### Behoben

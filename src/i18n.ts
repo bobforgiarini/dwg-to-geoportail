@@ -15,8 +15,9 @@ const resources = {
     locationUnavailable: 'Der Live-Standort ist in diesem Browser nicht verfügbar.', locationError: 'Der Standort konnte nicht bestimmt werden.',
     accuracy: 'Genauigkeit {{meters}} m', coordinates: 'LUREF {{x}} / {{y}}', fileSize: '{{size}} MB', featureCount: '{{count}} Objekte',
     warnings: 'Hinweise', warning3d: '3D-/Z-Werte wurden auf die 2D-Karte abgeflacht.', warningPaper: 'Papierlayouts wurden ignoriert.',
-    warningUnsupported: 'Nicht unterstütztes Element: {{type}}', warningBlock: 'Ein Block konnte nicht vollständig aufgelöst werden.',
+    warningUnsupported: 'Nicht unterstütztes Element: {{type}}', warningBlock: 'Ein Block konnte nicht vollständig aufgelöst werden.', warningHatchBoundary: 'Einige Schraffuren enthalten keine verwertbare Begrenzung und wurden ausgelassen.',
     warningGeneric: '{{warning}}', basemapWmts: 'Satellit (WMTS)', basemapWms: 'Satellit (WMS)', language: 'Sprache', alignNorth: 'Nach Norden ausrichten',
+    objectDetails: 'CAD-Objekt', cadLayer: 'Layer', hideObject: 'Objekt ausblenden', hideLayer: 'Layer ausblenden', showHidden: '{{count}} ausgeblendete Objekte wieder anzeigen',
   }},
   fr: { translation: {
     appName: 'DWG → Geoportail',
@@ -31,8 +32,9 @@ const resources = {
     locationUnavailable: 'La position en direct n’est pas disponible dans ce navigateur.', locationError: 'La position n’a pas pu être déterminée.',
     accuracy: 'Précision {{meters}} m', coordinates: 'LUREF {{x}} / {{y}}', fileSize: '{{size}} Mo', featureCount: '{{count}} objets',
     warnings: 'Remarques', warning3d: 'Les valeurs 3D/Z ont été aplaties sur la carte 2D.', warningPaper: 'Les présentations papier ont été ignorées.',
-    warningUnsupported: 'Élément non pris en charge : {{type}}', warningBlock: 'Un bloc n’a pas pu être résolu complètement.',
+    warningUnsupported: 'Élément non pris en charge : {{type}}', warningBlock: 'Un bloc n’a pas pu être résolu complètement.', warningHatchBoundary: 'Certaines hachures ne contiennent pas de limite exploitable et ont été omises.',
     warningGeneric: '{{warning}}', basemapWmts: 'Satellite (WMTS)', basemapWms: 'Satellite (WMS)', language: 'Langue', alignNorth: 'Orienter vers le nord',
+    objectDetails: 'Objet CAO', cadLayer: 'Calque', hideObject: 'Masquer l’objet', hideLayer: 'Masquer le calque', showHidden: 'Réafficher {{count}} objets masqués',
   }},
   en: { translation: {
     appName: 'DWG → Geoportail',
@@ -47,8 +49,9 @@ const resources = {
     locationUnavailable: 'Live location is unavailable in this browser.', locationError: 'Your location could not be determined.',
     accuracy: 'Accuracy {{meters}} m', coordinates: 'LUREF {{x}} / {{y}}', fileSize: '{{size}} MB', featureCount: '{{count}} objects',
     warnings: 'Notes', warning3d: '3D/Z values were flattened onto the 2D map.', warningPaper: 'Paper layouts were ignored.',
-    warningUnsupported: 'Unsupported entity: {{type}}', warningBlock: 'A block could not be resolved completely.',
+    warningUnsupported: 'Unsupported entity: {{type}}', warningBlock: 'A block could not be resolved completely.', warningHatchBoundary: 'Some hatches have no usable boundary and were omitted.',
     warningGeneric: '{{warning}}', basemapWmts: 'Satellite (WMTS)', basemapWms: 'Satellite (WMS)', language: 'Language', alignNorth: 'Align map to north',
+    objectDetails: 'CAD object', cadLayer: 'Layer', hideObject: 'Hide object', hideLayer: 'Hide layer', showHidden: 'Show {{count}} hidden objects',
   }},
 } as const;
 

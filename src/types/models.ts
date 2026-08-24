@@ -13,7 +13,15 @@ export interface DwgImportResult {
   lurefExtent: [number, number, number, number] | null;
   layers: CadOverlayLayer[];
   features: Feature<Geometry>[];
+  autoHiddenFeatureIds: string[];
   warnings: string[];
+}
+
+export interface SelectedCadObject {
+  featureId: string;
+  layerId: string;
+  cadType: string;
+  label: string;
 }
 
 export type LocationPermission = 'idle' | 'prompt' | 'granted' | 'denied' | 'unavailable';
