@@ -36,6 +36,8 @@ button:disabled { cursor: default; opacity: .45; }
 .floating-actions button { position: relative; width: 48px; height: 48px; padding: 0; display: grid; place-items: center; color: var(--navy); background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 5px 18px rgba(5,28,44,.2); }
 .floating-actions button.active { color: #fff; background: var(--blue); }
 .floating-actions button span { position: absolute; top: -5px; right: -5px; min-width: 19px; height: 19px; display: grid; place-items: center; color: var(--navy); background: var(--gold); border: 2px solid #fff; border-radius: 10px; font-size: 10px; font-weight: 800; }
+.compass-button { position: absolute; z-index: 12; top: calc(184px + env(safe-area-inset-top)); right: 10px; width: 48px; height: 48px; padding: 0; display: grid; place-items: center; color: var(--navy); background: #fff; border: 1px solid var(--border); border-radius: 50%; box-shadow: 0 5px 18px rgba(5,28,44,.2); }
+.compass-button svg { transition: transform .2s ease; }.compass-button span { position: absolute; top: 3px; font-size: 9px; font-weight: 900; }.compass-button.rotated { color: #fff; background: var(--navy); opacity: 1; }.compass-button:disabled { opacity: .65; }
 .import-card { position: absolute; z-index: 15; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); padding: 10px; background: rgba(255,255,255,.97); border: 1px solid rgba(255,255,255,.55); border-radius: 12px; box-shadow: var(--shadow); backdrop-filter: blur(16px); }
 .empty-import, .file-row, .loading-row { display: flex; align-items: center; gap: 10px; }
 .empty-import > div:first-child, .file-meta, .loading-row > div { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
@@ -69,7 +71,7 @@ button:disabled { cursor: default; opacity: .45; }
 @media (min-width: 760px) {
   .app-header { left: 12px; right: 12px; top: 12px; height: 60px; padding: 0 12px; border-radius: 12px; }
   .map-canvas { inset: 0; }
-  .map-badge { top: 82px; }.coordinate-badge { top: 116px; }.floating-actions { top: 82px; }
+  .map-badge { top: 82px; }.coordinate-badge { top: 116px; }.floating-actions { top: 82px; }.compass-button { top: 194px; }
   .import-card { left: 50%; right: auto; width: min(620px, calc(100% - 32px)); transform: translateX(-50%); }
   .bottom-sheet { max-width: 520px; margin: 0 auto; border-radius: 18px 18px 0 0; }
 }

@@ -9,7 +9,7 @@ const cadAssetDirectory = resolve('node_modules/@flyfish-dev/cad-viewer/dist/was
 
 function cadWasmAssets() {
   return {
-    name: 'best-buddy-cad-wasm-assets',
+    name: 'dwg-to-geoportail-cad-wasm-assets',
     configureServer(server: { middlewares: { use: (path: string, handler: (request: { url?: string }, response: { statusCode: number; setHeader: (name: string, value: string) => void; end: (body?: Uint8Array) => void }, next: () => void) => void) => void } }) {
       server.middlewares.use('/wasm', (request, response, next) => {
         const assetName = request.url?.replace(/^\//, '').split('?')[0];

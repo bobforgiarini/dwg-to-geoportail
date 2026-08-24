@@ -1,4 +1,4 @@
-# Geoportail-DWG
+# DWG to Geoportail
 
 Mobile-first Webprototyp zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto.
 

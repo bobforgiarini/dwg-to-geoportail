@@ -26,3 +26,13 @@
 - Netlify-Produktionsbuild über HTTPS in mobilem Safari und Chrome abnehmen
 
 Eine reale DWG-Fixture ist bewusst nicht im Repository enthalten und wird nach Bereitstellung separat abgenommen.
+
+## Reale DWG-Abnahme 0.1.1
+
+Die folgenden lokal bereitgestellten Dateien wurden browserlokal mit dem Produktionsbuild erfolgreich verarbeitet:
+
+- `büro.dwg`: 179 Objekte, 13 Layer
+- `doheem.dwg`: 181 Objekte, 13 Layer
+- `251068-11-002021a.dwg`: 1.016 Objekte, 39 Layer
+
+Keine der DWG-Dateien wurde an einen externen Dienst übertragen oder in das Repository aufgenommen. Nicht unterstützte Inhalte wie Viewports, Multileader, externe Bilder und einzelne 3D-Z-Werte werden weiterhin als Hinweise gemeldet.

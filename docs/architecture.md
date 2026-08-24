@@ -24,7 +24,7 @@ DWG-Bytes und abgeleitete Geometrien leben nur im Arbeitsspeicher der laufenden 
 - Standard: WMTS `ortho_2025`, Matrix-Set `GLOBAL_WEBMERCATOR_4_V3`
 - Fallback: WMS `ortho_latest`
 
-Die Proj4-Definition wurde aus der bestehenden BEST-Buddy-Integration übernommen. Die Haupt-Codebase wurde dabei ausschließlich gelesen.
+Die Proj4-Definition wurde aus der bestehenden Desktop-Integration übernommen. Die Haupt-Codebase wurde dabei ausschließlich gelesen.
 
 ## CAD-Unterstützung
 

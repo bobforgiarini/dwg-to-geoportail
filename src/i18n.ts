@@ -3,7 +3,7 @@ import { initReactI18next } from 'react-i18next';
 
 const resources = {
   de: { translation: {
-    appName: 'BEST Buddy Mobile',
+    appName: 'DWG → Geoportail',
     map: 'Karte', upload: 'DWG laden', replace: 'DWG ersetzen', remove: 'DWG entfernen', cancel: 'Abbrechen',
     layers: 'Layer', layersTitle: 'DWG-Layer', close: 'Schließen', showAll: 'Alle einblenden', hideAll: 'Alle ausblenden',
     locationStart: 'Standort starten', locationStop: 'Standort beenden', locationResume: 'Folgen fortsetzen', locationPaused: 'Standortfolge pausiert',
@@ -16,10 +16,10 @@ const resources = {
     accuracy: 'Genauigkeit {{meters}} m', coordinates: 'LUREF {{x}} / {{y}}', fileSize: '{{size}} MB', featureCount: '{{count}} Objekte',
     warnings: 'Hinweise', warning3d: '3D-/Z-Werte wurden auf die 2D-Karte abgeflacht.', warningPaper: 'Papierlayouts wurden ignoriert.',
     warningUnsupported: 'Nicht unterstütztes Element: {{type}}', warningBlock: 'Ein Block konnte nicht vollständig aufgelöst werden.',
-    warningGeneric: '{{warning}}', basemapWmts: 'Satellit (WMTS)', basemapWms: 'Satellit (WMS)', language: 'Sprache',
+    warningGeneric: '{{warning}}', basemapWmts: 'Satellit (WMTS)', basemapWms: 'Satellit (WMS)', language: 'Sprache', alignNorth: 'Nach Norden ausrichten',
   }},
   fr: { translation: {
-    appName: 'BEST Buddy Mobile',
+    appName: 'DWG → Geoportail',
     map: 'Carte', upload: 'Charger DWG', replace: 'Remplacer le DWG', remove: 'Retirer le DWG', cancel: 'Annuler',
     layers: 'Calques', layersTitle: 'Calques DWG', close: 'Fermer', showAll: 'Tout afficher', hideAll: 'Tout masquer',
     locationStart: 'Démarrer la position', locationStop: 'Arrêter la position', locationResume: 'Reprendre le suivi', locationPaused: 'Suivi de position en pause',
@@ -32,10 +32,10 @@ const resources = {
     accuracy: 'Précision {{meters}} m', coordinates: 'LUREF {{x}} / {{y}}', fileSize: '{{size}} Mo', featureCount: '{{count}} objets',
     warnings: 'Remarques', warning3d: 'Les valeurs 3D/Z ont été aplaties sur la carte 2D.', warningPaper: 'Les présentations papier ont été ignorées.',
     warningUnsupported: 'Élément non pris en charge : {{type}}', warningBlock: 'Un bloc n’a pas pu être résolu complètement.',
-    warningGeneric: '{{warning}}', basemapWmts: 'Satellite (WMTS)', basemapWms: 'Satellite (WMS)', language: 'Langue',
+    warningGeneric: '{{warning}}', basemapWmts: 'Satellite (WMTS)', basemapWms: 'Satellite (WMS)', language: 'Langue', alignNorth: 'Orienter vers le nord',
   }},
   en: { translation: {
-    appName: 'BEST Buddy Mobile',
+    appName: 'DWG → Geoportail',
     map: 'Map', upload: 'Load DWG', replace: 'Replace DWG', remove: 'Remove DWG', cancel: 'Cancel',
     layers: 'Layers', layersTitle: 'DWG layers', close: 'Close', showAll: 'Show all', hideAll: 'Hide all',
     locationStart: 'Start location', locationStop: 'Stop location', locationResume: 'Resume following', locationPaused: 'Location following paused',
@@ -48,7 +48,7 @@ const resources = {
     accuracy: 'Accuracy {{meters}} m', coordinates: 'LUREF {{x}} / {{y}}', fileSize: '{{size}} MB', featureCount: '{{count}} objects',
     warnings: 'Notes', warning3d: '3D/Z values were flattened onto the 2D map.', warningPaper: 'Paper layouts were ignored.',
     warningUnsupported: 'Unsupported entity: {{type}}', warningBlock: 'A block could not be resolved completely.',
-    warningGeneric: '{{warning}}', basemapWmts: 'Satellite (WMTS)', basemapWms: 'Satellite (WMS)', language: 'Language',
+    warningGeneric: '{{warning}}', basemapWmts: 'Satellite (WMTS)', basemapWms: 'Satellite (WMS)', language: 'Language', alignNorth: 'Align map to north',
   }},
 } as const;
 

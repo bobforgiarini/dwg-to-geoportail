@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Navigation2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import TileLayer from 'ol/layer/Tile';
@@ -34,12 +36,14 @@ interface Props {
 }
 
 export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsError, onManualMove, onCoordinate }: Props) {
+  const { t } = useTranslation();
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const baseRef = useRef<TileLayer<WMTS | TileWMS> | null>(null);
   const cadSource = useMemo(() => new VectorSource(), []);
   const locationSource = useMemo(() => new VectorSource(), []);
   const visibleRef = useRef(visibleLayers);
+  const [rotation, setRotation] = useState(0);
   visibleRef.current = visibleLayers;
 
   const cadLayer = useMemo(() => new VectorLayer({
@@ -87,6 +91,8 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
     const updateCoordinate = () => onCoordinate(mapToLuref(map.getView().getCenter() ?? [0, 0]));
     map.on('moveend', updateCoordinate);
     map.on('pointerdrag', onManualMove);
+    const updateRotation = () => setRotation(map.getView().getRotation());
+    map.getView().on('change:rotation', updateRotation);
     updateCoordinate();
     return () => {
       map.setTarget(undefined);
@@ -125,5 +131,19 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
     if (location.follow === 'following') mapRef.current?.getView().animate({ center, zoom: Math.max(mapRef.current.getView().getZoom() ?? 17, 17), duration: 350 });
   }, [location, locationSource]);
 
-  return <div ref={target} className="map-canvas" role="application" aria-label="Geoportail" />;
+  const alignNorth = () => mapRef.current?.getView().animate({ rotation: 0, duration: 300 });
+
+  return <>
+    <div ref={target} className="map-canvas" role="application" aria-label="Geoportail" />
+    <button
+      className={`compass-button${Math.abs(rotation) > 0.001 ? ' rotated' : ''}`}
+      onClick={alignNorth}
+      disabled={Math.abs(rotation) <= 0.001}
+      aria-label={t('alignNorth')}
+      title={t('alignNorth')}
+    >
+      <Navigation2 size={22} style={{ transform: `rotate(${rotation}rad)` }} />
+      <span>N</span>
+    </button>
+  </>;
 }

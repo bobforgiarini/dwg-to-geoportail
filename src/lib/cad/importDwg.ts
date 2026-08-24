@@ -5,6 +5,7 @@ import type { DwgImportResult } from '../../types/models';
 
 export const RECOMMENDED_DWG_BYTES = 10 * 1024 * 1024;
 export const DWG_TIMEOUT_MS = 120_000;
+export const CAD_WASM_PATH = '/wasm';
 
 let activeClient: DwgWorkerClient | null = null;
 
@@ -28,7 +29,9 @@ export async function importDwg(
     if (signal.aborted) throw new DOMException('Import aborted', 'AbortError');
     const result = await client.load(bytes, { fileName: file.name, buffer: bytes }, {
       fileName: file.name,
-      wasmPath: '/wasm/libredwg-web.wasm',
+      // cad-viewer expects the asset directory and appends the LibreDWG file
+      // names itself. Passing the .wasm file here creates invalid nested URLs.
+      wasmPath: CAD_WASM_PATH,
       workerUrl: '/wasm/dwg-worker.js',
       workerTimeoutMs: DWG_TIMEOUT_MS,
       includePaperSpace: false,
