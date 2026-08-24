@@ -2,6 +2,20 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.1.3] – 2026-08-24
+
+### Hinzugefügt
+
+- unteren Bedienbereich als ein- und ausblendbaren mobilen Bottom-Drawer umgesetzt
+- globalen Schalter zum Aus- und Einblenden aller CAD-Texte ergänzt
+- `site-info-banner` 1.1.0 mit Copyright, Projektversion und Quellcode-Link integriert
+- kompatiblen DWG-Zweitversuch ergänzt, wenn erweiterte HATCH-Rohdaten nicht aus dem Worker übertragen werden können
+
+### Geändert
+
+- Banner liegt im normalen Kartenmodus frei; geöffnete Bottom-Drawer dürfen ihn bewusst überlagern
+- Geoportail-Attribution, Drawer-Schalter, Kartenaktionen und Nordpfeil überlappungsfrei angeordnet
+
 ## [0.1.2] – 2026-08-24
 
 ### Hinzugefügt

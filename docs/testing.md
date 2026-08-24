@@ -11,6 +11,7 @@
 - Kurvenapproximation sowie Warnungen für 3D und Papierbereich
 - Schraffuren aus normalisierten und LibreDWG-rohen Begrenzungspfaden
 - stabile CAD-Objekt-IDs und automatische LUREF-Ausreißerfilterung
+- Kennzeichnung von CAD-Texten für den globalen Sichtbarkeitsschalter
 - zentrale UI-Texte in Deutsch, Französisch und Englisch
 
 `npm run build` führt zuerst TypeScript aus, erzeugt den Produktionsbuild und kopiert Worker/WASM nach `dist/wasm`.
@@ -46,3 +47,11 @@ Keine der DWG-Dateien wurde an einen externen Dienst übertragen oder in das Rep
 - Startausschnitt liegt beim LUREF-Modell; Auswahl und Ausblenden eines Objekts beziehungsweise Layers wurden browserlokal geprüft
 
 Die Datei blieb ausschließlich im lokalen Browser-Arbeitsspeicher und wurde weder veröffentlicht noch in Git aufgenommen.
+
+## Mobile UI-Abnahme 0.1.3
+
+- Bottom-Drawer bei 390 × 844 Pixel geöffnet, geschlossen und wieder geöffnet
+- geschlossener Zustand ohne Seitenüberlauf; `site-info-banner`, Attribution und Wiederöffnungstaste überdecken sich nicht
+- geöffneter Drawer liegt wie vorgesehen über dem Banner
+- CAD-Textschalter mit `181013-15-002021.dwg` in beiden Zuständen geprüft
+- DWG-Import mit und ohne erweiterte HATCH-Rohdaten geprüft; inkompatible Rohdaten lösen automatisch den kompatiblen Zweitversuch aus

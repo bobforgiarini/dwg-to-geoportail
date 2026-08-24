@@ -196,7 +196,7 @@ type RawHatchPath = {
     isCCW?: unknown;
     controlPoints?: RawPoint[];
     fitDatum?: RawPoint[];
-  }>;
+  } | null | undefined>;
 };
 
 function rawXy(point: RawPoint | undefined): XY | null {
@@ -205,10 +205,11 @@ function rawXy(point: RawPoint | undefined): XY | null {
 
 function rawHatchRings(entity: CadEntity, matrix: Matrix): XY[][] {
   if (!entity.raw || typeof entity.raw !== 'object') return [];
-  const paths = (entity.raw as { boundaryPaths?: RawHatchPath[] }).boundaryPaths;
+  const paths = (entity.raw as { boundaryPaths?: Array<RawHatchPath | null | undefined> }).boundaryPaths;
   if (!Array.isArray(paths)) return [];
   const rings: XY[][] = [];
   for (const path of paths) {
+    if (!path) continue;
     let authored: XY[] = [];
     if (Array.isArray(path.vertices) && path.vertices.length >= 3) {
       const vertices = path.vertices
@@ -223,6 +224,7 @@ function rawHatchRings(entity: CadEntity, matrix: Matrix): XY[][] {
       }
     } else if (Array.isArray(path.edges)) {
       for (const edge of path.edges) {
+        if (!edge) continue;
         const edgeType = Number(edge.type);
         if (edgeType === 1) {
           const start = rawXy(edge.start);
@@ -424,6 +426,7 @@ export function convertCadDocument(document: CadDocument): CadConversionResult {
       cadColor: resolveCadColor(entity, document, { background: '#334b36', foreground: '#ffffff', contrastMode: 'preserve' }),
       label: kind === 'text' ? String(entity.text ?? entity.value ?? '') : '',
       textHeight: entity.textHeight ?? entity.height,
+      isCadText: kind === 'text',
       isLurefNational: coordinateInExtent(authoredCenter, NATIONAL_LUREF_BOUNDS),
     });
     features.push(feature);

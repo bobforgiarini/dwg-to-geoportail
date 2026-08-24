@@ -20,14 +20,14 @@ export async function importDwg(
   onProgress?: (progress: CadLoadProgress) => void,
 ): Promise<DwgImportResult> {
   cancelDwgImport();
-  const client = new DwgWorkerClient();
+  let client = new DwgWorkerClient();
   activeClient = client;
   const abort = () => client.terminate();
   signal.addEventListener('abort', abort, { once: true });
   try {
-    const bytes = new Uint8Array(await file.arrayBuffer());
+    let bytes = new Uint8Array(await file.arrayBuffer());
     if (signal.aborted) throw new DOMException('Import aborted', 'AbortError');
-    const result = await client.load(bytes, { fileName: file.name, buffer: bytes }, {
+    const load = (keepRaw: boolean) => client.load(bytes, { fileName: file.name, buffer: bytes }, {
       fileName: file.name,
       // cad-viewer expects the asset directory and appends the LibreDWG file
       // names itself. Passing the .wasm file here creates invalid nested URLs.
@@ -36,13 +36,41 @@ export async function importDwg(
       workerTimeoutMs: DWG_TIMEOUT_MS,
       includePaperSpace: false,
       maxInsertDepth: 32,
-      // LibreDWG exposes HATCH boundary paths only on the parser-owned entity.
-      // Keep them for local conversion; nothing is uploaded or persisted.
-      keepRaw: true,
+      keepRaw,
       signal,
       onProgress,
     });
-    const converted = convertCadDocument(result.document);
+    let result;
+    let usedRaw = true;
+    try {
+      // LibreDWG exposes HATCH boundary paths only on the parser-owned entity.
+      // Keep them for local conversion; nothing is uploaded or persisted.
+      result = await load(true);
+    } catch (error) {
+      if (signal.aborted) throw error;
+      // Some drawings contain parser-owned values that cannot be cloned out of
+      // the worker. Re-read the local file and retry without raw payloads.
+      client.terminate();
+      client = new DwgWorkerClient();
+      activeClient = client;
+      bytes = new Uint8Array(await file.arrayBuffer());
+      result = await load(false);
+      usedRaw = false;
+      result.warnings.push('hatch-raw-unavailable');
+    }
+    let converted;
+    try {
+      converted = convertCadDocument(result.document);
+    } catch (error) {
+      if (!usedRaw || signal.aborted) throw error;
+      client.terminate();
+      client = new DwgWorkerClient();
+      activeClient = client;
+      bytes = new Uint8Array(await file.arrayBuffer());
+      result = await load(false);
+      result.warnings.push('hatch-raw-unavailable');
+      converted = convertCadDocument(result.document);
+    }
     return {
       file: { name: file.name, size: file.size, lastModified: file.lastModified },
       ...converted,

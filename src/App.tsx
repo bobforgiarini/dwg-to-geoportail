@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Crosshair, FileUp, Layers3, LocateFixed, Map, Square, Trash2, X } from 'lucide-react';
+import { Crosshair, FileUp, Layers3, LocateFixed, Map, PanelBottomClose, PanelTopOpen, Square, Trash2, Type, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AppHeader } from './components/AppHeader';
 import { LayerSheet } from './components/LayerSheet';
 import { MapCanvas } from './components/MapCanvas';
 import { SelectionPanel } from './components/SelectionPanel';
+import { SiteBanner } from './components/SiteBanner';
 import { useLocationTracking } from './hooks/useLocationTracking';
 import { cancelDwgImport, importDwg, RECOMMENDED_DWG_BYTES } from './lib/cad/importDwg';
 import type { BasemapMode, DwgImportResult, SelectedCadObject } from './types/models';
@@ -17,6 +18,7 @@ function translatedWarning(warning: string, t: (key: string, options?: Record<st
   if (warning === 'missing-block' || warning === 'cyclic-block') return t('warningBlock');
   if (warning.startsWith('unsupported:')) return t('warningUnsupported', { type: warning.slice(12) });
   if (warning === 'hatch-boundary-missing') return t('warningHatchBoundary');
+  if (warning === 'hatch-raw-unavailable') return t('warningHatchRawUnavailable');
   return t('warningGeneric', { warning });
 }
 
@@ -31,6 +33,8 @@ export default function App() {
   const [coordinate, setCoordinate] = useState<[number, number] | null>(null);
   const [selection, setSelection] = useState<SelectedCadObject | null>(null);
   const [hiddenFeatureIds, setHiddenFeatureIds] = useState<Set<string>>(new Set());
+  const [drawerOpen, setDrawerOpen] = useState(true);
+  const [cadTextVisible, setCadTextVisible] = useState(true);
   const fileInput = useRef<HTMLInputElement>(null);
   const abortController = useRef<AbortController | null>(null);
   const location = useLocationTracking();
@@ -64,13 +68,16 @@ export default function App() {
       setDwg(result);
       setSelection(null);
       setHiddenFeatureIds(new Set(result.autoHiddenFeatureIds));
+      setCadTextVisible(true);
+      setDrawerOpen(true);
       setImportState('ready');
       setMessage(null);
-    } catch {
+    } catch (error) {
       if (controller.signal.aborted) {
         setImportState('cancelled');
         setMessage(t('importCancelled'));
       } else {
+        console.error('DWG import failed', error);
         setImportState('error');
         setMessage(t('importFailed'));
       }
@@ -89,6 +96,7 @@ export default function App() {
     setDwg(null);
     setSelection(null);
     setHiddenFeatureIds(new Set());
+    setCadTextVisible(true);
     setImportState('idle');
     setMessage(null);
   };
@@ -124,7 +132,7 @@ export default function App() {
   const locationLabel = location.state.follow === 'off' ? t('locationStart') : location.state.follow === 'paused' ? t('locationResume') : t('locationStop');
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${drawerOpen ? 'drawer-open' : 'drawer-closed'}`}>
       <AppHeader />
       <MapCanvas
         dwg={dwg}
@@ -137,6 +145,7 @@ export default function App() {
         hiddenFeatureIds={hiddenFeatureIds}
         selectedFeatureId={selection?.featureId ?? null}
         onCadSelect={setSelection}
+        cadTextVisible={cadTextVisible}
       />
 
       <div className="map-badge"><Map size={14} />{basemapMode === 'wmts' ? t('basemapWmts') : t('basemapWms')}</div>
@@ -149,9 +158,14 @@ export default function App() {
         <button onClick={() => setSheetOpen(true)} disabled={!dwg?.layers.length} aria-label={t('layers')} title={t('layers')}>
           <Layers3 size={22} /><span>{dwg?.layers.length ?? 0}</span>
         </button>
+        <button className={!cadTextVisible ? 'active' : ''} onClick={() => setCadTextVisible((visible) => !visible)} disabled={!dwg} aria-label={cadTextVisible ? t('hideTexts') : t('showTexts')} title={cadTextVisible ? t('hideTexts') : t('showTexts')}>
+          <Type size={22} />
+        </button>
       </div>
 
-      <section className="import-card" aria-live="polite">
+      {!drawerOpen && <button className="drawer-reopen" onClick={() => setDrawerOpen(true)} aria-label={t('openDrawer')} title={t('openDrawer')}><PanelTopOpen size={22} /></button>}
+      <section className={`import-card ${drawerOpen ? 'open' : 'closed'}`} aria-live="polite" aria-hidden={!drawerOpen}>
+        <button className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label={t('closeDrawer')} title={t('closeDrawer')}><span className="drawer-grip" aria-hidden="true" /><PanelBottomClose size={19} /></button>
         {message && <div className="notice"><span>{message}</span><button onClick={() => setMessage(null)} aria-label={t('close')}><X size={17} /></button></div>}
         <SelectionPanel
           selection={selection}
@@ -189,6 +203,7 @@ export default function App() {
       </section>
 
       <input ref={fileInput} className="visually-hidden" type="file" accept=".dwg,application/acad,application/x-dwg" onChange={(event) => void handleFile(event.target.files?.[0])} />
+      <SiteBanner />
       <LayerSheet open={sheetOpen} layers={dwg?.layers ?? []} onClose={() => setSheetOpen(false)} onToggle={toggleLayer} onSetAll={setAllLayers} />
     </main>
   );

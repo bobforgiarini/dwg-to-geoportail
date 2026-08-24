@@ -1,7 +1,7 @@
 {
   "name": "dwg-to-geoportail",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "license": "AGPL-3.0-only",
   "scripts": {
@@ -19,7 +19,8 @@
     "proj4": "2.19.10",
     "react": "19.1.1",
     "react-dom": "19.1.1",
-    "react-i18next": "15.7.3"
+    "react-i18next": "15.7.3",
+    "site-info-banner": "file:vendor/site-info-banner-1.1.0.tgz"
   },
   "devDependencies": {
     "@netlify/vite-plugin": "2.5.10",

@@ -43,6 +43,15 @@ describe('CAD document conversion', () => {
     expect(result.warnings).toContain('paper-space-ignored');
   });
 
+  it('marks CAD text features for the global text visibility switch', () => {
+    const result = convertCadDocument(documentWith([
+      { type: 'TEXT', kind: 'text', layer: 'A', insertionPoint: { x: 80_000, y: 100_000 }, text: 'Test' },
+      { type: 'LINE', kind: 'line', layer: 'A', startPoint: { x: 80_000, y: 100_000 }, endPoint: { x: 80_010, y: 100_010 } },
+    ]));
+    expect(result.features[0].get('isCadText')).toBe(true);
+    expect(result.features[1].get('isCadText')).toBe(false);
+  });
+
   it('detects cyclic block references', () => {
     const result = convertCadDocument(documentWith([
       { type: 'INSERT', kind: 'insert', blockName: 'loop' },

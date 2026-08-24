@@ -36,9 +36,10 @@ interface Props {
   hiddenFeatureIds: Set<string>;
   selectedFeatureId: string | null;
   onCadSelect: (selection: SelectedCadObject | null) => void;
+  cadTextVisible: boolean;
 }
 
-export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsError, onManualMove, onCoordinate, hiddenFeatureIds, selectedFeatureId, onCadSelect }: Props) {
+export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsError, onManualMove, onCoordinate, hiddenFeatureIds, selectedFeatureId, onCadSelect, cadTextVisible }: Props) {
   const { t } = useTranslation();
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
@@ -49,17 +50,20 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
   const hiddenRef = useRef(hiddenFeatureIds);
   const selectedRef = useRef(selectedFeatureId);
   const onCadSelectRef = useRef(onCadSelect);
+  const cadTextVisibleRef = useRef(cadTextVisible);
   const [rotation, setRotation] = useState(0);
   visibleRef.current = visibleLayers;
   hiddenRef.current = hiddenFeatureIds;
   selectedRef.current = selectedFeatureId;
   onCadSelectRef.current = onCadSelect;
+  cadTextVisibleRef.current = cadTextVisible;
 
   const cadLayer = useMemo(() => new VectorLayer({
     source: cadSource,
     declutter: true,
     style: (feature) => {
       if (!visibleRef.current.has(String(feature.get('layerId')))) return undefined;
+      if (!cadTextVisibleRef.current && feature.get('isCadText') === true) return undefined;
       const featureId = String(feature.get('featureId') ?? feature.getId() ?? '');
       if (hiddenRef.current.has(featureId)) return undefined;
       const color = String(feature.get('cadColor') || '#f1be88');
@@ -152,7 +156,7 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
     if (extent.every(Number.isFinite)) mapRef.current?.getView().fit(extent, { padding: [96, 24, 190, 24], maxZoom: 20, duration: 500 });
   }, [cadSource, dwg]);
 
-  useEffect(() => { cadLayer.changed(); }, [cadLayer, hiddenFeatureIds, selectedFeatureId, visibleLayers]);
+  useEffect(() => { cadLayer.changed(); }, [cadLayer, cadTextVisible, hiddenFeatureIds, selectedFeatureId, visibleLayers]);
 
   useEffect(() => {
     locationSource.clear();

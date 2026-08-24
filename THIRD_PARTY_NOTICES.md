@@ -1,6 +1,13 @@
 # Drittanbieterhinweise
 
-Version 0.1.0 verwendet Open-Source-Bibliotheken aus `package-lock.json`. Besonders relevant für die Verteilung sind:
+Version 0.1.3 verwendet Open-Source-Bibliotheken aus `package-lock.json`. Besonders relevant für die Verteilung sind:
+
+## site-info-banner 1.1.0
+
+- Projekt: <https://github.com/bobforgiarini/site-info-banner>
+- Lizenz: MIT
+- Das unveränderte Release-Archiv liegt für reproduzierbare Builds unter `vendor/site-info-banner-1.1.0.tgz`.
+- Das Web Component zeigt Copyright, Anwendungsversion und den Link zum veröffentlichten Quellcode.
 
 ## @flyfish-dev/cad-viewer 0.8.0
 
