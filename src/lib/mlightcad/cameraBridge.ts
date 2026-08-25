@@ -5,6 +5,12 @@ export interface CadCameraView {
   screenToWorld: (point: { x: number; y: number }) => { x: number; y: number };
 }
 
+export interface SyncedMapView {
+  setCenter: (center: [number, number]) => void;
+  setResolution: (resolution: number) => void;
+  setRotation: (rotation: number) => void;
+}
+
 /** Converts the CAD camera into the OpenLayers center/resolution contract. */
 export function readCadCamera(view: CadCameraView): MlightCadCamera {
   const start = view.screenToWorld({ x: 0, y: 0 });
@@ -15,6 +21,23 @@ export function readCadCamera(view: CadCameraView): MlightCadCamera {
     center: [view.center.x, view.center.y],
     resolution: Number.isFinite(resolution) && resolution > 0 ? resolution : 1,
   };
+}
+
+/** Applies one renderer camera snapshot to OpenLayers without animation or feedback. */
+export function syncCadCameraToMap(view: SyncedMapView, camera: MlightCadCamera): boolean {
+  if (
+    !Number.isFinite(camera.center[0])
+    || !Number.isFinite(camera.center[1])
+    || !Number.isFinite(camera.resolution)
+    || camera.resolution <= 0
+  ) {
+    return false;
+  }
+
+  view.setCenter([camera.center[0], camera.center[1]]);
+  view.setResolution(camera.resolution);
+  view.setRotation(0);
+  return true;
 }
 
 export function cameraPixelError(

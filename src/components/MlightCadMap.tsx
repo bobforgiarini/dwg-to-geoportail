@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Navigation2 } from 'lucide-react';
 import Feature from 'ol/Feature';
 import Map from 'ol/Map';
 import View from 'ol/View';
@@ -8,6 +7,7 @@ import Circle from 'ol/geom/Circle';
 import Point from 'ol/geom/Point';
 import TileLayer from 'ol/layer/Tile';
 import VectorLayer from 'ol/layer/Vector';
+import { defaults as defaultInteractions } from 'ol/interaction/defaults';
 import { transform } from 'ol/proj';
 import VectorSource from 'ol/source/Vector';
 import CircleStyle from 'ol/style/Circle';
@@ -16,26 +16,33 @@ import Stroke from 'ol/style/Stroke';
 import Style from 'ol/style/Style';
 import type TileWMS from 'ol/source/TileWMS';
 import type WMTS from 'ol/source/WMTS';
-import { useTranslation } from 'react-i18next';
 import 'ol/ol.css';
-import { LUREF_EXTENT } from '../lib/crs';
 import { createBasemapLayer } from '../lib/geoportail';
+import { syncCadCameraToMap } from '../lib/mlightcad/cameraBridge';
 import type { MlightCadViewerAdapter } from '../lib/mlightcad/MlightCadViewerAdapter';
 import type { BasemapMode, LocationTrackingState } from '../types/models';
 
 interface Props {
   adapter: MlightCadViewerAdapter | null;
   basemapMode: BasemapMode;
+  basemapVisible: boolean;
+  mlightControlsActive: boolean;
   location: LocationTrackingState;
   onCoordinate: (coordinate: [number, number]) => void;
+  onManualMove: () => void;
   onWmtsError: () => void;
 }
 
-export function MlightCadMap({ adapter, basemapMode, location, onCoordinate, onWmtsError }: Props) {
-  const { t } = useTranslation();
+export function MlightCadMap({ adapter, basemapMode, basemapVisible, mlightControlsActive, location, onCoordinate, onManualMove, onWmtsError }: Props) {
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const baseRef = useRef<TileLayer<WMTS | TileWMS> | null>(null);
+  const basemapVisibleRef = useRef(basemapVisible);
+  const onCoordinateRef = useRef(onCoordinate);
+  const onManualMoveRef = useRef(onManualMove);
+  onCoordinateRef.current = onCoordinate;
+  onManualMoveRef.current = onManualMove;
+  basemapVisibleRef.current = basemapVisible;
   const locationSource = useMemo(() => new VectorSource(), []);
   const locationLayer = useMemo(() => new VectorLayer({
     source: locationSource,
@@ -56,26 +63,45 @@ export function MlightCadMap({ adapter, basemapMode, location, onCoordinate, onW
   useEffect(() => {
     if (!target.current) return;
     const base = createBasemapLayer(basemapMode);
+    base.setVisible(basemapVisible);
     baseRef.current = base;
     const center = transform([6.13, 49.61], 'EPSG:4326', 'EPSG:2169');
+    const interactions = defaultInteractions({
+      altShiftDragRotate: false,
+      pinchRotate: false,
+    });
     const map = new Map({
       target: target.current,
       controls: defaultControls({ attribution: false, rotate: false, zoom: false }),
-      interactions: [],
+      interactions,
       layers: [base, locationLayer],
       view: new View({
         center,
-        constrainOnlyCenter: true,
-        extent: LUREF_EXTENT,
-        maxResolution: 500,
-        minResolution: 0.01,
+        // Keep large/outlying CAD extents reachable. A zero minimum removes the
+        // previous zoom-in clamp so OpenLayers can follow every CAD resolution.
+        maxResolution: 1_000_000_000,
+        minResolution: 0,
         projection: 'EPSG:2169',
         resolution: 50,
         rotation: 0,
       }),
     });
+    const updateCoordinate = () => {
+      const currentCenter = map.getView().getCenter();
+      if (currentCenter) onCoordinateRef.current([currentCenter[0], currentCenter[1]]);
+    };
+    const handlePointerDrag = () => onManualMoveRef.current();
+    const handleWheel = () => onManualMoveRef.current();
+    map.on('moveend', updateCoordinate);
+    map.on('pointerdrag', handlePointerDrag);
+    map.getViewport().addEventListener('wheel', handleWheel, { passive: true });
+    interactions.forEach((interaction) => interaction.setActive(!mlightControlsActive));
     mapRef.current = map;
+    updateCoordinate();
     return () => {
+      map.un('moveend', updateCoordinate);
+      map.un('pointerdrag', handlePointerDrag);
+      map.getViewport().removeEventListener('wheel', handleWheel);
       map.setTarget(undefined);
       mapRef.current = null;
     };
@@ -84,11 +110,22 @@ export function MlightCadMap({ adapter, basemapMode, location, onCoordinate, onW
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    map.getInteractions().forEach((interaction) => interaction.setActive(!mlightControlsActive));
+  }, [mlightControlsActive]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
     const replacement = createBasemapLayer(basemapMode);
+    replacement.setVisible(basemapVisibleRef.current);
     map.getLayers().setAt(0, replacement);
     baseRef.current = replacement;
     if (basemapMode === 'wmts') replacement.getSource()?.once('tileloaderror', onWmtsError);
   }, [basemapMode, onWmtsError]);
+
+  useEffect(() => {
+    baseRef.current?.setVisible(basemapVisible);
+  }, [basemapVisible]);
 
   useEffect(() => {
     if (!adapter) return;
@@ -96,11 +133,9 @@ export function MlightCadMap({ adapter, basemapMode, location, onCoordinate, onW
       const map = mapRef.current;
       if (!map) return;
       const view = map.getView();
-      view.setCenter(center);
-      view.setResolution(resolution);
-      view.setRotation(0);
+      if (!syncCadCameraToMap(view, { center, resolution })) return;
       onCoordinate(center);
-      map.render();
+      map.renderSync();
     });
   }, [adapter, onCoordinate]);
 
@@ -116,20 +151,16 @@ export function MlightCadMap({ adapter, basemapMode, location, onCoordinate, onW
       new Feature({ geometry: new Circle(center, location.position.coords.accuracy), kind: 'accuracy' }),
       new Feature({ geometry: new Point(center), kind: 'position' }),
     ]);
-  }, [location.position, locationSource]);
+    if (location.follow === 'following' && !mlightControlsActive) {
+      const view = mapRef.current?.getView();
+      const currentResolution = view?.getResolution() ?? 2;
+      view?.animate({
+        center,
+        resolution: Math.min(currentResolution, 2),
+        duration: 350,
+      });
+    }
+  }, [location.follow, location.position, locationSource, mlightControlsActive]);
 
-  const alignNorth = () => {
-    const map = mapRef.current;
-    if (!map) return;
-    map.getView().setRotation(0);
-    map.render();
-  };
-
-  return <>
-    <div ref={target} className="map-canvas mlightcad-map-canvas" aria-label="Geoportail" />
-    <button className="compass-button mlightcad-north" onClick={alignNorth} aria-label={t('alignNorth')} title={t('alignNorth')}>
-      <Navigation2 size={20} />
-      <span>N</span>
-    </button>
-  </>;
+  return <div ref={target} className="map-canvas mlightcad-map-canvas" role="application" aria-label="Geoportail" />;
 }

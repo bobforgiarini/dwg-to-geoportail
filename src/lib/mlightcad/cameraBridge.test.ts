@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cameraPixelError, readCadCamera } from './cameraBridge';
+import { cameraPixelError, readCadCamera, syncCadCameraToMap } from './cameraBridge';
 
 describe('MLightCAD camera bridge', () => {
   it('maps the WCS center and metres per CSS pixel without an affine offset', () => {
@@ -19,5 +19,33 @@ describe('MLightCAD camera bridge', () => {
       screenToWorld: () => ({ x: 1, y: 1 }),
     });
     expect(camera.resolution).toBe(1);
+  });
+
+  it('synchronously applies deep CAD zoom and north-up rotation to the map', () => {
+    const calls: unknown[][] = [];
+    const synced = syncCadCameraToMap({
+      setCenter: (center) => calls.push(['center', center]),
+      setResolution: (resolution) => calls.push(['resolution', resolution]),
+      setRotation: (rotation) => calls.push(['rotation', rotation]),
+    }, {
+      center: [1_176.41, 44_976.64],
+      resolution: 0.00001,
+    });
+
+    expect(synced).toBe(true);
+    expect(calls).toEqual([
+      ['center', [1_176.41, 44_976.64]],
+      ['resolution', 0.00001],
+      ['rotation', 0],
+    ]);
+  });
+
+  it('ignores an invalid renderer camera instead of corrupting the map view', () => {
+    const setCenter = () => { throw new Error('must not be called'); };
+    expect(syncCadCameraToMap({
+      setCenter,
+      setResolution: setCenter,
+      setRotation: setCenter,
+    }, { center: [Number.NaN, 100_000], resolution: 1 })).toBe(false);
   });
 });

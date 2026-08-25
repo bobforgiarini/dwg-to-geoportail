@@ -37,16 +37,26 @@ export function MlightCadCanvas(props: Props) {
     nextAdapter.setOpacity(callbacks.current.opacity);
     callbacks.current.onAdapterChange(nextAdapter);
 
+    const reportError = (error: unknown) => {
+      if (!active) return;
+      if (adapter.current === nextAdapter) {
+        adapter.current = null;
+        callbacks.current.onAdapterChange(null);
+      }
+      callbacks.current.onError(error);
+    };
+
     const removeListeners = [
       nextAdapter.events.progress.addEventListener((value) => callbacks.current.onProgress(value)),
       nextAdapter.events.layers.addEventListener((value) => callbacks.current.onLayers(value)),
       nextAdapter.events.selection.addEventListener((value) => callbacks.current.onSelection(value)),
       nextAdapter.events.ready.addEventListener((value) => callbacks.current.onReady(value)),
+      nextAdapter.events.error.addEventListener(reportError),
     ];
 
-    void nextAdapter.load(props.file).catch((error) => {
-      if (active) callbacks.current.onError(error);
-    });
+    // The adapter disposes all partially-created worker/scene/WebGL resources
+    // before a load failure reaches this boundary.
+    void nextAdapter.load(props.file).catch(reportError);
 
     return () => {
       active = false;

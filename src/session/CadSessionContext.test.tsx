@@ -49,6 +49,20 @@ describe('CadSessionProvider', () => {
     expect(result.current.fileRevision).toBe(1);
   });
 
+  it('shares basemap visibility while switching renderers', () => {
+    const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
+
+    expect(result.current.basemapVisible).toBe(true);
+    act(() => result.current.toggleBasemapVisible());
+    expect(result.current.basemapVisible).toBe(false);
+
+    act(() => result.current.setViewer('mlightcad'));
+    expect(result.current.basemapVisible).toBe(false);
+
+    act(() => result.current.setBasemapVisible(true));
+    expect(result.current.basemapVisible).toBe(true);
+  });
+
   it('requires the hook to be rendered inside its provider', () => {
     expect(() => renderHook(() => useCadSession())).toThrow(
       'useCadSession must be used inside a CadSessionProvider',

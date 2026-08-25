@@ -31,6 +31,7 @@ interface Props {
   visibleLayers: Set<string>;
   location: LocationTrackingState;
   basemapMode: BasemapMode;
+  basemapVisible: boolean;
   onWmtsError: () => void;
   onManualMove: () => void;
   onCoordinate: (coordinate: Coordinate) => void;
@@ -45,11 +46,12 @@ export interface MapCanvasHandle {
   fitDrawing: () => void;
 }
 
-export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsError, onManualMove, onCoordinate, hiddenFeatureIds, selectedFeatureId, onCadSelect, cadTextVisible, cadOpacity }, ref) {
+export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({ dwg, visibleLayers, location, basemapMode, basemapVisible, onWmtsError, onManualMove, onCoordinate, hiddenFeatureIds, selectedFeatureId, onCadSelect, cadTextVisible, cadOpacity }, ref) {
   const { t } = useTranslation();
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const baseRef = useRef<TileLayer<WMTS | TileWMS> | null>(null);
+  const basemapVisibleRef = useRef(basemapVisible);
   const cadSource = useMemo(() => new VectorSource(), []);
   const locationSource = useMemo(() => new VectorSource(), []);
   const visibleRef = useRef(visibleLayers);
@@ -63,6 +65,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
   selectedRef.current = selectedFeatureId;
   onCadSelectRef.current = onCadSelect;
   cadTextVisibleRef.current = cadTextVisible;
+  basemapVisibleRef.current = basemapVisible;
 
   const cadLayer = useMemo(() => new VectorLayer({
     source: cadSource,
@@ -119,6 +122,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
   useEffect(() => {
     if (!target.current) return;
     const base = createBasemapLayer(basemapMode);
+    base.setVisible(basemapVisible);
     baseRef.current = base;
     const map = new Map({
       target: target.current,
@@ -128,8 +132,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
     });
     mapRef.current = map;
     const updateCoordinate = () => onCoordinate(mapToLuref(map.getView().getCenter() ?? [0, 0]));
+    const viewport = map.getViewport();
     map.on('moveend', updateCoordinate);
     map.on('pointerdrag', onManualMove);
+    viewport.addEventListener('wheel', onManualMove, { passive: true });
     map.on('singleclick', (event) => {
       const feature = map.forEachFeatureAtPixel(event.pixel, (candidate) => candidate, {
         hitTolerance: 8,
@@ -152,6 +158,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
     map.getView().on('change:rotation', updateRotation);
     updateCoordinate();
     return () => {
+      map.un('moveend', updateCoordinate);
+      map.un('pointerdrag', onManualMove);
+      viewport.removeEventListener('wheel', onManualMove);
+      map.getView().un('change:rotation', updateRotation);
       map.setTarget(undefined);
       mapRef.current = null;
     };
@@ -162,10 +172,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
     if (!map) return;
     const previous = baseRef.current;
     const replacement = createBasemapLayer(basemapMode);
+    replacement.setVisible(basemapVisibleRef.current);
     if (previous) map.getLayers().setAt(0, replacement);
     baseRef.current = replacement;
     if (basemapMode === 'wmts') replacement.getSource()?.once('tileloaderror', onWmtsError);
   }, [basemapMode, onWmtsError]);
+
+  useEffect(() => {
+    baseRef.current?.setVisible(basemapVisible);
+  }, [basemapVisible]);
 
   useEffect(() => {
     cadSource.clear();

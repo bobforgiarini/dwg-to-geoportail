@@ -1,8 +1,8 @@
-# Netlify-Konfiguration 0.2.0
+# Netlify-Konfiguration 0.2.1
 
 ## Bereitstellungsstatus
 
-Für Version 0.2.0 wird kein manueller Netlify-Deploy ausgeführt. Das vorhandene Git-basierte Netlify-Projekt übernimmt Build und Veröffentlichung automatisch nach dem Push auf `main`.
+Für Version 0.2.1 wird kein manueller Netlify-Deploy ausgeführt. Das vorhandene Git-basierte Netlify-Projekt übernimmt Build und Veröffentlichung automatisch nach dem Push auf `main`.
 
 Die Anwendung benötigt keine Netlify Function, kein Upload-Ziel, keine Dokumentdatenbank und keine Umgebungsvariable. DWG-Dateien werden ausschließlich vom Browser des Nutzers verarbeitet.
 

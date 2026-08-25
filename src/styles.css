@@ -35,6 +35,18 @@ button:disabled { cursor: default; opacity: .45; }
 .map-badge, .coordinate-badge { position: absolute; z-index: 10; left: 8px; display: flex; align-items: center; gap: 4px; min-height: 26px; padding: 4px 7px; color: #fff; background: rgba(5,28,44,.82); border: 1px solid rgba(255,255,255,.16); border-radius: 7px; backdrop-filter: blur(10px); font-size: 10px; }
 .map-badge { top: calc(var(--app-header-height) + 8px + env(safe-area-inset-top)); }
 .coordinate-badge { top: calc(var(--app-header-height) + 39px + env(safe-area-inset-top)); font-variant-numeric: tabular-nums; }
+.map-status-stack { position: absolute; z-index: 10; top: calc(var(--app-header-height) + 8px + env(safe-area-inset-top)); left: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; pointer-events: none; }
+.map-status-card { min-height: 26px; padding: 4px 7px; display: flex; align-items: center; gap: 4px; color: #fff; background: rgba(5,28,44,.82); border: 1px solid rgba(255,255,255,.16); border-radius: 7px; backdrop-filter: blur(10px); font-size: 10px; line-height: 1.2; white-space: nowrap; }
+.map-status-basemap { min-height: 44px; pointer-events: auto; cursor: pointer; transition: color .18s ease, background .18s ease, opacity .18s ease; }
+.map-status-basemap.is-hidden { color: rgba(255,255,255,.82); background: rgba(5,28,44,.68); }
+.map-status-coordinate, .map-status-accuracy { font-variant-numeric: tabular-nums; }
+.map-action-controls { position: absolute; z-index: 12; inset: 0; pointer-events: none; }
+.map-action-group { position: absolute; right: 8px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
+.map-action-group-top { top: calc(var(--app-header-height) + 8px + env(safe-area-inset-top)); }
+.map-action-group-bottom { bottom: calc(72px + env(safe-area-inset-bottom)); }
+.map-action-group button { position: relative; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; color: var(--navy); background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 4px 14px rgba(5,28,44,.18); }
+.map-action-group button.active { color: #fff; background: var(--blue); }
+.map-action-count { position: absolute; top: -5px; right: -5px; min-width: 19px; height: 19px; padding: 0 3px; display: grid; place-items: center; color: var(--navy); background: var(--gold); border: 2px solid #fff; border-radius: 10px; font-size: 10px; font-weight: 800; }
 .floating-actions { position: absolute; z-index: 12; top: calc(var(--app-header-height) + 8px + env(safe-area-inset-top)); right: 8px; display: flex; flex-direction: column; gap: 6px; }
 .floating-actions button { position: relative; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; color: var(--navy); background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 4px 14px rgba(5,28,44,.18); }
 .floating-actions button.active { color: #fff; background: var(--blue); }
@@ -47,18 +59,19 @@ button:disabled { cursor: default; opacity: .45; }
 .compass-button.mlightcad-north { cursor: pointer; }
 .drawer-reopen { position: absolute; z-index: 16; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); width: 52px; height: 52px; padding: 0; display: grid; place-items: center; color: var(--navy); background: var(--gold); border: 2px solid #fff; border-radius: 14px; box-shadow: var(--shadow); }
 .viewer-route-loading { width: 100%; height: 100%; background: var(--navy); }
-.mlightcad-map-canvas { z-index: 1; pointer-events: none; }
+.mlightcad-map-canvas { z-index: 1; pointer-events: auto; }
 .mlightcad-interaction-layer { position: absolute; z-index: 4; inset: calc(var(--app-header-height) + env(safe-area-inset-top)) 0 0; overflow: hidden; touch-action: none; }
+.mlightcad-interaction-layer.openlayers-active { pointer-events: none; }
 .mlightcad-render-host { position: absolute; inset: 0; overflow: hidden; background: transparent !important; will-change: opacity; }
 .mlightcad-render-host > div, .mlightcad-render-host canvas { position: absolute !important; inset: 0; width: 100% !important; height: 100% !important; background: transparent !important; }
 .cad-opacity-control { width: 100%; padding: 0; color: var(--navy); }
 .opacity-heading { min-height: 22px; display: flex; align-items: center; gap: 6px; font-size: 11px; }.opacity-heading span { flex: 1; }.opacity-heading strong { color: var(--blue); font-variant-numeric: tabular-nums; }
 .cad-opacity-control input[type="range"] { width: 100%; height: 26px; margin: 1px 0; accent-color: var(--gold); }
-.opacity-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }.opacity-presets button { min-height: 36px; padding: 0 5px; display: flex; align-items: center; justify-content: center; gap: 4px; color: rgba(5,28,44,.72); background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; font-size: 10px; font-weight: 750; }.opacity-presets button.active { color: var(--navy); background: var(--gold); border-color: var(--gold); }
+.opacity-presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }.opacity-presets button { min-height: 44px; padding: 0 5px; display: flex; align-items: center; justify-content: center; gap: 4px; color: rgba(5,28,44,.72); background: var(--surface-2); border: 1px solid var(--border); border-radius: 7px; font-size: 10px; font-weight: 750; }.opacity-presets button.active { color: var(--navy); background: var(--gold); border-color: var(--gold); }
 site-info-banner { --sib-offset-block: calc(8px + env(safe-area-inset-bottom)); --sib-offset-inline: 8px; --sib-logo-image-size: var(--sib-logo-size); --sib-z-index: 14; }
 .empty-import, .file-row, .loading-row { display: flex; align-items: center; gap: 10px; }
 .loading-row { gap: 8px; }
-.empty-import > div:first-child, .file-meta, .loading-row > div { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.empty-import > div:first-child, .file-meta, .loading-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
 .empty-import strong, .file-meta strong, .loading-row strong { font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .empty-import small, .file-meta small, .loading-row small { color: rgba(5,28,44,.64); font-size: 11px; }
 .primary-button, .secondary-button, .sheet-actions button { min-height: 44px; padding: 0 12px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 8px; font-weight: 750; font-size: 12px; }
@@ -68,16 +81,16 @@ site-info-banner { --sib-offset-block: calc(8px + env(safe-area-inset-bottom)); 
 .file-icon { width: 40px; height: 40px; flex: 0 0 auto; display: grid; place-items: center; color: var(--navy); background: var(--gold); border-radius: 8px; }
 .icon-button { width: 44px; height: 44px; padding: 0; display: grid; place-items: center; color: inherit; background: transparent; border-radius: 8px; }
 .icon-button.subtle { background: var(--surface-2); }
-.spinner { width: 20px; height: 20px; flex: 0 0 20px; border: 2px solid rgba(5,28,44,.15); border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; }
+.loading-spinner { display: inline-block; width: 18px; height: 18px; flex: 0 0 18px; border: 2px solid rgba(5,28,44,.15); border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .notice { min-height: 36px; margin-bottom: 8px; padding: 5px 5px 5px 9px; display: flex; align-items: center; gap: 8px; color: #fff; background: var(--navy-2); border-left: 4px solid var(--gold); border-radius: 7px; font-size: 12px; }
-.notice span { flex: 1; }.notice button { width: 36px; min-height: 36px; padding: 0; color: #fff; background: transparent; }
+.notice span { flex: 1; }.notice button { width: 44px; min-height: 44px; padding: 0; color: #fff; background: transparent; }
 .selection-panel { margin-bottom: 9px; padding: 9px; color: var(--navy); background: #fff8ef; border: 1px solid rgba(241,190,136,.8); border-radius: 9px; }
-.selection-panel header { min-height: 34px; display: flex; align-items: center; justify-content: space-between; }.selection-panel header > div { min-width: 0; display: flex; align-items: baseline; gap: 8px; }.selection-panel header strong { font-size: 13px; }.selection-panel header small { color: rgba(5,28,44,.58); font-size: 10px; }.selection-panel header .icon-button { width: 34px; height: 34px; min-height: 34px; }
+.selection-panel header { min-height: 44px; display: flex; align-items: center; justify-content: space-between; }.selection-panel header > div { min-width: 0; display: flex; align-items: baseline; gap: 8px; }.selection-panel header strong { font-size: 13px; }.selection-panel header small { color: rgba(5,28,44,.58); font-size: 10px; }.selection-panel header .icon-button { width: 44px; height: 44px; min-height: 44px; }
 .selection-layer { min-height: 32px; display: flex; align-items: center; gap: 7px; font-size: 11px; }.selection-layer span { color: rgba(5,28,44,.58); }.selection-layer strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .selection-label { margin: 3px 0 7px; overflow: hidden; color: rgba(5,28,44,.68); white-space: nowrap; text-overflow: ellipsis; font-size: 11px; }
-.selection-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }.selection-actions button { min-height: 40px; padding: 0 9px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--navy); background: #fff; border: 1px solid var(--border); border-radius: 7px; font-size: 11px; font-weight: 750; }.selection-actions button:last-child { color: #fff; background: var(--navy); }
-.follow-banner { width: 100%; min-height: 36px; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; color: #fff; background: var(--blue); border-radius: 7px; font-size: 12px; font-weight: 700; }
+.selection-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }.selection-actions button { min-height: 44px; padding: 0 9px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--navy); background: #fff; border: 1px solid var(--border); border-radius: 7px; font-size: 11px; font-weight: 750; }.selection-actions button:last-child { color: #fff; background: var(--navy); }
+.follow-banner { width: 100%; min-height: 44px; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; color: #fff; background: var(--blue); border-radius: 7px; font-size: 12px; font-weight: 700; }
 .accuracy-label { margin-top: 6px; color: rgba(5,28,44,.62); text-align: center; font-size: 10px; }
 .warnings { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--border); color: rgba(5,28,44,.72); font-size: 11px; }
 .warnings summary { cursor: pointer; font-weight: 700; }.warnings ul { max-height: 70px; margin: 6px 0 0; padding-left: 18px; overflow: auto; }
@@ -88,7 +101,7 @@ site-info-banner { --sib-offset-block: calc(8px + env(safe-area-inset-bottom)); 
 .sheet-dock { z-index: 30; }
 .bottom-sheet { width: 100%; max-height: min(72vh, 650px); padding: 0 10px calc(10px + env(safe-area-inset-bottom)); overflow: auto; overscroll-behavior: contain; color: var(--navy); background: #fff; border-radius: 16px 16px 0 0; box-shadow: 0 -12px 40px rgba(5,28,44,.25); transform: translateY(calc(100% + 2px)); transition: transform .3s cubic-bezier(.22,.8,.32,1); }
 .sheet-shell.is-open .bottom-sheet { transform: translateY(0); pointer-events: auto; }
-.sheet-handle-button { width: 100%; min-height: 30px; padding: 0; display: grid; place-items: center; background: transparent; }
+.sheet-handle-button { width: 100%; min-height: 44px; padding: 0; display: grid; place-items: center; background: transparent; }
 .sheet-handle { width: 44px; height: 4px; background: rgba(5,28,44,.22); border-radius: 3px; }
 .control-sheet { max-height: min(68vh, 560px); }
 .control-sheet.object { max-height: min(42vh, 330px); }
@@ -96,14 +109,14 @@ site-info-banner { --sib-offset-block: calc(8px + env(safe-area-inset-bottom)); 
 .sheet-header { display: flex; align-items: center; justify-content: space-between; }
 .sheet-header > div { display: flex; align-items: center; gap: 7px; }.sheet-header h2 { margin: 0; font-size: 16px; }.sheet-header span { padding: 2px 7px; background: var(--gold); border-radius: 10px; font-size: 10px; font-weight: 800; }
 .compact-sheet-header { min-height: 42px; margin-bottom: 6px; border-bottom: 1px solid var(--border); }
-.compact-sheet-header .icon-button { width: 38px; height: 38px; min-height: 38px; }
+.compact-sheet-header .icon-button { width: 44px; height: 44px; min-height: 44px; }
 .cad-control-sheet { max-height: min(84vh, 720px); }
 .cad-control-section { padding: 9px 0; border-bottom: 1px solid var(--border); }
 .cad-control-section:last-of-type { border-bottom: 0; }
 .cad-control-section h3 { margin: 0 0 8px; color: rgba(5,28,44,.62); font-size: 10px; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
 .compact-file-row { gap: 7px; }
 .compact-file-row .file-icon { width: 36px; height: 36px; }
-.compact-file-row .icon-button { width: 40px; height: 40px; min-height: 40px; }
+.compact-file-row .icon-button { width: 44px; height: 44px; min-height: 44px; }
 .compact-empty-import { gap: 8px; }
 .cad-display-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
 .cad-display-actions button { position: relative; min-height: 44px; padding: 6px 9px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--navy); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; font-size: 11px; font-weight: 750; }
@@ -120,7 +133,7 @@ site-info-banner { --sib-offset-block: calc(8px + env(safe-area-inset-bottom)); 
   .app-header { left: 12px; right: 12px; top: 12px; height: 60px; padding: 0 12px; border-radius: 12px; }
   .map-canvas { inset: 0; }
   .mlightcad-interaction-layer { inset: 0; }
-  .map-badge { top: 82px; }.coordinate-badge { top: 113px; }.floating-actions { top: 82px; }.compass-button { top: 282px; }
+  .map-badge { top: 82px; }.coordinate-badge { top: 113px; }.map-status-stack, .map-action-group-top { top: 82px; }.floating-actions { top: 82px; }.compass-button { top: 282px; }
   .sheet-modal .bottom-sheet { max-width: 520px; margin: 0 auto; }
   .sheet-dock .bottom-sheet { max-width: 620px; margin: 0 auto; }
 }

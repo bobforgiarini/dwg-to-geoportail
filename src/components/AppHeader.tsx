@@ -14,7 +14,7 @@ export function AppHeader() {
       <div className="brand-mark" aria-hidden="true"><MapPinned size={21} /></div>
       <div className="brand-copy">
         <strong>{t('appName')}</strong>
-        <span>v0.2.0</span>
+        <span>v0.2.1</span>
       </div>
       <a
         className="viewer-toggle"

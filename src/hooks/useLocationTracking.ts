@@ -26,7 +26,14 @@ export function useLocationTracking() {
     }
     setState((current) => ({ ...current, permission: 'prompt', follow: 'following', error: null }));
     watchId.current = navigator.geolocation.watchPosition(
-      (position) => setState({ permission: 'granted', position, accuracy: position.coords.accuracy, follow: 'following', error: null }),
+      (position) => setState((current) => ({
+        permission: 'granted',
+        position,
+        accuracy: position.coords.accuracy,
+        // A fresh GPS fix must not undo a pause caused by manual map movement.
+        follow: current.follow,
+        error: null,
+      })),
       (error) => {
         watchId.current = null;
         setState((current) => ({

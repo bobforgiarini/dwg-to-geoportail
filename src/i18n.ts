@@ -16,7 +16,7 @@ const resources = {
     accuracy: 'Genauigkeit {{meters}} m', coordinates: 'LUREF {{x}} / {{y}}', fileSize: '{{size}} MB', featureCount: '{{count}} Objekte',
     warnings: 'Hinweise', warning3d: '3D-/Z-Werte wurden auf die 2D-Karte abgeflacht.', warningPaper: 'Papierlayouts wurden ignoriert.',
     warningUnsupported: 'Nicht unterstütztes Element: {{type}}', warningBlock: 'Ein Block konnte nicht vollständig aufgelöst werden.', warningHatchBoundary: 'Einige Schraffuren enthalten keine verwertbare Begrenzung und wurden ausgelassen.', warningHatchRawUnavailable: 'Erweiterte Schraffurdaten waren für diese DWG nicht lesbar; der kompatible Import wurde verwendet.',
-    warningGeneric: '{{warning}}', basemapWmts: 'Satellit (WMTS)', basemapWms: 'Satellit (WMS)', language: 'Sprache', alignNorth: 'Nach Norden ausrichten',
+    warningGeneric: '{{warning}}', basemapWmts: 'Satellit (WMTS)', basemapWms: 'Satellit (WMS)', basemapOff: 'Satellit aus', basemapToggle: 'Satellitenkarte', hideBasemap: 'Satellitenkarte ausblenden', showBasemap: 'Satellitenkarte einblenden', gpsAccuracy: 'GPS ±{{meters}} m', language: 'Sprache', alignNorth: 'Nach Norden ausrichten',
     objectDetails: 'CAD-Objekt', cadLayer: 'Layer', hideObject: 'Objekt ausblenden', hideLayer: 'Layer ausblenden', showHidden: '{{count}} ausgeblendete Objekte wieder anzeigen',
     hideTexts: 'CAD-Texte ausblenden', showTexts: 'CAD-Texte einblenden', cadVisibility: 'CAD-Sichtbarkeit', openDrawer: 'Bedienbereich einblenden', closeDrawer: 'Bedienbereich ausblenden',
     viewerSwitch: 'CAD-Viewer auswählen', mapActions: 'Kartenaktionen', fitDrawing: 'Zeichnung einpassen',
@@ -24,7 +24,7 @@ const resources = {
     cadControlsTitle: 'DWG & Darstellung', openCadControls: 'DWG und CAD-Darstellung öffnen', dwgFile: 'DWG-Datei', cadDisplay: 'CAD-Darstellung',
     cadOpacity: 'CAD-Deckkraft', opacityMap: 'Karte', opacityMix: 'Mix', opacityCad: 'CAD',
     importingMlight: 'DWG wird mit MLightCAD verarbeitet …', mlightWorkersUnavailable: 'Die MLightCAD-Worker konnten nicht geladen werden.',
-    mlightProgress: { workers: 'Worker werden geprüft', read: 'Datei wird gelesen', parse: 'DWG wird analysiert', render: 'CAD wird aufgebaut', ready: 'Darstellung bereit' },
+    mlightProgress: { workers: 'Worker werden geprüft', read: 'Datei wird gelesen', parse: 'DWG wird analysiert', render: 'CAD wird aufgebaut', finalizing: 'Geometrie wird finalisiert', ready: 'Darstellung bereit' },
   }},
   fr: { translation: {
     appName: 'DWG → Geoportail',
@@ -40,7 +40,7 @@ const resources = {
     accuracy: 'Précision {{meters}} m', coordinates: 'LUREF {{x}} / {{y}}', fileSize: '{{size}} Mo', featureCount: '{{count}} objets',
     warnings: 'Remarques', warning3d: 'Les valeurs 3D/Z ont été aplaties sur la carte 2D.', warningPaper: 'Les présentations papier ont été ignorées.',
     warningUnsupported: 'Élément non pris en charge : {{type}}', warningBlock: 'Un bloc n’a pas pu être résolu complètement.', warningHatchBoundary: 'Certaines hachures ne contiennent pas de limite exploitable et ont été omises.', warningHatchRawUnavailable: 'Les données de hachures avancées étaient illisibles pour ce DWG ; l’import compatible a été utilisé.',
-    warningGeneric: '{{warning}}', basemapWmts: 'Satellite (WMTS)', basemapWms: 'Satellite (WMS)', language: 'Langue', alignNorth: 'Orienter vers le nord',
+    warningGeneric: '{{warning}}', basemapWmts: 'Satellite (WMTS)', basemapWms: 'Satellite (WMS)', basemapOff: 'Satellite masqué', basemapToggle: 'Carte satellite', hideBasemap: 'Masquer la carte satellite', showBasemap: 'Afficher la carte satellite', gpsAccuracy: 'GPS ±{{meters}} m', language: 'Langue', alignNorth: 'Orienter vers le nord',
     objectDetails: 'Objet CAO', cadLayer: 'Calque', hideObject: 'Masquer l’objet', hideLayer: 'Masquer le calque', showHidden: 'Réafficher {{count}} objets masqués',
     hideTexts: 'Masquer les textes CAO', showTexts: 'Afficher les textes CAO', cadVisibility: 'Visibilité CAO', openDrawer: 'Afficher le panneau', closeDrawer: 'Masquer le panneau',
     viewerSwitch: 'Choisir le visualiseur CAO', mapActions: 'Actions de la carte', fitDrawing: 'Ajuster le dessin',
@@ -48,7 +48,7 @@ const resources = {
     cadControlsTitle: 'DWG et affichage', openCadControls: 'Ouvrir le DWG et l’affichage CAO', dwgFile: 'Fichier DWG', cadDisplay: 'Affichage CAO',
     cadOpacity: 'Opacité CAO', opacityMap: 'Carte', opacityMix: 'Mix', opacityCad: 'CAO',
     importingMlight: 'Traitement du DWG avec MLightCAD …', mlightWorkersUnavailable: 'Les workers MLightCAD n’ont pas pu être chargés.',
-    mlightProgress: { workers: 'Vérification des workers', read: 'Lecture du fichier', parse: 'Analyse du DWG', render: 'Construction du dessin', ready: 'Affichage prêt' },
+    mlightProgress: { workers: 'Vérification des workers', read: 'Lecture du fichier', parse: 'Analyse du DWG', render: 'Construction du dessin', finalizing: 'Finalisation de la géométrie', ready: 'Affichage prêt' },
   }},
   en: { translation: {
     appName: 'DWG → Geoportail',
@@ -64,7 +64,7 @@ const resources = {
     accuracy: 'Accuracy {{meters}} m', coordinates: 'LUREF {{x}} / {{y}}', fileSize: '{{size}} MB', featureCount: '{{count}} objects',
     warnings: 'Notes', warning3d: '3D/Z values were flattened onto the 2D map.', warningPaper: 'Paper layouts were ignored.',
     warningUnsupported: 'Unsupported entity: {{type}}', warningBlock: 'A block could not be resolved completely.', warningHatchBoundary: 'Some hatches have no usable boundary and were omitted.', warningHatchRawUnavailable: 'Advanced hatch data could not be read for this DWG; the compatible import was used.',
-    warningGeneric: '{{warning}}', basemapWmts: 'Satellite (WMTS)', basemapWms: 'Satellite (WMS)', language: 'Language', alignNorth: 'Align map to north',
+    warningGeneric: '{{warning}}', basemapWmts: 'Satellite (WMTS)', basemapWms: 'Satellite (WMS)', basemapOff: 'Satellite off', basemapToggle: 'Satellite map', hideBasemap: 'Hide satellite map', showBasemap: 'Show satellite map', gpsAccuracy: 'GPS ±{{meters}} m', language: 'Language', alignNorth: 'Align map to north',
     objectDetails: 'CAD object', cadLayer: 'Layer', hideObject: 'Hide object', hideLayer: 'Hide layer', showHidden: 'Show {{count}} hidden objects',
     hideTexts: 'Hide CAD texts', showTexts: 'Show CAD texts', cadVisibility: 'CAD visibility', openDrawer: 'Show control panel', closeDrawer: 'Hide control panel',
     viewerSwitch: 'Choose CAD viewer', mapActions: 'Map actions', fitDrawing: 'Fit drawing',
@@ -72,7 +72,7 @@ const resources = {
     cadControlsTitle: 'DWG & display', openCadControls: 'Open DWG and CAD display controls', dwgFile: 'DWG file', cadDisplay: 'CAD display',
     cadOpacity: 'CAD opacity', opacityMap: 'Map', opacityMix: 'Mix', opacityCad: 'CAD',
     importingMlight: 'Processing DWG with MLightCAD …', mlightWorkersUnavailable: 'The MLightCAD workers could not be loaded.',
-    mlightProgress: { workers: 'Checking workers', read: 'Reading file', parse: 'Parsing DWG', render: 'Building CAD view', ready: 'View ready' },
+    mlightProgress: { workers: 'Checking workers', read: 'Reading file', parse: 'Parsing DWG', render: 'Building CAD view', finalizing: 'Finalizing geometry', ready: 'View ready' },
   }},
 } as const;
 

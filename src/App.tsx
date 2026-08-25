@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Crosshair, Focus, Layers3, LocateFixed, Map, SlidersHorizontal, Square } from 'lucide-react';
+import { LocateFixed } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AppHeader } from './components/AppHeader';
 import { BottomSheet } from './components/BottomSheet';
 import { CadControlSheet } from './components/CadControlSheet';
 import { LayerSheet } from './components/LayerSheet';
+import { MapActionControls } from './components/MapActionControls';
 import { MapCanvas, type MapCanvasHandle } from './components/MapCanvas';
+import { MapStatusBadges } from './components/MapStatusBadges';
 import { SelectionPanel } from './components/SelectionPanel';
 import { SiteBanner } from './components/SiteBanner';
 import { useLocationTracking } from './hooks/useLocationTracking';
@@ -184,6 +186,7 @@ export default function App() {
         visibleLayers={visibleLayers}
         location={location.state}
         basemapMode={basemapMode}
+        basemapVisible={session.basemapVisible}
         onWmtsError={useWmsFallback}
         onManualMove={location.pause}
         onCoordinate={(value) => setCoordinate([value[0], value[1]])}
@@ -194,33 +197,28 @@ export default function App() {
         cadOpacity={cadOpacity}
       />
 
-      <div className="map-badge"><Map size={14} />{basemapMode === 'wmts' ? t('basemapWmts') : t('basemapWms')}</div>
-      {coordinate && <div className="coordinate-badge"><Crosshair size={14} />{t('coordinates', { x: coordinate[0].toFixed(2), y: coordinate[1].toFixed(2) })}</div>}
+      <MapStatusBadges
+        basemapMode={basemapMode}
+        basemapVisible={session.basemapVisible}
+        coordinate={coordinate}
+        accuracy={location.state.accuracy}
+        onToggleBasemap={session.toggleBasemapVisible}
+      />
 
-      <div className="floating-actions" aria-label={t('mapActions')}>
-        <button className={location.state.follow !== 'off' ? 'active' : ''} onClick={locationAction} title={locationLabel} aria-label={locationLabel}>
-          {location.state.follow === 'following' ? <Square size={20} /> : <LocateFixed size={22} />}
-        </button>
-        <button onClick={() => mapCanvas.current?.fitDrawing()} disabled={!dwg} aria-label={t('fitDrawing')} title={t('fitDrawing')}>
-          <Focus size={22} />
-        </button>
-        <button onClick={() => { setDrawerState(null); setSheetOpen(true); }} disabled={!dwg?.layers.length} aria-label={t('layers')} title={t('layers')}>
-          <Layers3 size={22} /><span>{dwg?.layers.length ?? 0}</span>
-        </button>
-        <button
-          className={drawerState === 'controls' ? 'active' : ''}
-          onClick={() => {
-            setSheetOpen(false);
-            setDrawerState((current) => current === 'controls' ? null : 'controls');
-          }}
-          aria-expanded={drawerState === 'controls'}
-          aria-label={t('openCadControls')}
-          title={t('openCadControls')}
-        >
-          <SlidersHorizontal size={21} />
-          {hiddenObjectCount > 0 && <span>{hiddenObjectCount}</span>}
-        </button>
-      </div>
+      <MapActionControls
+        locationMode={location.state.follow}
+        fitDisabled={!dwg}
+        layerCount={dwg?.layers.length ?? 0}
+        cadControlsOpen={drawerState === 'controls'}
+        hiddenObjectCount={hiddenObjectCount}
+        onLocation={locationAction}
+        onFitDrawing={() => mapCanvas.current?.fitDrawing()}
+        onOpenLayers={() => { setDrawerState(null); setSheetOpen(true); }}
+        onToggleCadControls={() => {
+          setSheetOpen(false);
+          setDrawerState((current) => current === 'controls' ? null : 'controls');
+        }}
+      />
 
       <BottomSheet
         open={drawerState === 'object'}
@@ -263,7 +261,6 @@ export default function App() {
         onRestoreHidden={restoreAllHidden}
         footer={<>
           {location.state.follow === 'paused' && <button className="follow-banner" onClick={location.resume}><LocateFixed size={17} />{t('locationPaused')} · {t('locationResume')}</button>}
-          {location.state.accuracy !== null && <div className="accuracy-label">{t('accuracy', { meters: Math.round(location.state.accuracy) })}</div>}
           {dwg && dwg.warnings.length > 0 && (
             <details className="warnings"><summary>{t('warnings')} ({dwg.warnings.length})</summary><ul>{dwg.warnings.map((warning) => <li key={warning}>{translatedWarning(warning, t)}</li>)}</ul></details>
           )}

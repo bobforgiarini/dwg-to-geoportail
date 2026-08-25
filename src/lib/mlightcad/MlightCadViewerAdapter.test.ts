@@ -2,8 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CadOverlayLayer } from '../../types/models';
 import { AdapterEvent } from './types';
 
+const runtimeHarness = vi.hoisted(() => ({
+  checkWebworkerReadiness: vi.fn(),
+}));
+
 vi.mock('@mlightcad/cad-simple-viewer', () => ({
-  AcApDocManager: class MockDocManager {},
+  AcApDocManager: class MockDocManager {
+    static checkWebworkerReadiness = runtimeHarness.checkWebworkerReadiness;
+  },
   AcApOpenViewMode: { Extents: 'extents' },
   AcEdOpenMode: { Read: 0 },
   AcEdViewMode: { PAN: 'pan' },
@@ -36,6 +42,10 @@ interface AdapterInternals {
   manager: unknown;
   view: unknown;
   bindSelection: (view: unknown) => void;
+  bindWebglContextLoss: (view: unknown) => void;
+  collectRenderedTextSceneObjects: (view: unknown) => void;
+  configureLowMemoryRenderer: (view: unknown, enabled: boolean) => void;
+  configureTransparentRenderer: (view: unknown) => void;
   configureTouchNavigation: (view: unknown) => void;
   hideEmbeddedCommandLine: () => void;
   describeObject: (id: string) => unknown;
@@ -62,6 +72,22 @@ function dispatchPointer(
 }
 
 describe('MlightCadViewerAdapter controls', () => {
+  it('does not report a rejected worker as an import error after cancellation', async () => {
+    let rejectReadiness: (error: Error) => void = () => undefined;
+    runtimeHarness.checkWebworkerReadiness.mockReturnValueOnce(new Promise<boolean>((_resolve, reject) => {
+      rejectReadiness = reject;
+    }));
+    const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+    const load = adapter.load(new File([new Uint8Array([1])], 'cancelled.dwg'));
+
+    await vi.waitFor(() => expect(runtimeHarness.checkWebworkerReadiness).toHaveBeenCalledOnce());
+    const cancellation = adapter.cancel();
+    rejectReadiness(new Error('worker terminated'));
+
+    await expect(load).resolves.toBeUndefined();
+    await cancellation;
+  });
+
   it('keeps touch movement in pan mode and removes the embedded command-line hit layer', () => {
     const container = document.createElement('div');
     const commandLine = document.createElement('div');
@@ -76,6 +102,63 @@ describe('MlightCadViewerAdapter controls', () => {
     expect(view.mode).toBe('pan');
     expect(commandLine.hidden).toBe(true);
     expect(commandLine.style.pointerEvents).toBe('none');
+  });
+
+  it('reduces zoom speed only for coarse pointers and leaves desktop controls unchanged', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+    try {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: vi.fn(() => ({ matches: true })),
+      });
+      const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+      const controls = { zoomSpeed: 5 };
+      internals(adapter).configureTouchNavigation({ mode: 'selection', activeLayoutView: { _cameraControls: controls } });
+      expect(controls.zoomSpeed).toBe(2.25);
+
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: vi.fn(() => ({ matches: false })),
+      });
+      const desktopControls = { zoomSpeed: 5 };
+      internals(adapter).configureTouchNavigation({ mode: 'selection', activeLayoutView: { _cameraControls: desktopControls } });
+      expect(desktopControls.zoomSpeed).toBe(5);
+    } finally {
+      if (descriptor) Object.defineProperty(window, 'matchMedia', descriptor);
+      else delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+    }
+  });
+
+  it('keeps host opacity untouched and makes the WebGL canvas transparent', () => {
+    const container = document.createElement('div');
+    container.style.opacity = '0.2';
+    const canvas = document.createElement('canvas');
+    const setClearColor = vi.fn();
+    const setClearAlpha = vi.fn();
+    const setPixelRatio = vi.fn();
+    const adapter = new MlightCadViewerAdapter(container);
+    const view = {
+      container: document.createElement('div'),
+      renderer: {
+        clearAlpha: 1,
+        domElement: canvas,
+        setClearColor,
+        internalRenderer: { setClearAlpha, setPixelRatio },
+      },
+    };
+    internals(adapter).view = view;
+
+    adapter.setOpacity(60);
+    internals(adapter).configureTransparentRenderer(view);
+    internals(adapter).configureLowMemoryRenderer(view, true);
+
+    expect(container.style.opacity).toBe('');
+    expect(canvas.style.opacity).toBe('0.6');
+    expect(canvas.style.background).toBe('transparent');
+    expect(setClearColor).toHaveBeenCalledWith(0x000000, 0);
+    expect(setClearAlpha).toHaveBeenCalledWith(0);
+    expect(setPixelRatio).toHaveBeenCalledWith(1);
+    expect((view as typeof view & { isDirty: boolean }).isDirty).toBe(true);
   });
 
   it('updates one or all renderer layers and emits snapshots', () => {
@@ -100,6 +183,7 @@ describe('MlightCadViewerAdapter controls', () => {
     adapter.setLayerVisible('A', false);
     expect(visibility.get('A')).toBe(false);
     expect(adapter.currentLayers[0].visible).toBe(false);
+    expect((internals(adapter).view as { isDirty: boolean }).isDirty).toBe(true);
 
     adapter.setAllLayersVisible(false);
     expect([...visibility.values()]).toEqual([false, false]);
@@ -137,6 +221,81 @@ describe('MlightCadViewerAdapter controls', () => {
     adapter.restoreHiddenObjects();
     expect(adapter.hiddenObjectCount).toBe(0);
     expect(setVisible).toHaveBeenLastCalledWith('42', true);
+  });
+
+  it('hides rendered text inside a block without hiding its geometry and preserves hidden-object precedence', () => {
+    const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+    const setVisible = vi.fn();
+    const textRoot = { visible: true, userData: { textEntityTraits: { layer: 'TEXT' } }, children: [] };
+    const geometryRoot = { visible: true, userData: {}, children: [] };
+    const view = {
+      setEntitySceneVisible: setVisible,
+      selectionSet: { clear: vi.fn() },
+      cadScene: {
+        modelSpaceLayout: {
+          layers: new Map([['TEXT', {
+            internalObject: {
+              _unbatchedEntities: new Map([['INSERT-1', [textRoot, geometryRoot]]]),
+            },
+          }]]),
+        },
+      },
+    };
+    internals(adapter).view = view;
+    internals(adapter).collectRenderedTextSceneObjects(view);
+
+    adapter.setTextsVisible(false);
+    expect(textRoot.visible).toBe(false);
+    expect(geometryRoot.visible).toBe(true);
+    expect((view as typeof view & { isDirty: boolean }).isDirty).toBe(true);
+
+    adapter.hideObject('INSERT-1');
+    adapter.setTextsVisible(true);
+    expect(textRoot.visible).toBe(false);
+    expect(setVisible).toHaveBeenLastCalledWith('INSERT-1', false);
+
+    adapter.restoreHiddenObjects();
+    expect(textRoot.visible).toBe(true);
+    expect(setVisible).toHaveBeenLastCalledWith('INSERT-1', true);
+  });
+
+  it('emits a synchronized camera after programmatic center and fit operations', () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+      const zoomToFitDrawing = vi.fn();
+      const flyTo = vi.fn(({ x, y }: { x: number; y: number }) => {
+        view.center = { x, y };
+      });
+      const view = {
+        center: { x: 10, y: 20 },
+        internalCamera: { zoom: 2 },
+        modelSpaceBtrId: 'model',
+        renderer: {
+          clearAlpha: 0,
+          domElement: document.createElement('canvas'),
+          setClearColor: vi.fn(),
+          internalRenderer: { setClearAlpha: vi.fn() },
+        },
+        container: document.createElement('div'),
+        screenToWorld: ({ x, y }: { x: number; y: number }) => ({ x: x + view.center.x, y: y + view.center.y }),
+        flyTo,
+        zoomToFitDrawing,
+      };
+      internals(adapter).view = view;
+      const cameras: unknown[] = [];
+      adapter.events.camera.addEventListener((camera) => cameras.push(camera));
+
+      adapter.centerOn([30, 40]);
+      expect(cameras.at(-1)).toEqual({ center: [30, 40], resolution: 1 });
+
+      adapter.fitDrawing();
+      expect(zoomToFitDrawing).toHaveBeenCalledWith(120_000, 'model');
+      vi.advanceTimersByTime(350);
+      expect(cameras).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('selects a tapped entity through the pointer fallback without duplicating native selection', () => {
@@ -287,6 +446,44 @@ describe('MlightCadViewerAdapter controls', () => {
     expect(forceContextLoss).toHaveBeenCalledOnce();
     expect(managerDestroy).toHaveBeenCalledOnce();
     expect(rendererDispose).toHaveBeenCalledOnce();
+    expect(container.childElementCount).toBe(0);
+  });
+
+  it('reports a lost WebGL context only after releasing renderer resources', async () => {
+    const container = document.createElement('div');
+    const canvas = document.createElement('canvas');
+    container.appendChild(canvas);
+    const forceContextLoss = vi.fn();
+    const managerDestroy = vi.fn().mockResolvedValue(undefined);
+    const adapter = new MlightCadViewerAdapter(container);
+    const view = {
+      selectionSet: { clear: vi.fn() },
+      stopAnimationLoop: vi.fn(),
+      clear: vi.fn(),
+      renderer: {
+        dispose: vi.fn(),
+        domElement: canvas,
+        internalRenderer: {
+          setAnimationLoop: vi.fn(),
+          renderLists: { dispose: vi.fn() },
+          dispose: vi.fn(),
+          forceContextLoss,
+        },
+      },
+    };
+    internals(adapter).view = view;
+    internals(adapter).manager = { destroy: managerDestroy };
+    internals(adapter).bindWebglContextLoss(view);
+    const reported = new Promise<Error>((resolve) => adapter.events.error.addEventListener(resolve));
+
+    const event = new Event('webglcontextlost', { cancelable: true });
+    canvas.dispatchEvent(event);
+    const error = await reported;
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(error.message).toBe('MLIGHTCAD_WEBGL_CONTEXT_LOST');
+    expect(managerDestroy).toHaveBeenCalledOnce();
+    expect(forceContextLoss).toHaveBeenCalledOnce();
     expect(container.childElementCount).toBe(0);
   });
 });

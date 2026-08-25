@@ -1,0 +1,129 @@
+import { cleanup, fireEvent, render, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
+import { CadControlSheet } from './CadControlSheet';
+import { LoadingSpinner } from './LoadingSpinner';
+import { MapActionControls } from './MapActionControls';
+import { MapStatusBadges } from './MapStatusBadges';
+
+describe('shared map UI', () => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('de');
+  });
+
+  afterEach(cleanup);
+
+  it('groups layer and CAD actions separately from location and fit actions', () => {
+    const onLocation = vi.fn();
+    const onFitDrawing = vi.fn();
+    const onOpenLayers = vi.fn();
+    const onToggleCadControls = vi.fn();
+    const { container, getByRole } = render(
+      <MapActionControls
+        locationMode="paused"
+        fitDisabled={false}
+        layerCount={12}
+        cadControlsOpen
+        hiddenObjectCount={3}
+        onLocation={onLocation}
+        onFitDrawing={onFitDrawing}
+        onOpenLayers={onOpenLayers}
+        onToggleCadControls={onToggleCadControls}
+      />,
+    );
+
+    const top = container.querySelector('.map-action-group-top') as HTMLElement;
+    const bottom = container.querySelector('.map-action-group-bottom') as HTMLElement;
+    expect(within(top).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
+      i18n.t('layers'),
+      i18n.t('openCadControls'),
+    ]);
+    expect(within(bottom).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
+      i18n.t('locationResume'),
+      i18n.t('fitDrawing'),
+    ]);
+
+    fireEvent.click(getByRole('button', { name: i18n.t('locationResume') }));
+    fireEvent.click(getByRole('button', { name: i18n.t('fitDrawing') }));
+    fireEvent.click(getByRole('button', { name: i18n.t('layers') }));
+    fireEvent.click(getByRole('button', { name: i18n.t('openCadControls') }));
+    expect(onLocation).toHaveBeenCalledOnce();
+    expect(onFitDrawing).toHaveBeenCalledOnce();
+    expect(onOpenLayers).toHaveBeenCalledOnce();
+    expect(onToggleCadControls).toHaveBeenCalledOnce();
+  });
+
+  it('toggles the basemap and presents LUREF coordinates and GPS accuracy', () => {
+    const onToggleBasemap = vi.fn();
+    const { getByRole, getByText, rerender } = render(
+      <MapStatusBadges
+        basemapMode="wmts"
+        basemapVisible
+        coordinate={[80_218.123, 87_074.509]}
+        accuracy={7.6}
+        onToggleBasemap={onToggleBasemap}
+      />,
+    );
+
+    const toggle = getByRole('button', { name: i18n.t('basemapToggle') });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle).toHaveAttribute('title', i18n.t('hideBasemap'));
+    expect(getByText(i18n.t('basemapWmts'))).toBeInTheDocument();
+    expect(getByText('LUREF 80218.12 / 87074.51')).toBeInTheDocument();
+    expect(getByText('GPS ±8 m')).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(onToggleBasemap).toHaveBeenCalledOnce();
+
+    rerender(
+      <MapStatusBadges
+        basemapMode="wms"
+        basemapVisible={false}
+        coordinate={null}
+        accuracy={null}
+        onToggleBasemap={onToggleBasemap}
+      />,
+    );
+    expect(getByRole('button', { name: i18n.t('basemapToggle') })).toHaveAttribute('aria-pressed', 'false');
+    expect(getByRole('button', { name: i18n.t('basemapToggle') })).toHaveAttribute('title', i18n.t('showBasemap'));
+    expect(getByText(i18n.t('basemapOff'))).toBeInTheDocument();
+  });
+
+  it('uses the fixed span spinner in the accessible CAD loading row', () => {
+    const { container, getByRole } = render(
+      <CadControlSheet
+        open
+        file={null}
+        entityCount={0}
+        loading
+        loadingTitle="DWG wird verarbeitet"
+        progressLabel="CAD wird aufgebaut · 42%"
+        message={null}
+        opacity={70}
+        cadTextVisible
+        hiddenObjectCount={0}
+        controlsDisabled
+        onClose={vi.fn()}
+        onDismissMessage={vi.fn()}
+        onChooseFile={vi.fn()}
+        onRemoveFile={vi.fn()}
+        onCancel={vi.fn()}
+        onOpacityChange={vi.fn()}
+        onToggleTexts={vi.fn()}
+        onRestoreHidden={vi.fn()}
+      />,
+    );
+
+    const status = getByRole('status');
+    const spinner = status.querySelector('.loading-spinner') as HTMLElement;
+    expect(spinner.tagName).toBe('SPAN');
+    expect(spinner).toHaveClass('loading-spinner');
+    expect(container.querySelector('.compact-sheet-header > div svg')).not.toBeInTheDocument();
+  });
+
+  it('renders the reusable spinner as a non-announced span', () => {
+    const { getByTestId } = render(<LoadingSpinner data-testid="loading-spinner" />);
+    const spinner = getByTestId('loading-spinner');
+    expect(spinner.tagName).toBe('SPAN');
+    expect(spinner).toHaveAttribute('aria-hidden', 'true');
+  });
+});

@@ -23,6 +23,8 @@ export interface CadSession {
   /** Changes whenever the selected file is set or cleared. */
   fileRevision: number;
   activeViewer: ViewerKind;
+  /** Shared visibility of the Geoportail background in both viewers. */
+  basemapVisible: boolean;
 }
 
 export interface CadSessionContextValue extends CadSession {
@@ -30,6 +32,8 @@ export interface CadSessionContextValue extends CadSession {
   clearFile: () => void;
   setViewer: (viewer: ViewerKind, options?: ViewerNavigationOptions) => void;
   getViewerHref: (viewer: ViewerKind) => string;
+  setBasemapVisible: (visible: boolean) => void;
+  toggleBasemapVisible: () => void;
 }
 
 const CadSessionContext = createContext<CadSessionContextValue | null>(null);
@@ -42,6 +46,7 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
   const [file, updateFile] = useState<File | null>(null);
   const [fileRevision, setFileRevision] = useState(0);
   const [activeViewer, setActiveViewer] = useState<ViewerKind>(readInitialViewer);
+  const [basemapVisible, setBasemapVisible] = useState(true);
 
   useEffect(() => {
     const handlePopState = () => setActiveViewer(resolveViewerKind(window.location.pathname));
@@ -64,17 +69,24 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
     setActiveViewer(viewer);
   }, []);
 
+  const toggleBasemapVisible = useCallback(() => {
+    setBasemapVisible((visible) => !visible);
+  }, []);
+
   const value = useMemo<CadSessionContextValue>(
     () => ({
       file,
       fileRevision,
       activeViewer,
+      basemapVisible,
       setFile,
       clearFile,
       setViewer,
       getViewerHref,
+      setBasemapVisible,
+      toggleBasemapVisible,
     }),
-    [activeViewer, clearFile, file, fileRevision, setFile, setViewer],
+    [activeViewer, basemapVisible, clearFile, file, fileRevision, setFile, setViewer, toggleBasemapVisible],
   );
 
   return <CadSessionContext.Provider value={value}>{children}</CadSessionContext.Provider>;

@@ -23,6 +23,7 @@ export interface MlightCadAdapterEvents {
   layers: CadOverlayLayer[];
   selection: SelectedCadObject | null;
   ready: MlightCadReady;
+  error: Error;
 }
 
 export class AdapterEvent<T> {

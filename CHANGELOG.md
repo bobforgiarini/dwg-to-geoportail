@@ -2,6 +2,39 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.2.1] – 2026-08-25
+
+### Behoben
+
+- MLightCAD- und Geoportail-Kamera bei Pan, Zoom, Standortzentrierung, Einpassen und Größenänderung dauerhaft gekoppelt
+- OpenLayers-Begrenzungen entfernt, die Hintergrundkarte bei tiefem Zoom oder Zeichnungen außerhalb des bisherigen LUREF-Ausschnitts festhielten
+- OpenLayers-Karte im MLightCAD-Modus ohne geladene Zeichnung wieder direkt bedienbar gemacht
+- WebGL-Hintergrund nach Dokument- und Layoutwechsel erneut transparent gesetzt; CAD-Deckkraft beeinflusst nur noch CAD-Pixel
+- Textschalter auf gerenderte Textmerkmale erweitert, damit auch verschachtelte Block-, Attribut- und Bemaßungstexte erfasst werden
+- fehlgeschlagene oder abgebrochene MLightCAD-Importe geben partielle Szenen, Worker und WebGL-Kontexte unmittelbar frei
+- ein bewusst abgebrochener Import wird nicht mehr nachträglich als Verarbeitungsfehler gemeldet
+- übergroßen Ladespinner durch den festen 18 × 18-Pixel-Spinner des Designsystems ersetzt
+- pausierte Standortfolge bleibt auch nach weiteren GPS-Messungen pausiert
+- Drawer-Backdrop schließt erst nach einem vollständigen Außentipp, damit der Tipp nicht auf darunterliegende Kartenaktionen durchfällt
+- Standortzentrierung mit bereits vorhandenem GPS-Fix wird nach dem tatsächlichen `ready`-Übergang erneut angewendet
+
+### Geändert
+
+- hybride Navigation eingeführt: OpenLayers steuert ohne DWG, MLightCAD behält nach erfolgreichem Laden seine Desktop- und Touchsteuerung
+- Touch-Zoom von MLightCAD auf Geräten mit grober Eingabe beruhigt; Maus- und Mausradverhalten bleiben unverändert
+- Dateien über 10 MiB werden mit kleineren Render-Chunks und reduzierter WebGL-Pixelratio verarbeitet
+- Satelliten-Card in beiden Viewern als gemeinsamer Ein-/Aus-Schalter der Hintergrundkarte umgesetzt
+- GPS-Genauigkeit als permanente Karten-Card angezeigt und aus dem CAD-Drawer entfernt
+- Kartenaktionen in eine obere Gruppe für Layer/Darstellung und eine untere Gruppe für Standort/Einpassen oberhalb des Site-Banners aufgeteilt
+- MLightCAD-Nordpfeil entfernt; der drehbare OpenLayers-Viewer behält seinen Kompass
+- gemeinsame Layer-, CAD- und Objekt-Drawer weiter verdichtet; Objektwahl öffnet den kompakten Objektzustand und Außentipp schließt den Drawer
+- modale Drawer um Escape-Taste, Fokusbindung und Fokus-Rückgabe sowie mobile Touchziele von mindestens 44 Pixeln ergänzt
+- Ladefortschritt unterscheidet Analyse, Aufbau und abschließende Geometriefinalisierung
+
+### Abnahme
+
+- `2023- Bestandskanal_Junglinster.dwg` mit 11,31 MiB, 66.816 Objekten und 316 Layern als reale Großdatei für Lade-, Abbruch- und Speicherprüfungen verwendet
+
 ## [0.2.0] – 2026-08-25
 
 ### Hinzugefügt

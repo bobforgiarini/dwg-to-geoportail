@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { FileUp, RotateCcw, SlidersHorizontal, Trash2, Type, X } from 'lucide-react';
+import { FileUp, RotateCcw, Trash2, Type, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { BottomSheet } from './BottomSheet';
 import { CadOpacityControl } from './CadOpacityControl';
+import { LoadingSpinner } from './LoadingSpinner';
 
 interface Props {
   open: boolean;
@@ -62,7 +63,6 @@ export function CadControlSheet({
     >
       <header className="sheet-header compact-sheet-header">
         <div>
-          <SlidersHorizontal size={19} aria-hidden="true" />
           <h2>{t('cadControlsTitle')}</h2>
         </div>
         <button className="icon-button" onClick={onClose} aria-label={t('close')}><X size={20} /></button>
@@ -78,9 +78,9 @@ export function CadControlSheet({
       <section className="cad-control-section" aria-labelledby="dwg-control-title">
         <h3 id="dwg-control-title">{t('dwgFile')}</h3>
         {loading ? (
-          <div className="loading-row">
-            <div className="spinner" aria-hidden="true" />
-            <div><strong>{loadingTitle}</strong><small>{progressLabel}</small></div>
+          <div className="loading-row" role="status" aria-live="polite">
+            <LoadingSpinner />
+            <div className="loading-copy"><strong>{loadingTitle}</strong><small>{progressLabel}</small></div>
             <button className="secondary-button compact" onClick={onCancel}>{t('cancel')}</button>
           </div>
         ) : file ? (

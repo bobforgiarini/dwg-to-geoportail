@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Crosshair, Focus, Layers3, LocateFixed, Map, SlidersHorizontal, Square } from 'lucide-react';
+import { LocateFixed } from 'lucide-react';
 import { transform } from 'ol/proj';
 import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/AppHeader';
 import { BottomSheet } from '../components/BottomSheet';
 import { CadControlSheet } from '../components/CadControlSheet';
 import { LayerSheet } from '../components/LayerSheet';
+import { MapActionControls } from '../components/MapActionControls';
+import { MapStatusBadges } from '../components/MapStatusBadges';
 import { MlightCadCanvas } from '../components/MlightCadCanvas';
 import { MlightCadMap } from '../components/MlightCadMap';
 import { SelectionPanel } from '../components/SelectionPanel';
@@ -23,7 +25,9 @@ type ImportState = 'idle' | 'loading' | 'ready' | 'error' | 'cancelled';
 type DrawerState = 'controls' | 'object' | null;
 
 function progressLabel(progress: MlightCadProgress, t: (key: string) => string): string {
-  const phase = t(`mlightProgress.${progress.phase}`);
+  const phase = progress.detail === 'finalizing'
+    ? t('mlightProgress.finalizing')
+    : t(`mlightProgress.${progress.phase}`);
   return progress.percentage === null ? phase : `${phase} · ${progress.percentage}%`;
 }
 
@@ -74,13 +78,13 @@ export default function MlightCadViewerPage() {
   }, [session.file, session.fileRevision]);
 
   useEffect(() => {
-    if (!adapter || location.state.follow !== 'following' || !location.state.position) return;
+    if (!adapter || importState !== 'ready' || location.state.follow !== 'following' || !location.state.position) return;
     const center = transform([
       location.state.position.coords.longitude,
       location.state.position.coords.latitude,
     ], 'EPSG:4326', 'EPSG:2169');
     adapter.centerOn([center[0], center[1]]);
-  }, [adapter, location.state.follow, location.state.position]);
+  }, [adapter, importState, location.state.follow, location.state.position]);
 
   const chooseFile = () => fileInput.current?.click();
   const handleFile = (file: File | undefined) => {
@@ -185,9 +189,7 @@ export default function MlightCadViewerPage() {
     else if (location.state.follow === 'paused') location.resume();
     else location.stop();
   };
-  const locationLabel = location.state.follow === 'off'
-    ? t('locationStart')
-    : location.state.follow === 'paused' ? t('locationResume') : t('locationStop');
+  const mlightControlsActive = Boolean(adapter && importState === 'ready');
 
   return (
     <main className={`app-shell mlightcad-page ${drawerState || sheetOpen ? 'drawer-open' : 'drawer-closed'}`}>
@@ -195,16 +197,20 @@ export default function MlightCadViewerPage() {
       <MlightCadMap
         adapter={adapter}
         basemapMode={basemapMode}
+        basemapVisible={session.basemapVisible}
+        mlightControlsActive={mlightControlsActive}
         location={location.state}
         onCoordinate={setCoordinate}
+        onManualMove={location.pause}
         onWmtsError={useWmsFallback}
       />
       <div
-        className="mlightcad-interaction-layer"
+        className={`mlightcad-interaction-layer ${mlightControlsActive ? 'mlightcad-active' : 'openlayers-active'}`}
         onPointerDown={() => { pointerActive.current = true; }}
         onPointerMove={() => { if (pointerActive.current) location.pause(); }}
         onPointerUp={() => { pointerActive.current = false; }}
         onPointerCancel={() => { pointerActive.current = false; }}
+        onWheel={location.pause}
       >
         <MlightCadCanvas
           file={session.file}
@@ -219,32 +225,28 @@ export default function MlightCadViewerPage() {
         />
       </div>
 
-      <div className="map-badge"><Map size={14} />{basemapMode === 'wmts' ? t('basemapWmts') : t('basemapWms')}</div>
-      {coordinate && <div className="coordinate-badge"><Crosshair size={14} />{t('coordinates', { x: coordinate[0].toFixed(2), y: coordinate[1].toFixed(2) })}</div>}
-      <div className="floating-actions" aria-label={t('mapActions')}>
-        <button className={location.state.follow !== 'off' ? 'active' : ''} onClick={locationAction} title={locationLabel} aria-label={locationLabel}>
-          {location.state.follow === 'following' ? <Square size={20} /> : <LocateFixed size={22} />}
-        </button>
-        <button onClick={() => adapter?.fitDrawing()} disabled={!adapter || importState !== 'ready'} aria-label={t('fitDrawing')} title={t('fitDrawing')}>
-          <Focus size={22} />
-        </button>
-        <button onClick={() => { setDrawerState(null); setSheetOpen(true); }} disabled={!layers.length} aria-label={t('layers')} title={t('layers')}>
-          <Layers3 size={22} /><span>{layers.length}</span>
-        </button>
-        <button
-          className={drawerState === 'controls' ? 'active' : ''}
-          onClick={() => {
-            setSheetOpen(false);
-            setDrawerState((current) => current === 'controls' ? null : 'controls');
-          }}
-          aria-expanded={drawerState === 'controls'}
-          aria-label={t('openCadControls')}
-          title={t('openCadControls')}
-        >
-          <SlidersHorizontal size={21} />
-          {hiddenObjectCount > 0 && <span>{hiddenObjectCount}</span>}
-        </button>
-      </div>
+      <MapStatusBadges
+        basemapMode={basemapMode}
+        basemapVisible={session.basemapVisible}
+        coordinate={coordinate}
+        accuracy={location.state.accuracy}
+        onToggleBasemap={session.toggleBasemapVisible}
+      />
+
+      <MapActionControls
+        locationMode={location.state.follow}
+        fitDisabled={!adapter || importState !== 'ready'}
+        layerCount={layers.length}
+        cadControlsOpen={drawerState === 'controls'}
+        hiddenObjectCount={hiddenObjectCount}
+        onLocation={locationAction}
+        onFitDrawing={() => adapter?.fitDrawing()}
+        onOpenLayers={() => { setDrawerState(null); setSheetOpen(true); }}
+        onToggleCadControls={() => {
+          setSheetOpen(false);
+          setDrawerState((current) => current === 'controls' ? null : 'controls');
+        }}
+      />
 
       <BottomSheet
         open={drawerState === 'object'}
@@ -289,7 +291,6 @@ export default function MlightCadViewerPage() {
           {location.state.follow === 'paused' && (
             <button className="follow-banner" onClick={location.resume}><LocateFixed size={17} />{t('locationPaused')} · {t('locationResume')}</button>
           )}
-          {location.state.accuracy !== null && <div className="accuracy-label">{t('accuracy', { meters: Math.round(location.state.accuracy) })}</div>}
         </>}
       />
 

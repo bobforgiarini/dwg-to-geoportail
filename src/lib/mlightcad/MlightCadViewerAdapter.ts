@@ -25,14 +25,37 @@ const DWG_WORKER_URL = `${WORKER_ROOT}/${LIBREDWG_PARSER_WORKER_FILE}`;
 const MTEXT_WORKER_URL = `${WORKER_ROOT}/${MTEXT_RENDERER_WORKER_FILE}`;
 const CAD_DATA_CDN = 'https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/';
 const PARSER_TIMEOUT_MS = 120_000;
+const LARGE_DWG_BYTES = 10 * 1024 * 1024;
+const DEFAULT_MINIMUM_CHUNK_SIZE = 1_000;
+const LOW_MEMORY_MINIMUM_CHUNK_SIZE = 100;
 const MOBILE_SELECTION_RADIUS_PX = 12;
 const TAP_MOVE_TOLERANCE_PX = 10;
+const MOBILE_TOUCH_ZOOM_SPEED = 2.25;
+const FIT_CAMERA_SYNC_DELAY_MS = 350;
 
 const TEXT_ENTITY_TYPES = new Set(['TEXT', 'MTEXT', 'ATTRIB', 'ATTDEF']);
 
 let disposalBarrier: Promise<void> = Promise.resolve();
 
 type ListenerCleanup = () => void;
+
+interface RenderedSceneNode {
+  visible: boolean;
+  children?: RenderedSceneNode[];
+  userData?: { textEntityTraits?: unknown };
+}
+
+interface TextAwareBatchedGroup {
+  _unbatchedEntities?: Map<string, RenderedSceneNode[]>;
+}
+
+interface TouchCameraControls {
+  zoomSpeed: number;
+}
+
+interface TouchLayoutView {
+  _cameraControls?: TouchCameraControls;
+}
 
 function bindCadEvent<T>(
   event: { addEventListener: (listener: (value: T) => void) => void; removeEventListener: (listener: (value: T) => void) => void },
@@ -42,14 +65,33 @@ function bindCadEvent<T>(
   return () => event.removeEventListener(listener);
 }
 
-function layerEntityCounts(entities: Iterable<AcDbEntity>): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const entity of entities) counts.set(entity.layer, (counts.get(entity.layer) ?? 0) + 1);
-  return counts;
-}
-
 function isCadEntity(value: unknown): value is AcDbEntity {
   return Boolean(value && typeof value === 'object' && 'dxfTypeName' in value && 'layer' in value);
+}
+
+function runCleanup(action: () => void): void {
+  try {
+    action();
+  } catch {
+    // Cleanup is deliberately best-effort so one upstream disposal failure
+    // cannot retain the remaining document, worker, DOM or WebGL resources.
+  }
+}
+
+function renderedTextNodes(root: RenderedSceneNode): RenderedSceneNode[] {
+  const result: RenderedSceneNode[] = [];
+  const pending = [root];
+  while (pending.length > 0) {
+    const node = pending.pop();
+    if (!node) continue;
+    if (node.userData?.textEntityTraits !== undefined) {
+      result.push(node);
+      // The traits-bearing root owns the complete glyph hierarchy.
+      continue;
+    }
+    if (node.children) pending.push(...node.children);
+  }
+  return result;
 }
 
 export class MlightCadViewerAdapter {
@@ -59,6 +101,7 @@ export class MlightCadViewerAdapter {
     layers: new AdapterEvent<MlightCadAdapterEvents['layers']>(),
     selection: new AdapterEvent<MlightCadAdapterEvents['selection']>(),
     ready: new AdapterEvent<MlightCadAdapterEvents['ready']>(),
+    error: new AdapterEvent<MlightCadAdapterEvents['error']>(),
   };
 
   private manager: AcApDocManager | null = null;
@@ -68,12 +111,19 @@ export class MlightCadViewerAdapter {
   private layers: CadOverlayLayer[] = [];
   private readonly hiddenObjectIds = new Set<string>();
   private readonly textObjectIds = new Set<string>();
+  private readonly textSceneObjects = new Map<string, Set<RenderedSceneNode>>();
+  private readonly cameraSyncTimers = new Set<ReturnType<typeof setTimeout>>();
   private textVisible = true;
+  private opacity = 100;
   private generation = 0;
   private disposed = false;
   private disposePromise: Promise<void> | null = null;
 
-  constructor(private readonly container: HTMLElement) {}
+  constructor(private readonly container: HTMLElement) {
+    // Opacity belongs to the CAD canvas, never to the host that is composited
+    // with OpenLayers.
+    this.container.style.removeProperty('opacity');
+  }
 
   get hiddenObjectCount(): number {
     return this.hiddenObjectIds.size;
@@ -85,91 +135,116 @@ export class MlightCadViewerAdapter {
 
   async load(file: File): Promise<void> {
     const generation = ++this.generation;
-    await disposalBarrier;
-    if (this.disposed || generation !== this.generation) return;
+    const lowMemory = file.size > LARGE_DWG_BYTES;
+    try {
+      await disposalBarrier;
+      if (this.disposed || generation !== this.generation) return;
 
-    this.events.progress.dispatch({ phase: 'workers', percentage: null });
-    const workersReady = await AcApDocManager.checkWebworkerReadiness({
-      dwgParser: DWG_WORKER_URL,
-      mtextRender: MTEXT_WORKER_URL,
-    });
-    if (!workersReady) throw new Error('MLIGHTCAD_WORKERS_UNAVAILABLE');
-    if (this.disposed || generation !== this.generation) return;
-
-    const converter = new CancellableLibreDwgConverter({
-      convertByEntityType: false,
-      parserWorkerUrl: DWG_WORKER_URL,
-      timeout: PARSER_TIMEOUT_MS,
-      useWorker: true,
-    });
-    this.converter = converter;
-    AcDbDatabaseConverterManager.instance.register(AcDbFileType.DWG, converter);
-
-    AcApDocManager.createInstance({
-      autoResize: true,
-      baseUrl: CAD_DATA_CDN,
-      builtinOpenFileDialog: false,
-      busyIndicatorHost: this.container,
-      container: this.container,
-      useMainThreadDraw: true,
-      webworkerFileUrls: {
+      this.events.progress.dispatch({ phase: 'workers', percentage: null });
+      const workersReady = await AcApDocManager.checkWebworkerReadiness({
         dwgParser: DWG_WORKER_URL,
         mtextRender: MTEXT_WORKER_URL,
-      },
-    });
-
-    const manager = AcApDocManager.instance;
-    const view = manager.curView;
-    this.manager = manager;
-    this.view = view;
-    this.configureTransparentRenderer(view);
-    this.hideEmbeddedCommandLine();
-    this.bindCamera(view);
-    this.bindSelection(view);
-
-    const progressDatabase = manager.curDocument.database;
-    const progressListener = (event: AcDbProgressdEventArgs) => {
-      const percentage = Number.isFinite(event.percentage) ? Math.round(event.percentage) : null;
-      const stage = String(event.stage ?? '').toLowerCase();
-      this.events.progress.dispatch({
-        phase: stage.includes('parse') ? 'parse' : 'render',
-        percentage,
-        detail: event.subStage ?? event.stage,
       });
-    };
-    this.cleanupListeners.push(bindCadEvent(progressDatabase.events.openProgress, progressListener));
+      if (!workersReady) throw new Error('MLIGHTCAD_WORKERS_UNAVAILABLE');
+      if (this.disposed || generation !== this.generation) return;
 
-    this.events.progress.dispatch({ phase: 'read', percentage: null });
-    const content = await file.arrayBuffer();
-    if (this.disposed || generation !== this.generation) return;
+      const converter = new CancellableLibreDwgConverter({
+        convertByEntityType: false,
+        parserWorkerUrl: DWG_WORKER_URL,
+        timeout: PARSER_TIMEOUT_MS,
+        useWorker: true,
+      });
+      this.converter = converter;
+      AcDbDatabaseConverterManager.instance.register(AcDbFileType.DWG, converter);
 
-    const opened = await manager.openDocument(file.name, content, {
-      drawNoPlotLayers: true,
-      minimumChunkSize: 1_000,
-      mode: AcEdOpenMode.Read,
-      openViewMode: AcApOpenViewMode.Extents,
-      progressiveRendering: true,
-      timeout: PARSER_TIMEOUT_MS,
-    });
-    if (!opened) throw new Error('MLIGHTCAD_OPEN_FAILED');
-    if (this.disposed || generation !== this.generation) return;
+      AcApDocManager.createInstance({
+        autoResize: true,
+        baseUrl: CAD_DATA_CDN,
+        builtinOpenFileDialog: false,
+        busyIndicatorHost: this.container,
+        container: this.container,
+        useMainThreadDraw: true,
+        webworkerFileUrls: {
+          dwgParser: DWG_WORKER_URL,
+          mtextRender: MTEXT_WORKER_URL,
+        },
+      });
 
-    const database = manager.curDocument.database;
-    acdbHostApplicationServices().layoutManager.setCurrentLayoutBtrId(
-      database.tables.blockTable.modelSpace.objectId,
-      database,
-    );
-    manager.setActiveLayout(view, database);
-    this.configureTouchNavigation(view);
-    await view.waitUntilIdle(PARSER_TIMEOUT_MS);
-    if (this.disposed || generation !== this.generation) return;
+      const manager = AcApDocManager.instance;
+      const view = manager.curView;
+      this.manager = manager;
+      this.view = view;
+      this.configureLowMemoryRenderer(view, lowMemory);
+      this.configureTransparentRenderer(view);
+      this.hideEmbeddedCommandLine();
+      this.bindCamera(view);
+      this.bindSelection(view);
+      this.bindWebglContextLoss(view);
 
-    this.bindDocument(manager);
-    view.zoomToFitDrawing(PARSER_TIMEOUT_MS, view.modelSpaceBtrId);
-    this.emitCamera();
-    this.events.progress.dispatch({ phase: 'ready', percentage: 100 });
-    const entityCount = this.layers.reduce((sum, layer) => sum + layer.featureCount, 0);
-    this.events.ready.dispatch({ layers: this.currentLayers, entityCount });
+      const progressDatabase = manager.curDocument.database;
+      const progressListener = (event: AcDbProgressdEventArgs) => {
+        const percentage = Number.isFinite(event.percentage) ? Math.round(event.percentage) : null;
+        const stage = String(event.stage ?? '').toLowerCase();
+        this.events.progress.dispatch({
+          phase: stage.includes('parse') ? 'parse' : 'render',
+          percentage,
+          detail: event.subStage ?? event.stage,
+        });
+      };
+      this.cleanupListeners.push(bindCadEvent(progressDatabase.events.openProgress, progressListener));
+
+      this.events.progress.dispatch({ phase: 'read', percentage: null });
+      const content = await file.arrayBuffer();
+      if (this.disposed || generation !== this.generation) return;
+
+      const opened = await manager.openDocument(file.name, content, {
+        drawNoPlotLayers: true,
+        minimumChunkSize: lowMemory ? LOW_MEMORY_MINIMUM_CHUNK_SIZE : DEFAULT_MINIMUM_CHUNK_SIZE,
+        mode: AcEdOpenMode.Read,
+        openViewMode: AcApOpenViewMode.Extents,
+        progressiveRendering: true,
+        timeout: PARSER_TIMEOUT_MS,
+      });
+      if (!opened) throw new Error('MLIGHTCAD_OPEN_FAILED');
+      if (this.disposed || generation !== this.generation) return;
+      // Document sysvars apply their background during open.
+      this.configureTransparentRenderer(view);
+
+      const database = manager.curDocument.database;
+      acdbHostApplicationServices().layoutManager.setCurrentLayoutBtrId(
+        database.tables.blockTable.modelSpace.objectId,
+        database,
+      );
+      manager.setActiveLayout(view, database);
+      // Layout activation applies its own background a second time.
+      this.configureTransparentRenderer(view);
+      this.configureTouchNavigation(view);
+      this.bindResizeSync(view);
+      this.events.progress.dispatch({ phase: 'render', percentage: null, detail: 'finalizing' });
+      const idle = await view.waitUntilIdle(PARSER_TIMEOUT_MS);
+      if (!idle) throw new Error('MLIGHTCAD_RENDER_TIMEOUT');
+      if (this.disposed || generation !== this.generation) return;
+      // Deferred text and hatch geometry can finish after document open.
+      this.configureTransparentRenderer(view);
+
+      this.bindDocument(manager);
+      view.zoomToFitDrawing(PARSER_TIMEOUT_MS, view.modelSpaceBtrId);
+      // zoomToFitDrawing uses an internal 300 ms condition waiter even when
+      // the view is already idle. Wait for that final fit before publishing
+      // the camera and ready state.
+      await new Promise((resolve) => setTimeout(resolve, FIT_CAMERA_SYNC_DELAY_MS));
+      if (this.disposed || generation !== this.generation) return;
+      this.configureTransparentRenderer(view);
+      this.emitCamera();
+      this.events.progress.dispatch({ phase: 'ready', percentage: 100 });
+      const entityCount = this.layers.reduce((sum, layer) => sum + layer.featureCount, 0);
+      this.events.ready.dispatch({ layers: this.currentLayers, entityCount });
+    } catch (error) {
+      const cancelled = this.disposed || generation !== this.generation;
+      await this.dispose();
+      if (cancelled) return;
+      throw error;
+    }
   }
 
   cancel(): Promise<void> {
@@ -179,21 +254,27 @@ export class MlightCadViewerAdapter {
   }
 
   fitDrawing(): void {
-    this.view?.zoomToFitDrawing(PARSER_TIMEOUT_MS, this.view.modelSpaceBtrId);
+    if (!this.view) return;
+    this.view.zoomToFitDrawing(PARSER_TIMEOUT_MS, this.view.modelSpaceBtrId);
+    this.scheduleCameraSync(FIT_CAMERA_SYNC_DELAY_MS, this.view);
   }
 
   centerOn(center: [number, number]): void {
     if (!this.view) return;
     this.view.flyTo({ x: center[0], y: center[1] }, this.view.internalCamera.zoom);
+    this.emitCamera();
   }
 
   setOpacity(value: number): void {
-    this.container.style.opacity = opacityToCss(normalizeCadOpacity(value));
+    this.opacity = normalizeCadOpacity(value);
+    this.container.style.removeProperty('opacity');
+    if (this.view) this.view.renderer.domElement.style.opacity = opacityToCss(this.opacity);
   }
 
   setLayerVisible(layerId: string, visible: boolean): void {
     if (!this.view) return;
     this.view.cadScene.forEachSceneLayer(layerId, (layer) => { layer.visible = visible; });
+    this.view.isDirty = true;
     this.layers = this.layers.map((layer) => layer.id === layerId ? { ...layer, visible } : layer);
     this.events.layers.dispatch(this.currentLayers);
   }
@@ -202,6 +283,7 @@ export class MlightCadViewerAdapter {
     for (const layer of this.layers) {
       this.view?.cadScene.forEachSceneLayer(layer.id, (sceneLayer) => { sceneLayer.visible = visible; });
     }
+    if (this.view) this.view.isDirty = true;
     this.layers = this.layers.map((layer) => ({ ...layer, visible }));
     this.events.layers.dispatch(this.currentLayers);
   }
@@ -209,6 +291,7 @@ export class MlightCadViewerAdapter {
   hideObject(objectId: string): void {
     this.hiddenObjectIds.add(objectId);
     this.applyObjectVisibility(objectId);
+    this.applyRenderedTextVisibility(objectId);
     this.view?.selectionSet.clear();
     this.events.selection.dispatch(null);
   }
@@ -220,12 +303,17 @@ export class MlightCadViewerAdapter {
   restoreHiddenObjects(): void {
     const hidden = [...this.hiddenObjectIds];
     this.hiddenObjectIds.clear();
-    for (const objectId of hidden) this.applyObjectVisibility(objectId);
+    for (const objectId of hidden) {
+      this.applyObjectVisibility(objectId);
+      this.applyRenderedTextVisibility(objectId);
+    }
   }
 
   setTextsVisible(visible: boolean): void {
     this.textVisible = visible;
     for (const objectId of this.textObjectIds) this.applyObjectVisibility(objectId);
+    for (const objectId of this.textSceneObjects.keys()) this.applyRenderedTextVisibility(objectId);
+    if (this.view) this.view.isDirty = true;
   }
 
   async dispose(): Promise<void> {
@@ -241,29 +329,35 @@ export class MlightCadViewerAdapter {
     this.view = null;
 
     const disposeTask = async () => {
-      while (this.cleanupListeners.length) this.cleanupListeners.pop()?.();
-
-      try {
-        view?.selectionSet.clear();
-        view?.stopAnimationLoop();
-        view?.clear();
-        view?.renderer.internalRenderer.setAnimationLoop(null);
-        view?.renderer.internalRenderer.renderLists.dispose();
-        view?.renderer.internalRenderer.dispose();
-        view?.renderer.internalRenderer.forceContextLoss();
-        await manager?.destroy();
-      } finally {
-        if (view) {
-          const renderer = view.renderer;
-          renderer.dispose();
-          renderer.domElement.remove();
-        }
-        AcDbDatabaseConverterManager.instance.unregister(AcDbFileType.DWG);
-        this.container.replaceChildren();
-        this.hiddenObjectIds.clear();
-        this.textObjectIds.clear();
-        this.layers = [];
+      while (this.cleanupListeners.length) {
+        const cleanup = this.cleanupListeners.pop();
+        if (cleanup) runCleanup(cleanup);
       }
+      for (const timer of this.cameraSyncTimers) clearTimeout(timer);
+      this.cameraSyncTimers.clear();
+
+      const renderer = view?.renderer;
+      runCleanup(() => view?.selectionSet.clear());
+      runCleanup(() => view?.stopAnimationLoop());
+      runCleanup(() => renderer?.internalRenderer.setAnimationLoop(null));
+      runCleanup(() => view?.clear());
+      runCleanup(() => renderer?.internalRenderer.renderLists.dispose());
+      runCleanup(() => renderer?.internalRenderer.dispose());
+      runCleanup(() => renderer?.internalRenderer.forceContextLoss());
+      try {
+        await manager?.destroy();
+      } catch {
+        // Continue with local DOM/GPU teardown even when upstream destroy fails.
+      }
+      runCleanup(() => renderer?.dispose());
+      runCleanup(() => renderer?.domElement.remove());
+      runCleanup(() => AcDbDatabaseConverterManager.instance.unregister(AcDbFileType.DWG));
+      runCleanup(() => this.container.replaceChildren());
+      this.container.style.removeProperty('opacity');
+      this.hiddenObjectIds.clear();
+      this.textObjectIds.clear();
+      this.textSceneObjects.clear();
+      this.layers = [];
     };
 
     this.disposePromise = disposeTask();
@@ -276,7 +370,17 @@ export class MlightCadViewerAdapter {
     view.renderer.clearAlpha = 0;
     view.renderer.internalRenderer.setClearAlpha(0);
     view.renderer.domElement.style.background = 'transparent';
+    view.renderer.domElement.style.opacity = opacityToCss(this.opacity);
     view.container.style.background = 'transparent';
+    view.isDirty = true;
+    this.container.style.removeProperty('opacity');
+  }
+
+  private configureLowMemoryRenderer(view: AcTrView2d, enabled: boolean): void {
+    if (!enabled) return;
+    // A DPR of 3 renders nine times as many pixels as DPR 1. The CAD remains
+    // geometrically exact while avoiding a large mobile GPU allocation.
+    view.renderer.internalRenderer.setPixelRatio(1);
   }
 
   private configureTouchNavigation(view: AcTrView2d): void {
@@ -284,6 +388,18 @@ export class MlightCadViewerAdapter {
     // pointer fallback in bindSelection, so mobile users do not need to swap
     // tools merely to inspect an object.
     view.mode = AcEdViewMode.PAN;
+    const isCoarsePointer = typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(pointer: coarse)').matches;
+    if (!isCoarsePointer) return;
+
+    // cad-simple-viewer 1.6.3 does not expose OrbitControls publicly. Keep
+    // the version-specific access guarded so desktop and future versions
+    // retain their native value when the internal control is unavailable.
+    const layoutView = view.activeLayoutView as unknown as TouchLayoutView | undefined;
+    if (layoutView?._cameraControls && Number.isFinite(layoutView._cameraControls.zoomSpeed)) {
+      layoutView._cameraControls.zoomSpeed = MOBILE_TOUCH_ZOOM_SPEED;
+    }
   }
 
   private hideEmbeddedCommandLine(): void {
@@ -299,6 +415,42 @@ export class MlightCadViewerAdapter {
   private bindCamera(view: AcTrView2d): void {
     const listener = () => this.emitCamera();
     this.cleanupListeners.push(bindCadEvent(view.events.viewChanged, listener));
+  }
+
+  private bindResizeSync(view: AcTrView2d): void {
+    const sync = () => this.scheduleCameraSync(0, view);
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(sync);
+      observer.observe(this.container);
+      this.cleanupListeners.push(() => observer.disconnect());
+      return;
+    }
+
+    const ownerWindow = this.container.ownerDocument.defaultView;
+    ownerWindow?.addEventListener('resize', sync);
+    this.cleanupListeners.push(() => ownerWindow?.removeEventListener('resize', sync));
+  }
+
+  private bindWebglContextLoss(view: AcTrView2d): void {
+    const canvas = view.renderer.domElement;
+    const onContextLost = (event: Event) => {
+      event.preventDefault();
+      if (this.disposed || this.view !== view) return;
+      const error = new Error('MLIGHTCAD_WEBGL_CONTEXT_LOST');
+      void this.dispose().finally(() => this.events.error.dispatch(error));
+    };
+    canvas.addEventListener('webglcontextlost', onContextLost);
+    this.cleanupListeners.push(() => canvas.removeEventListener('webglcontextlost', onContextLost));
+  }
+
+  private scheduleCameraSync(delay: number, expectedView: AcTrView2d): void {
+    const timer = setTimeout(() => {
+      this.cameraSyncTimers.delete(timer);
+      if (this.disposed || this.view !== expectedView) return;
+      this.configureTransparentRenderer(expectedView);
+      this.emitCamera();
+    }, delay);
+    this.cameraSyncTimers.add(timer);
   }
 
   private bindSelection(view: AcTrView2d): void {
@@ -396,12 +548,15 @@ export class MlightCadViewerAdapter {
   private bindDocument(manager: AcApDocManager): void {
     const document = manager.curDocument;
     const modelSpace = document.database.tables.blockTable.modelSpace;
-    const entities = [...modelSpace.newIterator()];
-    const counts = layerEntityCounts(entities);
+    const counts = new Map<string, number>();
     this.textObjectIds.clear();
-    for (const entity of entities) {
+    // Iterate the database once without materializing a second, potentially
+    // 60k+ entity array beside MLightCAD's own model and scene structures.
+    for (const entity of modelSpace.newIterator()) {
+      counts.set(entity.layer, (counts.get(entity.layer) ?? 0) + 1);
       if (TEXT_ENTITY_TYPES.has(entity.dxfTypeName.toUpperCase())) this.textObjectIds.add(entity.objectId);
     }
+    this.collectRenderedTextSceneObjects(manager.curView);
 
     const renderedLayers = manager.curView.cadScene.modelSpaceLayout?.layers;
     this.layers = document.layerStore.getLayers().map((layer) => ({
@@ -414,6 +569,33 @@ export class MlightCadViewerAdapter {
     const changed = () => this.events.layers.dispatch(this.currentLayers);
     this.cleanupListeners.push(bindCadEvent(document.layerStore.events.changed, changed));
     this.events.layers.dispatch(this.currentLayers);
+  }
+
+  private collectRenderedTextSceneObjects(view: AcTrView2d): void {
+    this.textSceneObjects.clear();
+    const renderedLayers = view.cadScene.modelSpaceLayout?.layers;
+    if (!renderedLayers) return;
+
+    for (const layer of renderedLayers.values()) {
+      // MLightCAD keeps glyph hierarchies unbatched and attaches
+      // textEntityTraits to their render roots. Inspect that runtime registry
+      // so nested INSERT/ATTRIB, DIMENSION, MLEADER and TABLE text is included.
+      const group = layer.internalObject as unknown as TextAwareBatchedGroup;
+      for (const [objectId, roots] of group._unbatchedEntities ?? []) {
+        for (const root of roots) {
+          for (const textNode of renderedTextNodes(root)) {
+            let nodes = this.textSceneObjects.get(objectId);
+            if (!nodes) {
+              nodes = new Set();
+              this.textSceneObjects.set(objectId, nodes);
+            }
+            nodes.add(textNode);
+          }
+        }
+      }
+    }
+
+    for (const objectId of this.textSceneObjects.keys()) this.applyRenderedTextVisibility(objectId);
   }
 
   private describeObject(objectId: string): SelectedCadObject | null {
@@ -432,6 +614,11 @@ export class MlightCadViewerAdapter {
     const shouldShow = !this.hiddenObjectIds.has(objectId)
       && (this.textVisible || !this.textObjectIds.has(objectId));
     this.view?.setEntitySceneVisible(objectId, shouldShow);
+  }
+
+  private applyRenderedTextVisibility(objectId: string): void {
+    const visible = this.textVisible && !this.hiddenObjectIds.has(objectId);
+    for (const node of this.textSceneObjects.get(objectId) ?? []) node.visible = visible;
   }
 
   private emitCamera(): void {

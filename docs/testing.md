@@ -1,8 +1,8 @@
-# Test- und Abnahmeplan 0.2.0
+# Test- und Abnahmeplan 0.2.1
 
 ## Automatisiert
 
-`npm test` prüft weiterhin die bestehende OpenLayers-Pipeline und zusätzlich die parallele MLightCAD-Integration.
+`npm test` prüft weiterhin die bestehende OpenLayers-Pipeline und zusätzlich die parallele MLightCAD-Integration. Die 0.2.0-Suite bleibt als Regressionstest erhalten.
 
 Bestehende Schwerpunkte:
 
@@ -31,44 +31,73 @@ Neue Schwerpunkte in 0.2.0:
 - OpenLayers-Deckkraft, „Zeichnung einpassen“, bestehende Warnungen und geschlossenen Startzustand bei bereits vorhandener Sitzungsdatei
 - vollständiges Beenden der Renderanimation und Freigabe des WebGL-Kontexts bei der Adapter-Entsorgung
 
+Neue Schwerpunkte in 0.2.1:
+
+- hybride Gestenzuständigkeit: OpenLayers bleibt ohne DWG und während des Imports interaktiv; erst ein bereiter MLightCAD-Adapter übernimmt Pan und Zoom
+- unveränderte MLightCAD-Desktopsteuerung und reduzierte Pinch-Zoom-Empfindlichkeit auf Touchgeräten
+- explizite CAD-zu-OpenLayers-Synchronisierung nach GPS-Zentrierung und „Zeichnung einpassen“
+- tiefe Zoomstufen und LUREF-Mittelpunkte außerhalb der früheren festen Ausdehnung ohne stehende Basiskarte
+- Reprojektions-Kachelbereich für den realen Referenzmittelpunkt `LUREF 1176.41 / 44976.64`
+- dauerhaft transparenter WebGL-Hintergrund mit `clearAlpha = 0`; der Deckkraftwert gilt nur für den CAD-Canvas
+- Schalten von gerenderten `TEXT`-, `MTEXT`-, `ATTRIB`- und `ATTDEF`-Merkmalen einschließlich verschachtelter Blöcke
+- iterative Layer-/Objekterfassung großer DWGs sowie identische vollständige Entsorgung nach Erfolg, Abbruch, Fehler, Dateiersatz und Viewerwechsel
+- erwartete Worker-Ablehnung nach Abbruch ohne nachträglichen Importfehler
+- sitzungsweit gemeinsame Sichtbarkeit der Geoportail-Basiskarte und klickbare Satelliten-Statuskarte in beiden Viewern
+- GPS-Genauigkeitskarte und identische gruppierte Kartenaktionen in beiden Viewern
+- gemeinsamer Layer-, CAD- und Objekt-Drawer mit Schließen über den Backdrop
+- Fokusbindung, Escape-Schließen und Fokus-Rückgabe der modalen Drawer
+- kompakter Ladespinner mit 18 Pixel Durchmesser
+- drehbarer bestehender Viewer mit Nordausrichtung und nordfixierter MLightCAD-Viewer ohne redundanten Nordpfeil
+- vollständige neue Oberflächentexte und Beschriftungen in Deutsch, Französisch und Englisch
+
 `npm run build` führt TypeScript und Vite aus. Der Produktionsbuild muss sowohl die vier bisherigen Dateien unter `dist/wasm/` als auch diese drei Dateien unter `dist/mlightcad-workers/` enthalten:
 
 - `libredwg-parser-worker.js`
 - `libredwg-web.wasm`
 - `mtext-renderer-worker.js`
 
-Releaseprüfung am 25. August 2026:
+Releaseprüfung 0.2.1 am 25. August 2026:
 
-- `npm test`: 14 Testdateien und 39 Tests bestanden
+- `npm test`: 18 Testdateien und 61 Tests bestanden
 - `npm run build`: TypeScript- und Vite-Produktionsbuild bestanden
 - alle vier Dateien unter `dist/wasm/` und alle drei Dateien unter `dist/mlightcad-workers/` vorhanden
 - Vite meldet einen Größenhinweis für den lazy geladenen MLightCAD-Chunk; dies ist eine Warnung, kein Buildfehler
+- der vorherige Stand 0.2.0 mit 14 Testdateien und 39 Tests bleibt durch dieselbe Suite abgedeckt
 
 ## Manuell vor einem Produktiveinsatz
 
 - `/` und `/mlightcad` direkt über HTTPS öffnen; der SPA-Fallback muss auch den Deep Link liefern
+- `/mlightcad` ohne gewählte DWG öffnen und Pan, Mausrad sowie Touchzoom der OpenLayers-Karte prüfen
 - eine DWG unter einer Route wählen und während sowie nach dem Import zu beiden Viewern wechseln
 - prüfen, dass die lokale Datei beim Routenwechsel erhalten bleibt und nach einem Browser-Neuladen erneut gewählt werden muss
 - gültige, ungültige und über 10 MB große DWG sowie Ersetzen, Entfernen und Abbrechen testen
 - lokale, nur online verfügbare oder während des Lesens unzugängliche Dateien auf den lokalisierten Lesefehler prüfen
 - WMTS absichtlich blockieren und den sichtbaren WMS-Fallback in beiden Viewern verifizieren
 - verweigerte und erlaubte Standortberechtigung, pausierte Folge und Wiederaufnahme prüfen
+- nach einer GPS-Zentrierung und nach „Zeichnung einpassen“ kontrollieren, dass CAD und Orthofoto ohne sichtbaren Versatz gemeinsam stehen
+- über die bisherige OpenLayers-Auflösungsgrenze hinaus zoomen; CAD und Basiskarte müssen beide weiterzoomen
+- eine Zeichnung mit Mittelpunkt außerhalb der früheren festen LUREF-Ausdehnung laden und den unverfälschten Startausschnitt prüfen
 - DE/FR/EN und Umlaute auf schmalem iPhone- und Android-Viewport kontrollieren
 - wiederholte Viewer- und Dateiwechsel auf verwaiste Canvas-Elemente, weiterlaufende Worker und verlorene WebGL-Kontexte prüfen
 - dünne CAD-Geometrie antippen; Auswahl darf einmal auslösen, Kartenpan und Pinch dürfen keine Auswahl erzeugen
 - prüfen, dass MLightCAD in `PAN` startet, eine Touchbewegung den Kameramittelpunkt ändert und die eingebettete Kommandozeile nicht sichtbar oder bedienbar ist
+- MLightCAD auf Desktop mit Maus sowie auf Mobilgeräten mit Pan und Pinch bedienen; auf Mobilgeräten darf der Zoom nicht sprunghaft reagieren
 - Layer- und „DWG & Darstellung“-Drawer getrennt öffnen; Inhalt antippen, Backdrop antippen und den jeweils erwarteten Offen-/Geschlossen-Zustand prüfen
 - nach einer Auswahl den kompakten Objekt-Drawer sowie Objekt- und Layeraktionen prüfen
-- beide Routen nebeneinander auf dieselben drei modalen Drawer und die Reihenfolge Standort → Einpassen → Layer → CAD prüfen
+- beide Routen nebeneinander auf dieselben drei modalen Drawer prüfen; Layer/CAD müssen oben und Standort/Einpassen unten über dem Site-Banner gruppiert sein
 - „Zeichnung einpassen“ und Deckkraftvorgaben auch im OpenLayers-Viewer prüfen
 - Deckkraft, Textschalter, Verborgen-Zähler und Wiederherstellung in beiden Viewern im CAD-Drawer prüfen
-- den gemeinsamen Ladespinner während beider Importe mit 20 × 20 Pixel und 2-Pixel-Rand kontrollieren
-- kompakte `ML`-/`OL`-Taste neben DE/FR/EN, Version im Kopf, nordfixierte `N`-Taste und Banner rechts mit exaktem Text prüfen
+- den gemeinsamen Ladespinner während beider Importe mit 18 Pixel Durchmesser kontrollieren
+- die Satelliten-Statuskarte in beiden Routen antippen; Orthofoto und WMS-Fallback müssen gemeinsam verschwinden beziehungsweise wieder erscheinen, die DWG muss sichtbar bleiben und der Zustand einen Viewerwechsel überstehen
+- bei aktivem Standort die eigenständige GPS-Genauigkeitskarte und den Genauigkeitskreis prüfen
+- kompakte `ML`-/`OL`-Taste neben DE/FR/EN, Version im Kopf und Banner rechts mit exaktem Text prüfen; nur der drehbare bestehende Viewer zeigt seine Nordausrichtung
+- die MLightCAD-Deckkraft bei sichtbarer und ausgeblendeter Basiskarte prüfen: unbelegte Pixel müssen vollständig transparent bleiben, nur CAD-Geometrie und -Füllungen dürfen ihre Deckkraft ändern
+- Texte in direkt gezeichneten und verschachtelten Blöcken gemeinsam aus- und einblenden
 - einen sichtbaren MLightCAD-Hinweis öffnen und die Sprache wechseln; die Meldung muss ohne erneutes Auslösen live übersetzt werden
 - im Browser-Netzwerkprotokoll bestätigen, dass keine Anfrage den DWG-Dateiinhalt überträgt
 - Netlify-Produktionsbuild in mobilem Safari und Chrome abnehmen
 
-## Erwartete reale DWG-Abnahme 0.2.0
+## Erwartete reale DWG-Abnahme 0.2.1
 
 Eine reale DWG-Fixture ist bewusst nicht im Repository enthalten und darf nicht an einen externen Dienst übertragen werden. Für jede lokal bereitgestellte 2D-DWG mit bekannten LUREF-Koordinaten werden folgende Punkte dokumentiert:
 
@@ -78,10 +107,35 @@ Eine reale DWG-Fixture ist bewusst nicht im Repository enthalten und darf nicht 
 4. Georeferenzierung: mehrere bekannte Kontrollpunkte bei eingepasster Ansicht und in mehreren Zoomstufen mit dem Geoportail-Orthofoto vergleichen. Sichtbare Verschiebung oder zoomabhängige Drift wird mit Meter- beziehungsweise Pixelabweichung protokolliert.
 5. Darstellung: repräsentative Linien, Polylinien, Bögen, Kreise, Blöcke und Texte gegen die CAD-Referenz prüfen. HATCH-Abweichungen werden ausdrücklich dem offenen [Upstream-Thema #230](https://github.com/mlightcad/cad-viewer/issues/230) zugeordnet, sofern sie diesem Fehlerbild entsprechen.
 6. Bedienung: Deckkraft bei 0, 60, 70 und 100 Prozent, einzelne und alle Layer, Auswahl, Objekt-/Layer-Ausblendung, Wiederherstellung und „Zeichnung einpassen“ prüfen.
-7. Text: `TEXT`, `MTEXT`, `ATTRIB` und `ATTDEF` auf oberster Modellbereichsebene schalten. Text in verschachtelten Blöcken wird separat als bekannte Grenze protokolliert.
+7. Text: `TEXT`, `MTEXT`, `ATTRIB` und `ATTDEF` direkt im Modellbereich und in verschachtelten Blöcken schalten. Proprietäre Textobjekte werden separat protokolliert.
 8. Lebenszyklus: laufenden Import abbrechen, Datei ersetzen, beide Routen mehrfach wechseln und anschließend prüfen, dass nur der aktuelle Canvas und Worker aktiv sind.
 
-XRefs, proprietäre benutzerdefinierte Objekte und 3D-Inhalte sind keine positiven Abnahmekriterien für 0.2.0. Ihr Fehlen oder ihre abweichende Darstellung muss als bekannte Grenze festgehalten werden. Ein erfolgreicher automatisierter Testlauf allein gilt nicht als reale DWG-Abnahme.
+XRefs, proprietäre benutzerdefinierte Objekte und 3D-Inhalte sind keine positiven Abnahmekriterien für 0.2.1. Ihr Fehlen oder ihre abweichende Darstellung muss als bekannte Grenze festgehalten werden. Ein erfolgreicher automatisierter Testlauf allein gilt nicht als reale DWG-Abnahme.
+
+## Reale Referenz-DWG für 0.2.1
+
+`2023- Bestandskanal_Junglinster.dwg` ist der verbindliche lokale Stabilitätsfall für Version 0.2.1. Die Datei ist 11,31 MiB groß und ergibt im MLightCAD-Dokument 66.816 Objekte auf 316 Layern. Sie wird nicht in Git aufgenommen und nicht an einen Server übertragen.
+
+Beim vorherigen Produktionsstand erreichte der Import nach ungefähr einer Minute die Renderphase bei 100 Prozent, bevor die Oberfläche vollständig bereit wurde. Die 0.2.1-Abnahme muss deshalb ausdrücklich bestätigen:
+
+- Der Tab stürzt weder auf Desktop noch auf einem unterstützten Mobilgerät ab.
+- Während Analyse und Rendern bleibt der Import abbrechbar; der 18-Pixel-Spinner vergrößert den Drawer nicht.
+- Nach `ready` sind alle 316 Layer bedienbar, ohne eine zweite vollständige Entitätenliste im Anwendungscode zu halten.
+- Die Zeichnung wird an ihrer absoluten LUREF-Lage dargestellt; ihr Mittelpunkt darf nicht an einer früheren festen Kartenausdehnung abgeschnitten werden.
+- Pan, Zoom, GPS-Zentrierung und Einpassen führen CAD und Orthofoto gemeinsam. Auch bei tiefem Zoom bleibt kein Renderer sichtbar zurück.
+- Basiskarte aus zeigt ausschließlich die CAD-Zeichnung auf transparentem Hintergrund. Die Deckkraft verändert nur sichtbare CAD-Objekte und Füllungen.
+- Textschalter, Layerausblendung, Objektausblendung und Wiederherstellung funktionieren auch bei diesem Dokument.
+- Nach Entfernen, Ersetzen und Viewerwechsel sind Worker, Dokumentreferenzen, Szene, Renderer und WebGL-Kontext freigegeben.
+
+Lokale Produktions-Preview-Abnahme 0.2.1 auf Desktop:
+
+- Die Datei erreichte ohne Tab-Absturz und ohne Browser-Konsolenfehler vollständig `ready`; gemeldet wurden 66.816 Objekte und 316 Layer.
+- Der Startmittelpunkt `LUREF 1176.41 / 44976.64` wurde trotz seiner Lage außerhalb der früheren festen Kartenausdehnung unverändert übernommen.
+- Eine MLightCAD-Ziehbewegung änderte den gemeinsamen Kartenmittelpunkt, ohne den Objekt-Drawer zu öffnen. „Zeichnung einpassen“ stellte den Startmittelpunkt anschließend wieder exakt her.
+- WebGL-Host und Canvas blieben transparent. Bei 70 Prozent hatte nur der Canvas `opacity: 0.7`; die Vorgaben Karte und CAD ergaben `0` beziehungsweise `1`.
+- Der Textschalter wechselte ohne Rendererfehler, der Layer-Drawer zeigte alle 316 Layer und ein Außentipp schloss ihn.
+- Die Satelliten-Card blendete die Basiskarte aus, während der CAD-Canvas sichtbar blieb. Der Zustand blieb beim kontrollierten Wechsel zu OpenLayers erhalten.
+- Der Viewerwechsel entfernte den MLightCAD-Renderhost; der bestehende Viewer zeigte während seiner Neuverarbeitung den gemeinsamen 18-Pixel-Spinner.
 
 ## Reale DWG-Abnahme 0.2.0 – Teilstand
 

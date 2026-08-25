@@ -70,13 +70,13 @@ describe('legacy viewer controls', () => {
     const actionLabels = within(actionBar).getAllByRole('button').map((button) => button.getAttribute('aria-label'));
 
     expect(actionLabels).toEqual([
-      i18n.t('locationStart'),
-      i18n.t('fitDrawing'),
       i18n.t('layers'),
       i18n.t('openCadControls'),
+      i18n.t('locationStart'),
+      i18n.t('fitDrawing'),
     ]);
 
-    fireEvent.pointerDown(dialog.closest('.sheet-shell') as HTMLElement);
+    fireEvent.click(dialog.closest('.sheet-shell') as HTMLElement);
     expect(queryByRole('dialog', { name: i18n.t('cadControlsTitle') })).not.toBeInTheDocument();
 
     fireEvent.click(getByRole('button', { name: i18n.t('openCadControls') }));
