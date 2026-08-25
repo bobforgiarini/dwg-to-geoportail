@@ -1,23 +1,40 @@
 # DWG to Geoportail
 
-Mobile-first Webprototyp zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto.
+Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Version 0.2.0 stellt zwei CAD-Viewer parallel bereit.
+
+## Viewer und Routen
+
+| Route | Viewer | Zweck |
+| --- | --- | --- |
+| `/` | OpenLayers / `@flyfish-dev/cad-viewer` | etablierte, normalisierte 2D-Darstellung |
+| `/mlightcad` | MLightCAD / Three.js | alternative direkte WebGL-Darstellung |
+
+Der Umschalter im Kopfbereich verwendet die Browser-History. Die lokal ausgewählte `File`-Referenz bleibt beim Wechsel zwischen beiden Routen in einer gemeinsamen React-Sitzung erhalten und wird vom Ziel-Viewer neu verarbeitet. Sie geht bei einem Neuladen oder Schließen der Seite verloren. Die MLightCAD-Seite und ihre Bibliotheken werden erst beim Aufruf von `/mlightcad` geladen.
 
 ## Funktionen
 
 - Geoportail `ortho_2025` per WMTS, mit `ortho_latest` per WMS als automatischem Fallback
-- browserlokaler DWG-Import im LibreDWG-WASM-Worker
-- 2D-Modellbereich mit Linien, Polylinien, Bögen, Kreisen, Ellipsen, Splines, Punkten, Texten, Schraffuren und rekursiven Blöcken
-- sichtbare DWG-Layer einzeln oder gemeinsam schalten
-- CAD-Objekte antippen, Elementtyp und Layer sehen sowie Objekt oder Layer ausblenden
-- Bedien- und Ebenenbereich als wiederverwendbare, animierte mobile Bottom-Sheets
-- kompakter Objekt-Drawer öffnet sich automatisch bei einer CAD-Auswahl
-- ausklappbare CAD-Aktionen für Texte und die Wiederherstellung aller ausgeblendeten Objekte
-- LUREF-Ausreißer automatisch ausblenden und jederzeit wiederherstellen
-- CAD-Farben mit kontrastierendem Halo über dem Orthofoto
+- browserlokaler, abbrechbarer DWG-Import in Web Workern
+- zwei unabhängig implementierte 2D-Viewer für den Vergleich realer Zeichnungen
+- bestehende OpenLayers-Pipeline für Linien, Polylinien, Bögen, Kreise, Ellipsen, Splines, Punkte, Texte, Schraffuren und rekursive Blöcke
+- automatische LUREF-Ausreißerfilterung im bestehenden Viewer
+- MLightCAD als transparenter WebGL-Layer über einer nach `EPSG:2169` reprojizierten OpenLayers-Basiskarte
+- Synchronisierung von CAD-Mittelpunkt und Metern pro Bildschirmpixel mit der Geoportail-Kamera
+- MLightCAD-Bewegung ausdrücklich im `PAN`-Modus; kurze Taps wählen weiterhin über den mobilen Auswahl-Fallback aus
+- eingebettete MLightCAD-Kommandozeile ausgeblendet, damit sie keine Karten- oder Touchbedienung abfängt
+- CAD-Deckkraft in beiden Viewern von 0 bis 100 Prozent mit den Vorgaben Karte, Mix und CAD
+- DWG-Layer einzeln oder gemeinsam schalten
+- CAD-Objekte auswählen, Objekt oder Layer ausblenden und verborgene Objekte wiederherstellen
+- dieselben modalen „DWG & Darstellung“-, Objekt- und Layer-Drawer in beiden Viewern; Tipp außerhalb schließt den offenen Drawer
+- dieselbe Vierer-Aktionsfolge in beiden Viewern: Standort, Zeichnung einpassen, Layer, CAD-Drawer
+- kompakter Objekt-Drawer; Deckkraft, Textschalter und Verborgen-Zähler liegen in beiden Viewern im gemeinsamen CAD-Drawer
+- gemeinsamer kompakter DWG-Ladespinner mit 20 × 20 Pixel und 2-Pixel-Rand
 - Live-Standort mit Genauigkeitskreis und pausierbarer Kartenfolge
-- vollständig mobile Oberfläche in Deutsch, Französisch und Englisch
-- BF.lu-Logo, Geoportail-Hinweis und Versionsinformation über `site-info-banner`
-- keine Übertragung, Speicherung, Datenbank oder Serverfunktion für DWG-Daten
+- nordfixierte Geoportail-Überlagerung mit sichtbarer `N`-Taste
+- mobile Oberfläche in Deutsch, Französisch und Englisch; offene MLightCAD-Hinweise wechseln ihre Sprache live mit
+- kompakter `ML`-/`OL`-Viewerwechsel neben der Sprachauswahl und Version im App-Kopf
+- `site-info-banner` unten rechts mit „Powered by bf.lu“ und „© Map: geoportail.lu“
+- keine DWG-Übertragung, keine Dokumentdatenbank und keine persistente Speicherung der Zeichnung
 
 ## Lokal starten
 
@@ -38,17 +55,19 @@ npm run build
 npm run preview
 ```
 
-Der Build erzeugt `dist/` einschließlich der benötigten Dateien unter `dist/wasm/`.
+Der Build erzeugt `dist/` einschließlich der bisherigen Dateien unter `dist/wasm/` und der getrennten MLightCAD-Dateien unter `dist/mlightcad-workers/`. Eine reale DWG-Fixture ist nicht im Repository enthalten; die erwartete lokale Abnahme ist in [docs/testing.md](docs/testing.md) beschrieben.
 
-## Grenzen von Version 0.1.4
+## Grenzen von Version 0.2.0
 
-- nur DWG, 2D-Modellbereich und absolute LUREF-Meterkoordinaten
-- keine Xrefs, Papierlayouts, 3D-Darstellung oder persistente Speicherung
-- Dateien über 10 MB werden gewarnt, können aber importiert und abgebrochen werden
-- Schraffuren ohne auswertbare Begrenzung sowie proprietäre Musterfüllungen werden ausgelassen und gemeldet
+- Beide Viewer erwarten 2D-Modellbereichsdaten in absoluten LUREF-Meterkoordinaten; es gibt keine automatische Georeferenzierung.
+- XRefs, proprietäre benutzerdefinierte CAD-Objekte und 3D-Darstellung gehören nicht zum abgenommenen Funktionsumfang.
+- MLightCAD kann Schraffuren abweichend darstellen; der Upstream-Fehler wird in [mlightcad/cad-viewer #230](https://github.com/mlightcad/cad-viewer/issues/230) verfolgt.
+- Der MLightCAD-Textschalter erfasst derzeit nur `TEXT`, `MTEXT`, `ATTRIB` und `ATTDEF` auf oberster Modellbereichsebene. Texte innerhalb verschachtelter Blockdefinitionen können sichtbar bleiben.
+- Dateien über 10 MB werden gewarnt, können aber weiterhin lokal importiert und abgebrochen werden.
+- MLightCAD lädt unterstützende CAD-/Schriftressourcen zur Laufzeit von der konfigurierten jsDelivr-Quelle; die DWG selbst wird nicht dorthin gesendet.
 
-Weitere Informationen: [Architektur](docs/architecture.md), [Netlify](docs/netlify.md), [Tests](docs/testing.md) und [Release 0.1.4](docs/releases/0.1.4.md).
+Weitere Informationen: [Architektur](docs/architecture.md), [Netlify](docs/netlify.md), [Tests](docs/testing.md) und [Release 0.2.0](docs/releases/0.2.0.md).
 
 ## Lizenz und Quellcode
 
-Dieses Projekt ist unter `AGPL-3.0-only` lizenziert. Bei öffentlichem Betrieb muss der vollständige, zur bereitgestellten Version passende Quellcode für alle Nutzer zugänglich bleiben. Drittanbieterhinweise stehen in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Die Anwendung ist unter `AGPL-3.0-only` lizenziert. MLightCAD-Kernpakete stehen unter MIT; der verwendete LibreDWG-Konverter steht unter `GPL-3.0`. Bei öffentlichem Betrieb muss der vollständige, zur bereitgestellten Version passende Quellcode für alle Nutzer zugänglich bleiben. Details stehen in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

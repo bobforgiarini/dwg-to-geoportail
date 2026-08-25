@@ -1,8 +1,10 @@
-# Test- und Abnahmeplan
+# Test- und Abnahmeplan 0.2.0
 
 ## Automatisiert
 
-`npm test` prüft:
+`npm test` prüft weiterhin die bestehende OpenLayers-Pipeline und zusätzlich die parallele MLightCAD-Integration.
+
+Bestehende Schwerpunkte:
 
 - LUREF-Roundtrip und Lage eines bekannten LUREF-Referenzpunkts
 - WMTS-Layer, Matrix-Set, Dienst-URL und WMS-Fallback
@@ -10,26 +12,92 @@
 - Blocktranslation, Layervererbung und Zyklenerkennung
 - Kurvenapproximation sowie Warnungen für 3D und Papierbereich
 - Schraffuren aus normalisierten und LibreDWG-rohen Begrenzungspfaden
-- stabile CAD-Objekt-IDs und automatische LUREF-Ausreißerfilterung
-- Kennzeichnung von CAD-Texten für den globalen Sichtbarkeitsschalter
-- Zählung der Vereinigungsmenge aus einzeln und über Ebenen ausgeblendeten CAD-Objekten
-- zentrale UI-Texte in Deutsch, Französisch und Englisch
+- stabile CAD-Objekt-IDs, automatische LUREF-Ausreißerfilterung und Sichtbarkeitszählung
+- zentrale UI-Texte einschließlich Umlauten in Deutsch, Französisch und Englisch
 
-`npm run build` führt zuerst TypeScript aus, erzeugt den Produktionsbuild und kopiert Worker/WASM nach `dist/wasm`.
+Neue Schwerpunkte in 0.2.0:
+
+- Zuordnung von `/` und `/mlightcad`, Links sowie History-Navigation
+- Erhalt derselben lokalen `File`-Referenz beim Viewerwechsel und Revisionswechsel beim Ersetzen oder Entfernen
+- Übergabe von WCS-Mittelpunkt und Metern pro CSS-Pixel durch die MLightCAD-Kamerabrücke
+- Deckkraftvorgaben, Rundung und Begrenzung auf 0 bis 100 Prozent
+- einzelnes und gemeinsames Schalten von MLightCAD-Layern
+- Beschreibung einer Auswahl, Ausblenden und Wiederherstellen eines Objekts
+- `AcEdViewMode.PAN`, ausgeblendete eingebettete Kommandozeile und mobiler Pointer-Tap-Fallback mit 12-Pixel-Trefferradius
+- Unterdrückung der Tap-Auswahl nach Ziehen und bei bereits erfolgter eingebauter Auswahl
+- Schließen eines modalen `BottomSheet` über den gemeinsamen Backdrop, ohne Pointer-Ereignisse aus dem Inhalt als Außentipp zu behandeln
+- kompakte `ML`-/`OL`-Taste und History-Wechsel im App-Kopf
+- identische Vierer-Aktionsreihenfolge und denselben modalen CAD-Drawer im OpenLayers- und MLightCAD-Viewer
+- OpenLayers-Deckkraft, „Zeichnung einpassen“, bestehende Warnungen und geschlossenen Startzustand bei bereits vorhandener Sitzungsdatei
+- vollständiges Beenden der Renderanimation und Freigabe des WebGL-Kontexts bei der Adapter-Entsorgung
+
+`npm run build` führt TypeScript und Vite aus. Der Produktionsbuild muss sowohl die vier bisherigen Dateien unter `dist/wasm/` als auch diese drei Dateien unter `dist/mlightcad-workers/` enthalten:
+
+- `libredwg-parser-worker.js`
+- `libredwg-web.wasm`
+- `mtext-renderer-worker.js`
+
+Releaseprüfung am 25. August 2026:
+
+- `npm test`: 14 Testdateien und 39 Tests bestanden
+- `npm run build`: TypeScript- und Vite-Produktionsbuild bestanden
+- alle vier Dateien unter `dist/wasm/` und alle drei Dateien unter `dist/mlightcad-workers/` vorhanden
+- Vite meldet einen Größenhinweis für den lazy geladenen MLightCAD-Chunk; dies ist eine Warnung, kein Buildfehler
 
 ## Manuell vor einem Produktiveinsatz
 
-- gültige, ungültige und über 10 MB große DWG testen
-- Ersetzen, Entfernen und Abbrechen während der Verarbeitung prüfen
-- reale DWG mit bekannten LUREF-Kontrollpunkten und Layernamen abgleichen
-- 2D-Elemente, Textpositionen, verschachtelte Blöcke und Farben kontrollieren
-- verweigerte und erlaubte Standortberechtigung testen
-- Folgen durch Kartenbewegung pausieren und anschließend fortsetzen
-- WMTS absichtlich blockieren und sichtbaren WMS-Fallback verifizieren
+- `/` und `/mlightcad` direkt über HTTPS öffnen; der SPA-Fallback muss auch den Deep Link liefern
+- eine DWG unter einer Route wählen und während sowie nach dem Import zu beiden Viewern wechseln
+- prüfen, dass die lokale Datei beim Routenwechsel erhalten bleibt und nach einem Browser-Neuladen erneut gewählt werden muss
+- gültige, ungültige und über 10 MB große DWG sowie Ersetzen, Entfernen und Abbrechen testen
+- lokale, nur online verfügbare oder während des Lesens unzugängliche Dateien auf den lokalisierten Lesefehler prüfen
+- WMTS absichtlich blockieren und den sichtbaren WMS-Fallback in beiden Viewern verifizieren
+- verweigerte und erlaubte Standortberechtigung, pausierte Folge und Wiederaufnahme prüfen
 - DE/FR/EN und Umlaute auf schmalem iPhone- und Android-Viewport kontrollieren
-- Netlify-Produktionsbuild über HTTPS in mobilem Safari und Chrome abnehmen
+- wiederholte Viewer- und Dateiwechsel auf verwaiste Canvas-Elemente, weiterlaufende Worker und verlorene WebGL-Kontexte prüfen
+- dünne CAD-Geometrie antippen; Auswahl darf einmal auslösen, Kartenpan und Pinch dürfen keine Auswahl erzeugen
+- prüfen, dass MLightCAD in `PAN` startet, eine Touchbewegung den Kameramittelpunkt ändert und die eingebettete Kommandozeile nicht sichtbar oder bedienbar ist
+- Layer- und „DWG & Darstellung“-Drawer getrennt öffnen; Inhalt antippen, Backdrop antippen und den jeweils erwarteten Offen-/Geschlossen-Zustand prüfen
+- nach einer Auswahl den kompakten Objekt-Drawer sowie Objekt- und Layeraktionen prüfen
+- beide Routen nebeneinander auf dieselben drei modalen Drawer und die Reihenfolge Standort → Einpassen → Layer → CAD prüfen
+- „Zeichnung einpassen“ und Deckkraftvorgaben auch im OpenLayers-Viewer prüfen
+- Deckkraft, Textschalter, Verborgen-Zähler und Wiederherstellung in beiden Viewern im CAD-Drawer prüfen
+- den gemeinsamen Ladespinner während beider Importe mit 20 × 20 Pixel und 2-Pixel-Rand kontrollieren
+- kompakte `ML`-/`OL`-Taste neben DE/FR/EN, Version im Kopf, nordfixierte `N`-Taste und Banner rechts mit exaktem Text prüfen
+- einen sichtbaren MLightCAD-Hinweis öffnen und die Sprache wechseln; die Meldung muss ohne erneutes Auslösen live übersetzt werden
+- im Browser-Netzwerkprotokoll bestätigen, dass keine Anfrage den DWG-Dateiinhalt überträgt
+- Netlify-Produktionsbuild in mobilem Safari und Chrome abnehmen
 
-Eine reale DWG-Fixture ist bewusst nicht im Repository enthalten und wird nach Bereitstellung separat abgenommen.
+## Erwartete reale DWG-Abnahme 0.2.0
+
+Eine reale DWG-Fixture ist bewusst nicht im Repository enthalten und darf nicht an einen externen Dienst übertragen werden. Für jede lokal bereitgestellte 2D-DWG mit bekannten LUREF-Koordinaten werden folgende Punkte dokumentiert:
+
+1. Referenz: Dateikennung oder lokaler Hash, DWG-Erzeuger/-Version, Referenzansicht und bekannte LUREF-Kontrollpunkte festhalten.
+2. Bestehender Viewer: Datei unter `/` öffnen und Layer, darstellbare Objekte, Warnungen sowie Startausschnitt notieren.
+3. MLightCAD: ohne neue Dateiauswahl zu `/mlightcad` wechseln; erfolgreicher Import, Modellbereich, Layernamen und plausible Ausdehnung prüfen. Abweichende Objektzahlen werden erklärt, nicht automatisch als Fehler gewertet.
+4. Georeferenzierung: mehrere bekannte Kontrollpunkte bei eingepasster Ansicht und in mehreren Zoomstufen mit dem Geoportail-Orthofoto vergleichen. Sichtbare Verschiebung oder zoomabhängige Drift wird mit Meter- beziehungsweise Pixelabweichung protokolliert.
+5. Darstellung: repräsentative Linien, Polylinien, Bögen, Kreise, Blöcke und Texte gegen die CAD-Referenz prüfen. HATCH-Abweichungen werden ausdrücklich dem offenen [Upstream-Thema #230](https://github.com/mlightcad/cad-viewer/issues/230) zugeordnet, sofern sie diesem Fehlerbild entsprechen.
+6. Bedienung: Deckkraft bei 0, 60, 70 und 100 Prozent, einzelne und alle Layer, Auswahl, Objekt-/Layer-Ausblendung, Wiederherstellung und „Zeichnung einpassen“ prüfen.
+7. Text: `TEXT`, `MTEXT`, `ATTRIB` und `ATTDEF` auf oberster Modellbereichsebene schalten. Text in verschachtelten Blöcken wird separat als bekannte Grenze protokolliert.
+8. Lebenszyklus: laufenden Import abbrechen, Datei ersetzen, beide Routen mehrfach wechseln und anschließend prüfen, dass nur der aktuelle Canvas und Worker aktiv sind.
+
+XRefs, proprietäre benutzerdefinierte Objekte und 3D-Inhalte sind keine positiven Abnahmekriterien für 0.2.0. Ihr Fehlen oder ihre abweichende Darstellung muss als bekannte Grenze festgehalten werden. Ein erfolgreicher automatisierter Testlauf allein gilt nicht als reale DWG-Abnahme.
+
+## Reale DWG-Abnahme 0.2.0 – Teilstand
+
+Im Produktions-Preview bei 390 × 844 Pixel wurde `/mlightcad` mit der lokal verfügbaren `doheem.dwg` (185.375 Byte) geprüft:
+
+- MLightCAD analysierte und renderte die Datei mit 47 Layern und 7 Objekten auf oberster Modellbereichsebene.
+- Die Überlagerung lag am geprüften Punkt `LUREF 81027.13 / 83979.27` über dem Geoportail-Orthofoto. Da nur ein Punkt protokolliert wurde, belegt dies noch keine vollständige Mehrpunkt- oder Zoomdrift-Abnahme.
+- Die Deckkraftvorgaben sowie das Aus- und Einblenden eines Layers funktionierten.
+- Eine Touchbewegung im `PAN`-Modus änderte den CAD-/Kartenmittelpunkt; die LUREF-Überlagerung blieb dabei gemeinsam geführt.
+- Ein kurzer Tap wählte ein `LWPOLYLINE`-Objekt aus. Der kompakte Objekt-Drawer zeigte Typ und Layer; der separate Layer-Drawer ließ sich unabhängig öffnen.
+- Das ausgewählte Objekt wurde ausgeblendet und anschließend über die Wiederherstellung im CAD-Drawer wieder sichtbar gemacht.
+- Der Wechsel MLightCAD → bestehender Viewer → MLightCAD behielt dieselbe lokale `File`-Referenz und verarbeitete sie in jeder Pipeline neu. Der bestehende Viewer meldete 237 Features und 13 gerenderte Layer; MLightCAD anschließend wieder 47 Layer und 7 oberste Szenenobjekte.
+
+Verschachtelte Texte, HATCH-Referenztreue und die vollständige Mehrpunkt-/Zoomdriftprüfung waren nicht Bestandteil dieses Teilstands und bleiben vor einem Produktiveinsatz offen.
+
+Weitere bekannte Testdateien waren auf diesem Rechner nicht inhaltlich verfügbar: `büro.dwg` und `181013-15-002021.dwg` lagen nur als OneDrive-Onlineplatzhalter vor (`NotReadableError`; Cloud-Dateianbieter nicht aktiv), der Pfad zu `251068-11-002021a.dwg` war nicht verfügbar. Diese Umgebungsfehler sind keine Aussage über die Parserkompatibilität. Keine dieser Dateien wurde hochgeladen oder in das Repository aufgenommen.
 
 ## Reale DWG-Abnahme 0.1.1
 

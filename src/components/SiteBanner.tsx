@@ -1,13 +1,13 @@
 export function SiteBanner() {
   return (
     <site-info-banner
-      position="bottom-left"
+      position="bottom-right"
       size="md"
       theme="light"
-      headline="Powered by BF.lu"
-      details="Geoportail Luxembourg · v0.1.4"
+      headline="Powered by bf.lu"
+      details="© Map: geoportail.lu"
       logo-src="/assets/logo-transparent.png"
-      logo-alt="BF.lu"
+      logo-alt="bf.lu"
       href="https://geoportail.lu"
       collapse-after={30000}
     />

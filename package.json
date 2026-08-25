@@ -1,7 +1,7 @@
 {
   "name": "dwg-to-geoportail",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.2.0",
   "type": "module",
   "license": "AGPL-3.0-only",
   "scripts": {
@@ -13,14 +13,21 @@
   },
   "dependencies": {
     "@flyfish-dev/cad-viewer": "0.8.0",
+    "@mlightcad/cad-simple-viewer": "1.6.3",
+    "@mlightcad/data-model": "1.14.2",
+    "@mlightcad/libredwg-converter": "3.14.2",
+    "@mlightcad/mtext-renderer": "0.12.4",
+    "@mlightcad/three-renderer": "1.6.3",
     "i18next": "25.5.2",
+    "lodash-es": "4.17.21",
     "lucide-react": "0.544.0",
     "ol": "10.6.1",
     "proj4": "2.19.10",
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "react-i18next": "15.7.3",
-    "site-info-banner": "file:vendor/site-info-banner-1.1.0.tgz"
+    "site-info-banner": "file:vendor/site-info-banner-1.1.0.tgz",
+    "three": "0.172.0"
   },
   "devDependencies": {
     "@netlify/vite-plugin": "2.5.10",

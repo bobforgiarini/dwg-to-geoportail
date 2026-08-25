@@ -1,49 +1,93 @@
-# Architektur 0.1.4
+# Architektur 0.2.0
 
 ## Überblick
 
-Die Anwendung ist eine statisch auslieferbare React-Single-Page-App. Sie besitzt weder Backend noch Datenbank. Eine ausgewählte DWG wird als `Uint8Array` an einen Web Worker übergeben, dort mit LibreDWG-WASM gelesen, als normalisiertes CAD-Dokument zurückgegeben und anschließend in OpenLayers-Features umgewandelt.
+Die Anwendung ist eine statisch auslieferbare React-Single-Page-App ohne Backend, Upload-Endpunkt oder Anwendungsdatenbank. Version 0.2.0 bindet zwei CAD-Pipelines unter einer gemeinsamen Oberfläche ein:
 
-## Datenfluss
+| Route | CAD-Pipeline | Ausgabe |
+| --- | --- | --- |
+| `/` | `@flyfish-dev/cad-viewer` und die anwendungseigene Normalisierung | OpenLayers-Vektorfeatures |
+| `/mlightcad` | MLightCAD, LibreDWG-Konverter und Three.js | transparenter WebGL-Canvas |
 
-1. Der Nutzer wählt lokal eine `.dwg` aus.
-2. `importDwg` startet einen neuen `DwgWorkerClient`; ein vorheriger Import wird beendet.
-3. Der Worker lädt `/wasm/libredwg-web.wasm` und normalisiert die Zeichnung. Parser-Rohdaten bleiben im Arbeitsspeicher verfügbar, damit HATCH-Begrenzungspfade ausgewertet werden können.
-4. `convertCadDocument` löst INSERT/Block-Verweise rekursiv bis maximal 32 Ebenen auf.
-5. Geometrien werden zunächst im WCS der DWG als LUREF behandelt. Die LUREF-Ausdehnung wird vor der Transformation ermittelt; die dichteste plausible Modellgruppe bestimmt den Startausschnitt.
-6. OpenLayers transformiert die Geometrien von `EPSG:2169` nach `EPSG:3857`.
-7. Eine gemeinsame Vektorquelle rendert alle Features. Die Style-Funktion prüft `layerId`, automatisch erkannte Ausreißer und manuell ausgeblendete Objekt-IDs.
-8. Beim Ersetzen oder Entfernen werden alte Features und Dateireferenzen verworfen.
+`RootApp` hält beide Viewer im `CadSessionProvider`. Die MLightCAD-Seite wird mit `React.lazy` erst bei Bedarf importiert; damit gehören ihre großen Laufzeitabhängigkeiten nicht zum initialen OpenLayers-Einstieg.
 
-DWG-Bytes und abgeleitete Geometrien leben nur im Arbeitsspeicher der laufenden Browser-Sitzung.
+## Routing und gemeinsame Dateisitzung
 
-## Projektionen und Basiskarte
+`viewerRouting` ordnet `/` dem bestehenden Viewer und `/mlightcad` dem MLightCAD-Viewer zu. Der Kopfbereich wechselt mit der History API; `popstate` unterstützt Vor- und Zurücknavigation. Ein unbekannter Pfad zeigt bewusst den bestehenden Viewer.
 
-- DWG/WCS und Anzeige der Koordinaten: `EPSG:2169` (LUREF)
-- Kartenansicht: `EPSG:3857`
-- Standard: WMTS `ortho_2025`, Matrix-Set `GLOBAL_WEBMERCATOR_4_V3`
-- Fallback: WMS `ortho_latest`
+Der Provider hält nur die originale lokale `File`-Referenz, eine Revisionsnummer und den aktiven Viewer im React-Arbeitsspeicher. Beim Viewerwechsel bleibt die `File` erhalten, der neu aktive Viewer verarbeitet sie jedoch mit seiner eigenen Pipeline. Ein Neuladen, Schließen der Seite oder explizites Entfernen verwirft die Sitzung. Es gibt keine Speicherung der DWG in `localStorage`, IndexedDB, einer Datenbank oder auf einem Server.
 
-Die Proj4-Definition wurde aus der bestehenden Desktop-Integration übernommen. Die Haupt-Codebase wurde dabei ausschließlich gelesen.
+## Bestehende OpenLayers-Pipeline (`/`)
 
-## CAD-Unterstützung
+1. `importDwg` startet einen `DwgWorkerClient`; ein vorheriger Import wird beendet.
+2. Der Worker lädt die Dateien unter `/wasm/` und normalisiert die DWG. Parser-Rohdaten bleiben nur im Arbeitsspeicher verfügbar, damit HATCH-Begrenzungspfade ausgewertet werden können.
+3. `convertCadDocument` löst INSERT-/Block-Verweise rekursiv bis maximal 32 Ebenen auf.
+4. Das WCS der DWG wird als `EPSG:2169` behandelt. Die dichteste plausible LUREF-Modellgruppe bestimmt den Startausschnitt.
+5. OpenLayers transformiert die Geometrien nach `EPSG:3857` und rendert sie mit Layer-, Text-, Auswahl- und Sichtbarkeitszuständen.
 
-Direkt umgesetzt sind Linien, Polylinien einschließlich Bulge-Bögen, Kreise, Bögen, Ellipsen, Splines als Stützpunktapproximation, Punkte, Texte, Solid/Hatch-Umrisse und rekursive Blöcke. HATCH-Begrenzungen werden sowohl aus dem normalisierten Dokument als auch aus LibreDWG-Rohpfaden gelesen; nicht rekonstruierbare Schraffuren werden gemeldet. Papierbereich wird verworfen. Z-Werte werden auf XY abgeflacht und gemeldet. Fehlende oder zyklische Blöcke sowie unbekannte Elementtypen erzeugen Hinweise.
+Diese Pipeline bleibt für Vergleich und Rückfall unverändert verfügbar.
 
-Jedes Feature besitzt eine stabile Objekt-ID, einen CAD-Typ und eine `layerId`. Ein Kartentipp selektiert das oberste sichtbare CAD-Feature und öffnet einen kompakten Objekt-Drawer. Die Auswahl kann einzeln oder zusammen mit ihrem Layer ausgeblendet werden. Sobald nationale LUREF-Objekte vorhanden sind, werden Objekte mit Mittelpunkt außerhalb `[30000, 50000, 130000, 160000]` zunächst ausgeblendet; der Nutzer kann sie vollständig wiederherstellen.
+Direkt normalisiert werden Linien, Polylinien einschließlich Bulge-Bögen, Kreise, Bögen, Ellipsen, Splines als Stützpunktapproximation, Punkte, Texte, Solid-/Hatch-Umrisse und rekursive Blöcke. Nicht rekonstruierbare Schraffuren, Papierbereich, 3D-/Z-Werte, fehlende oder zyklische Blöcke und unbekannte Elementtypen erzeugen Hinweise. Jedes OpenLayers-Feature besitzt eine stabile Objekt-ID, einen CAD-Typ und eine `layerId`. Der Viewer unterstützt Auswahl, Objekt-/Layer-Ausblendung, globale Textsichtbarkeit und die Wiederherstellung automatisch erkannter LUREF-Ausreißer.
 
-Textfeatures tragen zusätzlich `isCadText`. Die gemeinsame Style-Funktion kann damit alle TEXT-/MTEXT-Features unabhängig von ihren Layern in einem Schritt ausblenden.
+## MLightCAD-Pipeline (`/mlightcad`)
 
-## Mobile Ebenen und Drawer
+1. `MlightCadCanvas` erzeugt für die aktuelle Dateirevision einen `MlightCadViewerAdapter`.
+2. Der Adapter prüft den LibreDWG- und MTEXT-Worker unter `/mlightcad-workers/`.
+3. `CancellableLibreDwgConverter` liest die lokale Datei als `ArrayBuffer` und analysiert sie in genau einem Worker. Fortschritt wird für Workerprüfung, Lesen, Analysieren, Rendern und Bereitschaft gemeldet.
+4. MLightCAD öffnet das Dokument lesend, aktiviert ausdrücklich den Modellbereich und rendert progressiv in einen transparenten Three.js-/WebGL-Canvas.
+5. Nach dem Aktivieren des Layouts setzt der Adapter die Ansicht ausdrücklich auf `AcEdViewMode.PAN`. Pan und Pinch besitzen damit die Bewegung; ein kurzer Tap bleibt dem Auswahl-Fallback vorbehalten.
+6. Die eingebettete Desktop-Kommandozeile wird verborgen und für Pointer-Ereignisse deaktiviert, damit sie die mobile Kartenbedienung nicht überlagert.
+7. Der Adapter leitet Layer mit Sichtbarkeit und Objektzahl, Auswahlinformationen und den Fertigzustand an die gemeinsame React-Oberfläche weiter.
 
-Der Datei-, Auswahl- und Hinweisbereich sowie der Layer-Dialog verwenden denselben animierten `BottomSheet`-Baustein. Der Haupt-Drawer kennt die Zustände geschlossen, kompakte Objektauswahl und vollständig geöffnet. Im geschlossenen Zustand bleiben Wiederöffnungstaste, Karte und CAD-Sichtbarkeitsmenü erreichbar. Dieses Menü klappt nach links auf und enthält den Textschalter sowie die Wiederherstellung aller einzeln, automatisch oder über Ebenen ausgeblendeten Objekte.
+Der Konverter kann den Parser-Worker bei Abbruch sofort zerstören. Die MLightCAD-Bibliothek verwendet einen globalen Dokumentmanager und eine globale DWG-Konverterregistrierung; deshalb verhindert eine Entsorgungsbarriere, dass eine neue Instanz startet, bevor die vorherige vollständig freigegeben wurde.
 
-`site-info-banner` 1.1.0 wird unverändert als Web Component eingebunden und verwendet das bereitgestellte BF.lu-Logo. Das Banner enthält außerdem den sichtbaren Geoportail-Diensthinweis mit Link; die separate OpenLayers-Attribution ist deaktiviert. Das geprüfte Release-Archiv liegt versioniert unter `vendor/`, weil das Paket nicht im öffentlichen npm-Registry verfügbar ist.
+## `EPSG:2169`-Overlay und Kamerabrücke
 
-## Standort
+Die MLightCAD-Zeichnungskoordinaten werden ohne affine Verschiebung oder automatische Georeferenzierung als LUREF-Meter (`EPSG:2169`) interpretiert. Die darunterliegende OpenLayers-Ansicht läuft ebenfalls in `EPSG:2169`; die Geoportail-Quellen bleiben in `EPSG:3857` und werden durch OpenLayers reprojiziert.
 
-`watchPosition` liefert laufende WGS84-Positionen. OpenLayers transformiert sie nach Web Mercator. Marker und Genauigkeitskreis liegen in einer eigenen Vektorebene. Eine manuelle Kartenbewegung setzt den Follow-Zustand auf `paused`; der Nutzer kann folgen, stoppen oder wieder aufnehmen.
+MLightCAD ist die interaktive Ebene. Bei einer CAD-Kameraänderung liest `cameraBridge` den WCS-Mittelpunkt und berechnet aus zwei benachbarten Bildschirmpunkten die Zeichnungsmeter pro CSS-Pixel. Diese Werte setzen Mittelpunkt und Auflösung der nicht interaktiven Geoportail-Karte; deren Drehung bleibt bei 0. Eine sichtbare `N`-Taste setzt diese Nordausrichtung nochmals explizit. Standortkoordinaten werden von `EPSG:4326` nach `EPSG:2169` transformiert und können die CAD-Kamera zentrieren.
 
-## Sicherheits- und Datenschutzgrenze
+Damit die Überlagerung fachlich belastbar ist, muss eine reale DWG mit bekannten LUREF-Kontrollpunkten in mehreren Zoomstufen abgenommen werden. Die automatisierten Tests prüfen die mathematische Übergabe, ersetzen aber keine visuelle Georeferenzierungsprüfung.
 
-Es gibt keine Upload-URL, API, Function, Datenbank oder Browserpersistenz. Geoportail erhält ausschließlich normale Kartenkachel-Anfragen; DWG-Inhalte werden nicht an Geoportail oder Netlify gesendet.
+## MLightCAD-Bedienzustände
+
+- Der Deckkraftregler setzt die Opazität des gesamten CAD-Canvas von 0 bis 100 Prozent; Vorgaben sind Karte `0`, Mix `60` und CAD `100`, Standard ist `70`.
+- Layer werden in den MLightCAD-Szenen einzeln oder gemeinsam sichtbar beziehungsweise unsichtbar gesetzt.
+- Eine Auswahl liefert Objekt-ID, CAD-Typ und Layer. Einzelne Objekte werden über die Wiederherstellung im CAD-Drawer erneut sichtbar; Layer lassen sich im Layer-Drawer einzeln oder vollständig einblenden. Wird die Objekt-Wiederherstellung ausgeführt, schaltet sie zusätzlich alle Layer ein.
+- Für mobile Pointer-Taps ergänzt der Adapter die eingebaute Mausauswahl um einen verzögerten Fallback mit 12-Pixel-Trefferradius. Bewegung, Mehrfingerbedienung sowie Shift-, Ctrl- oder Meta-Taste unterdrücken ihn; eine bereits erfolgte eingebaute Auswahl wird nicht doppelt ausgelöst.
+- Der Textschalter indexiert `TEXT`, `MTEXT`, `ATTRIB` und `ATTDEF` aus dem obersten Modellbereich. Text in verschachtelten Blockdefinitionen wird dadurch nicht zuverlässig erfasst.
+- MLightCAD speichert Hinweise als i18n-Schlüssel und übersetzt sie erst beim Rendern. Eine bereits offene Meldung aktualisiert sich deshalb beim Sprachwechsel zwischen DE, FR und EN.
+
+## Gemeinsame Drawer- und Kartenbedienung
+
+- Beide Viewer verwenden dieselben Komponenten `CadControlSheet`, `SelectionPanel`, `LayerSheet` und `BottomSheet`.
+- „DWG & Darstellung“, Objekt und Layer sind modale Drawer mit derselben Backdrop-Logik. Beim Öffnen über die Kartenaktionen wird der jeweils andere Steuer-Drawer geschlossen; Pointer-Down außerhalb des Inhalts schließt den offenen Drawer. Eine Auswahl öffnet den kompakten Objekt-Drawer.
+- Der CAD-Drawer bündelt lokale Datei, Importstatus, Deckkraft, Textsichtbarkeit, Verborgen-Zähler und Wiederherstellung. Sein Aktionsknopf zeigt die Zahl verborgener Objekte zusätzlich als Badge.
+- Die schwebende Aktionsleiste besitzt in beiden Viewern exakt dieselbe Reihenfolge: Standort, Zeichnung einpassen, Layer, CAD-Drawer.
+- Der bestehende OpenLayers-Viewer stellt `fitDrawing()` über seinen `MapCanvas`-Handle bereit und setzt die 0–100%-Deckkraft direkt auf seiner CAD-Vektorebene. MLightCAD setzt denselben UI-Wert auf den transparenten WebGL-Container.
+- Während beide Pipelines eine DWG lesen, zeigt das gemeinsame `CadControlSheet` denselben kompakten Spinner mit 20 × 20 Pixel und 2-Pixel-Rand.
+- Standortlogik, Dateireferenz, App-Kopf und Site-Banner sind ebenfalls gemeinsam; parserspezifischer Fortschritt, Warnungen und Rendererzustand bleiben in der jeweiligen Route.
+
+Der `AppHeader` zeigt die Version `v0.2.0` und direkt neben der Sprache genau eine kompakte `ML`-/`OL`-Taste für den Ziel-Viewer. Das `site-info-banner` 1.1.0 steht unten rechts, zeigt „Powered by bf.lu“ und „© Map: geoportail.lu“ und verlinkt Geoportail. Ein Betreiber muss den für eine öffentliche AGPL-Bereitstellung erforderlichen Zugang zum passenden Quellcode zusätzlich sicherstellen.
+
+## Lebenszyklus und Entsorgung
+
+Beim Ersetzen oder Entfernen einer Datei, beim Routenwechsel und beim Unmount werden laufende Parserarbeiten abgebrochen und alle Adapter-Listener entfernt. Der Adapter leert Auswahl und Szene, beendet die Animationsschleife, gibt Renderlisten und Renderer frei, verliert den WebGL-Kontext, zerstört den MLightCAD-Dokumentmanager, entfernt den global registrierten DWG-Konverter und leert den Container. Abgeleitete CAD-Daten werden nicht zwischen den Viewern geteilt.
+
+## Statische und externe Laufzeitressourcen
+
+- `/wasm/`: Worker-/WASM-Dateien des bestehenden Viewers
+- `/mlightcad-workers/`: `libredwg-parser-worker.js`, `libredwg-web.wasm` und `mtext-renderer-worker.js`
+- `https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/`: von MLightCAD konfigurierte unterstützende CAD-/Schriftressourcen
+- Geoportail: normale WMTS-/WMS-Kachelabrufe
+
+Nur die statischen Viewerdateien werden mit der App gebaut. Die ausgewählte DWG wird weder an Geoportail, jsDelivr noch Netlify gesendet. Die App besitzt keine Function, API, Dokumentdatenbank oder persistente Zeichnungsablage.
+
+## Bekannte Grenzen
+
+- Beide Routen setzen absolute LUREF-Koordinaten voraus; lokale Zeichnungskoordinaten werden nicht automatisch eingepasst.
+- Die MLightCAD-Integration verwendet nur den 2D-Modellbereich. Papierlayouts und 3D-Darstellung sind nicht Teil der Abnahme.
+- XRefs werden nicht dargestellt. Proprietäre benutzerdefinierte Objekte können vom LibreDWG-basierten Parser nicht ausgewertet und deshalb ausgelassen werden.
+- HATCH-Füllungen können gegenüber CAD-Referenzsoftware abweichen; siehe das offene Upstream-Thema [mlightcad/cad-viewer #230](https://github.com/mlightcad/cad-viewer/issues/230).
+- Der globale MLightCAD-Textschalter ist auf Textobjekte der obersten Modellbereichsebene begrenzt.
+- Objekt- und Layerzahlen beider Viewer sind nicht zwingend identisch, weil ihre Parser und Renderobjektmodelle unterschiedlich zählen.

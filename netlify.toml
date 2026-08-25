@@ -16,3 +16,13 @@
   for = "/wasm/*.wasm"
   [headers.values]
     Content-Type = "application/wasm"
+
+[[headers]]
+  for = "/mlightcad-workers/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/mlightcad-workers/*.wasm"
+  [headers.values]
+    Content-Type = "application/wasm"

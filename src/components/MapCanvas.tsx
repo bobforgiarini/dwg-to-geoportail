@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Navigation2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import Map from 'ol/Map';
@@ -23,6 +23,7 @@ import type Geometry from 'ol/geom/Geometry';
 import 'ol/ol.css';
 import { createBasemapLayer } from '../lib/geoportail';
 import { mapToLuref } from '../lib/crs';
+import { normalizeCadOpacity } from '../lib/mlightcad/opacity';
 import type { BasemapMode, DwgImportResult, LocationTrackingState, SelectedCadObject } from '../types/models';
 
 interface Props {
@@ -37,9 +38,14 @@ interface Props {
   selectedFeatureId: string | null;
   onCadSelect: (selection: SelectedCadObject | null) => void;
   cadTextVisible: boolean;
+  cadOpacity: number;
 }
 
-export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsError, onManualMove, onCoordinate, hiddenFeatureIds, selectedFeatureId, onCadSelect, cadTextVisible }: Props) {
+export interface MapCanvasHandle {
+  fitDrawing: () => void;
+}
+
+export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsError, onManualMove, onCoordinate, hiddenFeatureIds, selectedFeatureId, onCadSelect, cadTextVisible, cadOpacity }, ref) {
   const { t } = useTranslation();
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
@@ -90,6 +96,18 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
       return selected ? [selection, halo, foreground] : [halo, foreground];
     },
   }), [cadSource]);
+
+  const fitDrawing = useCallback(() => {
+    if (!dwg) return;
+    const extent = dwg.lurefExtent
+      ? transformExtent(dwg.lurefExtent, 'EPSG:2169', 'EPSG:3857')
+      : cadSource.getExtent();
+    if (extent.every(Number.isFinite)) {
+      mapRef.current?.getView().fit(extent, { padding: [80, 24, 80, 24], maxZoom: 20, duration: 500 });
+    }
+  }, [cadSource, dwg]);
+
+  useImperativeHandle(ref, () => ({ fitDrawing }), [fitDrawing]);
 
   const locationLayer = useMemo(() => new VectorLayer({
     source: locationSource,
@@ -153,11 +171,12 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
     cadSource.clear();
     if (!dwg) return;
     cadSource.addFeatures(dwg.features as Feature<Geometry>[]);
-    const extent = dwg.lurefExtent
-      ? transformExtent(dwg.lurefExtent, 'EPSG:2169', 'EPSG:3857')
-      : cadSource.getExtent();
-    if (extent.every(Number.isFinite)) mapRef.current?.getView().fit(extent, { padding: [96, 24, 190, 24], maxZoom: 20, duration: 500 });
-  }, [cadSource, dwg]);
+    fitDrawing();
+  }, [cadSource, dwg, fitDrawing]);
+
+  useEffect(() => {
+    cadLayer.setOpacity(normalizeCadOpacity(cadOpacity) / 100);
+  }, [cadLayer, cadOpacity]);
 
   useEffect(() => { cadLayer.changed(); }, [cadLayer, cadTextVisible, hiddenFeatureIds, selectedFeatureId, visibleLayers]);
 
@@ -187,4 +206,4 @@ export function MapCanvas({ dwg, visibleLayers, location, basemapMode, onWmtsErr
       <span>N</span>
     </button>
   </>;
-}
+});

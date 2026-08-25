@@ -3,6 +3,6 @@ import { createRoot } from 'react-dom/client';
 import 'site-info-banner';
 import './i18n';
 import './styles.css';
-import App from './App';
+import RootApp from './RootApp';
 
-createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>);
+createRoot(document.getElementById('root')!).render(<StrictMode><RootApp /></StrictMode>);
