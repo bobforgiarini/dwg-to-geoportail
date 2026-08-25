@@ -28,7 +28,11 @@ export function BottomSheet({ open, modal = false, className = '', ariaLabel, cl
       '[tabindex]:not([tabindex="-1"])',
     ].join(',');
     const focusableElements = () => [...dialog.querySelectorAll<HTMLElement>(focusableSelector)];
-    (focusableElements()[0] ?? dialog).focus();
+    const focusWithoutScroll = (element: HTMLElement) => element.focus({ preventScroll: true });
+    // The dialog is stable while its children slide into view. Focusing a
+    // moving child can scroll the otherwise clipped app shell and lift the
+    // whole drawer away from the viewport bottom.
+    focusWithoutScroll(dialog);
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -45,19 +49,22 @@ export function BottomSheet({ open, modal = false, className = '', ariaLabel, cl
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
         event.preventDefault();
-        last.focus();
+        focusWithoutScroll(last);
+      } else if (!event.shiftKey && document.activeElement === dialog) {
+        event.preventDefault();
+        focusWithoutScroll(first);
       } else if (!event.shiftKey && document.activeElement === last) {
         event.preventDefault();
-        first.focus();
+        focusWithoutScroll(first);
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      if (previousFocus?.isConnected) previousFocus.focus();
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
   }, [modal, open]);
 

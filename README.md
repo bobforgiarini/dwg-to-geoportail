@@ -1,6 +1,6 @@
 # DWG to Geoportail
 
-Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Version 0.2.1 stellt zwei CAD-Viewer parallel bereit und stabilisiert deren gemeinsame Kartenbedienung.
+Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Version 0.2.2 stellt zwei CAD-Viewer parallel bereit und stabilisiert deren gemeinsame Kartenbedienung und mobile Drawer.
 
 ## Viewer und Routen
 
@@ -26,12 +26,13 @@ Der Umschalter im Kopfbereich verwendet die Browser-History. Die lokal ausgewäh
 - CAD-Deckkraft in beiden Viewern von 0 bis 100 Prozent mit den Vorgaben Karte, Mix und CAD; im MLightCAD-Viewer betrifft sie ausschließlich die CAD-Zeichenfläche, deren unbelegte Pixel transparent bleiben
 - DWG-Layer einzeln oder gemeinsam schalten
 - CAD-Objekte auswählen, Objekt oder Layer ausblenden und verborgene Objekte wiederherstellen
-- dieselben modalen „DWG & Darstellung“-, Objekt- und Layer-Drawer in beiden Viewern; Tipp außerhalb schließt den offenen Drawer
+- dieselben viewportfesten modalen „DWG & Darstellung“-, Objekt- und Layer-Drawer in beiden Viewern; Griff, Tipp außerhalb und Escape schließen den offenen Drawer ohne die Karte zu verschieben
 - dieselben gruppierten Kartenaktionen in beiden Viewern: Layer und CAD oben sowie Standort und Zeichnung einpassen unten über dem Site-Banner
 - kompakter Objekt-Drawer; Deckkraft, Textschalter und Verborgen-Zähler liegen in beiden Viewern im gemeinsamen CAD-Drawer
 - gemeinsamer kompakter DWG-Ladespinner mit 18 Pixel Durchmesser
 - Live-Standort mit Genauigkeitskreis und pausierbarer Kartenfolge
-- klickbare Satelliten-Statuskarte zum Ein- und Ausblenden der gemeinsamen Basiskarte sowie eigene GPS-Genauigkeitskarte
+- kompakte klickbare Satelliten-Statuskarte zum Ein- und Ausblenden der gemeinsamen Basiskarte sowie eigene GPS-Genauigkeitskarte
+- schwarzer neutraler Kartenhintergrund, wenn keine Geoportail-Kachel sichtbar ist
 - drehbare Karte mit Nordausrichtung im bestehenden Viewer; im nordfixierten MLightCAD-Viewer ist kein redundanter Nordpfeil sichtbar
 - mobile Oberfläche in Deutsch, Französisch und Englisch; offene MLightCAD-Hinweise wechseln ihre Sprache live mit
 - kompakter `ML`-/`OL`-Viewerwechsel neben der Sprachauswahl und Version im App-Kopf
@@ -59,7 +60,7 @@ npm run preview
 
 Der Build erzeugt `dist/` einschließlich der bisherigen Dateien unter `dist/wasm/` und der getrennten MLightCAD-Dateien unter `dist/mlightcad-workers/`. Eine reale DWG-Fixture ist nicht im Repository enthalten; die erwartete lokale Abnahme ist in [docs/testing.md](docs/testing.md) beschrieben.
 
-## Grenzen von Version 0.2.1
+## Grenzen von Version 0.2.2
 
 - Beide Viewer erwarten 2D-Modellbereichsdaten in absoluten LUREF-Meterkoordinaten; es gibt keine automatische Georeferenzierung.
 - XRefs, proprietäre benutzerdefinierte CAD-Objekte und 3D-Darstellung gehören nicht zum abgenommenen Funktionsumfang.
@@ -68,7 +69,7 @@ Der Build erzeugt `dist/` einschließlich der bisherigen Dateien unter `dist/was
 - Dateien über 10 MB werden gewarnt, können aber weiterhin lokal importiert und abgebrochen werden.
 - MLightCAD lädt unterstützende CAD-/Schriftressourcen zur Laufzeit von der konfigurierten jsDelivr-Quelle; die DWG selbst wird nicht dorthin gesendet.
 
-Weitere Informationen: [Architektur](docs/architecture.md), [Netlify](docs/netlify.md), [Tests](docs/testing.md) und [Release 0.2.1](docs/releases/0.2.1.md).
+Weitere Informationen: [Architektur](docs/architecture.md), [Netlify](docs/netlify.md), [Tests](docs/testing.md) und [Release 0.2.2](docs/releases/0.2.2.md).
 
 ## Lizenz und Quellcode
 

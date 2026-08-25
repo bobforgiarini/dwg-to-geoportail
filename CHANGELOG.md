@@ -2,6 +2,25 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.2.2] – 2026-08-25
+
+### Behoben
+
+- programmgesteuertes Scrollen des App-Containers beim Öffnen eines animierten Drawers verhindert; Drawer, Karte und Site-Banner bleiben dadurch an der Viewport-Unterkante ausgerichtet
+- modale Drawer fest an den Viewport gebunden und oberhalb von OpenLayers, MLightCAD, Kartenaktionen, Kopf und Site-Banner abgesichert
+- doppeltes Scrollen im Layer-Drawer entfernt, sodass dessen Kopf stehen bleibt und ausschließlich die Layerliste scrollt
+
+### Geändert
+
+- redundante Kreuz-Schaltflächen aus CAD-, Layer- und Objekt-Drawer entfernt; Griff, Außentipp und Escape bleiben als gemeinsame Schließwege erhalten
+- Satelliten-Statuskarte wieder auf eine sichtbare Höhe von 26 Pixeln verdichtet, bei weiterhin vergrößerter unsichtbarer Tippfläche
+- neutralen Kartenhintergrund von Grün auf Schwarz geändert
+
+### Prüfung
+
+- Browser-Regression prüft nach erneutem Öffnen `app.scrollTop = 0` sowie identische Unterkanten von Viewport, Karte, Overlay und Drawer
+- Fokuswechsel verwendet `preventScroll`; Komponentenprüfungen verhindern erneut eingeführte Header-Kreuze
+
 ## [0.2.1] – 2026-08-25
 
 ### Behoben

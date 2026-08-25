@@ -1,4 +1,4 @@
-# Test- und Abnahmeplan 0.2.1
+# Test- und Abnahmeplan 0.2.2
 
 ## Automatisiert
 
@@ -50,6 +50,14 @@ Neue Schwerpunkte in 0.2.1:
 - drehbarer bestehender Viewer mit Nordausrichtung und nordfixierter MLightCAD-Viewer ohne redundanten Nordpfeil
 - vollständige neue Oberflächentexte und Beschriftungen in Deutsch, Französisch und Englisch
 
+Neue Schwerpunkte in 0.2.2:
+
+- Anfangs- und Rückgabefokus der Drawer ohne programmgesteuertes Scrollen
+- Griff als einzige sichtbare Drawer-Schließaktion; keine redundanten Kreuz-Schaltflächen in CAD-, Layer- oder Objektkopf
+- viewportfeste Overlay-Geometrie oberhalb von OpenLayers und MLightCAD
+- nur eine scrollende Layerliste bei festem Drawer-Kopf
+- kompakte 26-Pixel-Satelliten-Card und schwarzer Kartenhintergrund
+
 `npm run build` führt TypeScript und Vite aus. Der Produktionsbuild muss sowohl die vier bisherigen Dateien unter `dist/wasm/` als auch diese drei Dateien unter `dist/mlightcad-workers/` enthalten:
 
 - `libredwg-parser-worker.js`
@@ -63,6 +71,14 @@ Releaseprüfung 0.2.1 am 25. August 2026:
 - alle vier Dateien unter `dist/wasm/` und alle drei Dateien unter `dist/mlightcad-workers/` vorhanden
 - Vite meldet einen Größenhinweis für den lazy geladenen MLightCAD-Chunk; dies ist eine Warnung, kein Buildfehler
 - der vorherige Stand 0.2.0 mit 14 Testdateien und 39 Tests bleibt durch dieselbe Suite abgedeckt
+
+Releaseprüfung 0.2.2 am 25. August 2026:
+
+- `npm test`: 18 Testdateien und 63 Tests bestanden
+- `npm run build`: TypeScript- und Vite-Produktionsbuild bestanden
+- Browser-Produktionspreview: Nach Schließen und erneutem Öffnen bleiben `app.scrollTop = 0` und die Unterkanten von App, Karte, Modal-Overlay und Drawer identisch
+- Browser-Produktionspreview: Drawer `z-index: 100` liegt oberhalb des MLightCAD-Overlays `z-index: 4`; kein Drawer-Kopf enthält eine Kreuz-Schaltfläche
+- Browser-Produktionspreview: Satelliten-Card ist 26 Pixel hoch und der Kartenhintergrund wird schwarz berechnet
 
 ## Manuell vor einem Produktiveinsatz
 
@@ -83,6 +99,8 @@ Releaseprüfung 0.2.1 am 25. August 2026:
 - prüfen, dass MLightCAD in `PAN` startet, eine Touchbewegung den Kameramittelpunkt ändert und die eingebettete Kommandozeile nicht sichtbar oder bedienbar ist
 - MLightCAD auf Desktop mit Maus sowie auf Mobilgeräten mit Pan und Pinch bedienen; auf Mobilgeräten darf der Zoom nicht sprunghaft reagieren
 - Layer- und „DWG & Darstellung“-Drawer getrennt öffnen; Inhalt antippen, Backdrop antippen und den jeweils erwarteten Offen-/Geschlossen-Zustand prüfen
+- jeden Drawer mehrfach öffnen und schließen; `.app-shell.scrollTop` muss `0` bleiben und die Drawer-Unterkante muss der Viewport-Unterkante entsprechen
+- lange Layerliste scrollen; Drawer-Kopf, Griff und Drawer-Unterkante dürfen sich nicht verschieben
 - nach einer Auswahl den kompakten Objekt-Drawer sowie Objekt- und Layeraktionen prüfen
 - beide Routen nebeneinander auf dieselben drei modalen Drawer prüfen; Layer/CAD müssen oben und Standort/Einpassen unten über dem Site-Banner gruppiert sein
 - „Zeichnung einpassen“ und Deckkraftvorgaben auch im OpenLayers-Viewer prüfen

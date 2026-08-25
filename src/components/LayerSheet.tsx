@@ -1,4 +1,4 @@
-import { Eye, EyeOff, X } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { CadOverlayLayer } from '../types/models';
 import { BottomSheet } from './BottomSheet';
@@ -14,10 +14,9 @@ interface Props {
 export function LayerSheet({ open, layers, onClose, onToggle, onSetAll }: Props) {
   const { t } = useTranslation();
   return (
-    <BottomSheet open={open} modal ariaLabel={t('layersTitle')} closeLabel={t('close')} onClose={onClose}>
+    <BottomSheet open={open} modal className="layer-sheet" ariaLabel={t('layersTitle')} closeLabel={t('close')} onClose={onClose}>
         <header className="sheet-header">
           <div><h2 id="layer-title">{t('layersTitle')}</h2><span>{layers.length}</span></div>
-          <button className="icon-button" onClick={onClose} aria-label={t('close')}><X /></button>
         </header>
         <div className="sheet-actions">
           <button onClick={() => onSetAll(true)}><Eye size={18} />{t('showAll')}</button>

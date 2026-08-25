@@ -1,8 +1,8 @@
-# Architektur 0.2.1
+# Architektur 0.2.2
 
 ## Überblick
 
-Die Anwendung ist eine statisch auslieferbare React-Single-Page-App ohne Backend, Upload-Endpunkt oder Anwendungsdatenbank. Version 0.2.1 bindet zwei CAD-Pipelines unter einer gemeinsamen Oberfläche ein und vereinheitlicht Kartensteuerung, Statusanzeigen und Drawer:
+Die Anwendung ist eine statisch auslieferbare React-Single-Page-App ohne Backend, Upload-Endpunkt oder Anwendungsdatenbank. Version 0.2.2 bindet zwei CAD-Pipelines unter einer gemeinsamen Oberfläche ein und vereinheitlicht Kartensteuerung, Statusanzeigen und Drawer:
 
 | Route | CAD-Pipeline | Ausgabe |
 | --- | --- | --- |
@@ -67,15 +67,15 @@ Damit die Überlagerung fachlich belastbar ist, muss eine reale DWG mit bekannte
 ## Gemeinsame Drawer- und Kartenbedienung
 
 - Beide Viewer verwenden dieselben Komponenten `CadControlSheet`, `SelectionPanel`, `LayerSheet` und `BottomSheet`.
-- „DWG & Darstellung“, Objekt und Layer sind modale Drawer mit derselben Backdrop-Logik. Beim Öffnen über die Kartenaktionen wird der jeweils andere Steuer-Drawer geschlossen; ein vollständiger Klick beziehungsweise Tipp außerhalb des Inhalts schließt den offenen Drawer, ohne auf darunterliegende Kartenaktionen durchzufallen. Escape schließt ebenfalls; der Tastaturfokus bleibt im offenen Drawer und kehrt anschließend zum vorherigen Element zurück. Eine Auswahl öffnet den kompakten Objekt-Drawer.
+- „DWG & Darstellung“, Objekt und Layer sind viewportfeste modale Drawer mit derselben Backdrop-Logik. Beim Öffnen über die Kartenaktionen wird der jeweils andere Steuer-Drawer geschlossen; ein vollständiger Klick beziehungsweise Tipp außerhalb des Inhalts schließt den offenen Drawer, ohne auf darunterliegende Kartenaktionen durchzufallen. Escape schließt ebenfalls; der Tastaturfokus bleibt im offenen Drawer und kehrt mit `preventScroll` anschließend zum vorherigen Element zurück. Der Dialog selbst erhält den Anfangsfokus, damit die Einfahranimation den App-Container nicht programmgesteuert scrollt. Eine Auswahl öffnet den kompakten Objekt-Drawer.
 - Der CAD-Drawer bündelt lokale Datei, Importstatus, Deckkraft, Textsichtbarkeit, Verborgen-Zähler und Wiederherstellung. Sein Aktionsknopf zeigt die Zahl verborgener Objekte zusätzlich als Badge.
 - Die schwebenden Kartenaktionen verwenden in beiden Viewern dieselben wiederverwendbaren Komponenten. Layer und CAD-Drawer bilden die obere Gruppe; Standort und Zeichnung einpassen bilden eine getrennte untere Gruppe direkt über dem Site-Banner. Ein geöffneter Drawer darf diese Kartenaktionen und den Banner überdecken.
 - Der bestehende OpenLayers-Viewer stellt `fitDrawing()` über seinen `MapCanvas`-Handle bereit und setzt die 0–100%-Deckkraft direkt auf seiner CAD-Vektorebene. MLightCAD setzt denselben UI-Wert ausschließlich auf den transparenten WebGL-Canvas.
 - Während beide Pipelines eine DWG lesen, zeigt das gemeinsame `CadControlSheet` denselben kompakten Spinner mit 18 Pixel Durchmesser.
-- Beide Karten verwenden dieselben Statuskarten. Die Satellitenkarte ist als Schalter ausgeführt und blendet WMTS/WMS sitzungsweit ein oder aus; dadurch ist auch eine CAD-Ansicht ohne Hintergrundkarte möglich. Eine eigene GPS-Karte zeigt die aktuelle Genauigkeit. Die LUREF-Koordinate bleibt separat sichtbar.
+- Beide Karten verwenden dieselben Statuskarten. Die Satellitenkarte ist als kompakter 26-Pixel-Schalter mit erweiterter unsichtbarer Tippfläche ausgeführt und blendet WMTS/WMS sitzungsweit ein oder aus; dadurch ist auch eine CAD-Ansicht ohne Hintergrundkarte möglich. Eine eigene GPS-Karte zeigt die aktuelle Genauigkeit. Die LUREF-Koordinate bleibt separat sichtbar. Der neutrale Kartenuntergrund ist schwarz.
 - Standortlogik, Basiskartensichtbarkeit, Dateireferenz, App-Kopf und Site-Banner sind ebenfalls gemeinsam; parserspezifischer Fortschritt, Warnungen und Rendererzustand bleiben in der jeweiligen Route.
 
-Der `AppHeader` zeigt die Version `v0.2.1` und direkt neben der Sprache genau eine kompakte `ML`-/`OL`-Taste für den Ziel-Viewer. Das `site-info-banner` 1.1.0 steht unten rechts, zeigt „Powered by bf.lu“ und „© Map: geoportail.lu“ und verlinkt Geoportail. Ein Betreiber muss den für eine öffentliche AGPL-Bereitstellung erforderlichen Zugang zum passenden Quellcode zusätzlich sicherstellen.
+Der `AppHeader` zeigt die Version `v0.2.2` und direkt neben der Sprache genau eine kompakte `ML`-/`OL`-Taste für den Ziel-Viewer. Das `site-info-banner` 1.1.0 steht unten rechts, zeigt „Powered by bf.lu“ und „© Map: geoportail.lu“ und verlinkt Geoportail. Ein Betreiber muss den für eine öffentliche AGPL-Bereitstellung erforderlichen Zugang zum passenden Quellcode zusätzlich sicherstellen.
 
 ## Lebenszyklus und Entsorgung
 

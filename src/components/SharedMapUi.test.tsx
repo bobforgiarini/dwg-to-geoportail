@@ -1,10 +1,13 @@
 import { cleanup, fireEvent, render, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
+import { BottomSheet } from './BottomSheet';
 import { CadControlSheet } from './CadControlSheet';
+import { LayerSheet } from './LayerSheet';
 import { LoadingSpinner } from './LoadingSpinner';
 import { MapActionControls } from './MapActionControls';
 import { MapStatusBadges } from './MapStatusBadges';
+import { SelectionPanel } from './SelectionPanel';
 
 describe('shared map UI', () => {
   beforeEach(async () => {
@@ -117,7 +120,42 @@ describe('shared map UI', () => {
     const spinner = status.querySelector('.loading-spinner') as HTMLElement;
     expect(spinner.tagName).toBe('SPAN');
     expect(spinner).toHaveClass('loading-spinner');
-    expect(container.querySelector('.compact-sheet-header > div svg')).not.toBeInTheDocument();
+    expect(container.querySelector('.compact-sheet-header button')).not.toBeInTheDocument();
+    expect(getByRole('dialog').querySelectorAll('.sheet-handle-button')).toHaveLength(1);
+  });
+
+  it('uses only the shared handle to close the layer drawer', () => {
+    const { getByRole } = render(
+      <LayerSheet
+        open
+        layers={[{ id: 'A', name: 'Layer A', visible: true, featureCount: 4 }]}
+        onClose={vi.fn()}
+        onToggle={vi.fn()}
+        onSetAll={vi.fn()}
+      />,
+    );
+
+    const dialog = getByRole('dialog', { name: i18n.t('layersTitle') });
+    expect(within(dialog).getAllByRole('button', { name: i18n.t('close') })).toHaveLength(1);
+    expect(dialog.querySelector('.sheet-header button')).not.toBeInTheDocument();
+  });
+
+  it('uses only the shared handle to close the object drawer', () => {
+    const onClose = vi.fn();
+    const { getByRole } = render(
+      <BottomSheet open modal ariaLabel={i18n.t('objectDetails')} closeLabel={i18n.t('close')} onClose={onClose}>
+        <SelectionPanel
+          selection={{ featureId: '1', layerId: 'A', cadType: 'LINE', label: '' }}
+          layerName="Layer A"
+          onHideObject={vi.fn()}
+          onHideLayer={vi.fn()}
+        />
+      </BottomSheet>,
+    );
+
+    const dialog = getByRole('dialog', { name: i18n.t('objectDetails') });
+    expect(within(dialog).getAllByRole('button', { name: i18n.t('close') })).toHaveLength(1);
+    expect(dialog.querySelector('.selection-panel header button')).not.toBeInTheDocument();
   });
 
   it('renders the reusable spinner as a non-announced span', () => {

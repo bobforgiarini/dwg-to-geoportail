@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BottomSheet } from './BottomSheet';
 
 describe('BottomSheet', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
 
   it('closes a modal drawer only after a complete backdrop click', () => {
     const onClose = vi.fn();
@@ -24,6 +27,7 @@ describe('BottomSheet', () => {
   });
 
   it('traps focus, closes with Escape and restores the previous focus', () => {
+    const focus = vi.spyOn(HTMLElement.prototype, 'focus');
     const trigger = document.createElement('button');
     trigger.textContent = 'Open drawer';
     document.body.appendChild(trigger);
@@ -36,8 +40,13 @@ describe('BottomSheet', () => {
       </BottomSheet>,
     );
 
+    const dialog = getByRole('dialog', { name: 'Controls' });
     const closeButton = getByRole('button', { name: 'Close' });
     const lastButton = getByRole('button', { name: 'Last action' });
+    expect(dialog).toHaveFocus();
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+
+    fireEvent.keyDown(document, { key: 'Tab' });
     expect(closeButton).toHaveFocus();
 
     lastButton.focus();

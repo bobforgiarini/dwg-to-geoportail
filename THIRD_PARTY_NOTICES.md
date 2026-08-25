@@ -1,6 +1,6 @@
 # Drittanbieterhinweise
 
-Version 0.2.1 verwendet Open-Source-Bibliotheken aus `package-lock.json`. Die jeweiligen Pakete behalten ihre eigenen Lizenzbedingungen; die vollständigen installierten Fassungen sind für reproduzierbare Builds über `package-lock.json` festgelegt.
+Version 0.2.2 verwendet Open-Source-Bibliotheken aus `package-lock.json`. Die jeweiligen Pakete behalten ihre eigenen Lizenzbedingungen; die vollständigen installierten Fassungen sind für reproduzierbare Builds über `package-lock.json` festgelegt.
 
 ## Anwendungslizenz
 

@@ -65,7 +65,6 @@ export function CadControlSheet({
         <div>
           <h2>{t('cadControlsTitle')}</h2>
         </div>
-        <button className="icon-button" onClick={onClose} aria-label={t('close')}><X size={20} /></button>
       </header>
 
       {message && (

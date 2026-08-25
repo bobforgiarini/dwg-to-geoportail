@@ -260,7 +260,6 @@ export default function MlightCadViewerPage() {
           <SelectionPanel
             selection={selection}
             layerName={layers.find((layer) => layer.id === selection?.layerId)?.name ?? selection?.layerId ?? ''}
-            onClose={closeSelection}
             onHideObject={hideSelectedObject}
             onHideLayer={hideSelectedLayer}
           />

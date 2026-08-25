@@ -232,7 +232,6 @@ export default function App() {
           <SelectionPanel
             selection={selection}
             layerName={dwg?.layers.find((layer) => layer.id === selection?.layerId)?.name ?? ''}
-            onClose={() => handleCadSelect(null)}
             onHideObject={hideSelectedObject}
             onHideLayer={hideSelectedLayer}
           />
