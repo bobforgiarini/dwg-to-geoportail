@@ -1,8 +1,8 @@
-# Architektur 0.2.2
+# Architektur 0.2.3
 
 ## Überblick
 
-Die Anwendung ist eine statisch auslieferbare React-Single-Page-App ohne Backend, Upload-Endpunkt oder Anwendungsdatenbank. Version 0.2.2 bindet zwei CAD-Pipelines unter einer gemeinsamen Oberfläche ein und vereinheitlicht Kartensteuerung, Statusanzeigen und Drawer:
+Die Anwendung ist eine statisch auslieferbare React-Single-Page-App ohne Backend, Upload-Endpunkt oder Anwendungsdatenbank. Version 0.2.3 bindet zwei CAD-Pipelines unter einer gemeinsamen Oberfläche ein, korrigiert einen eng begrenzten alten `MULTILEADER`-Kodierungsfall im MLightCAD-Pfad und vereinheitlicht Kartensteuerung, Statusanzeigen und Drawer:
 
 | Route | CAD-Pipeline | Ausgabe |
 | --- | --- | --- |
@@ -41,6 +41,8 @@ Direkt normalisiert werden Linien, Polylinien einschließlich Bulge-Bögen, Krei
 
 Der Konverter kann den Parser-Worker bei Abbruch sofort zerstören. Bei großen Zeichnungen werden Objekt- und Layerinformationen iterativ ausgewertet, ohne eine zusätzliche vollständige Kopie der Entitätenliste aufzubauen. Temporäre Datei- und Dokumentreferenzen werden nach Erfolg, Fehler oder Abbruch gelöst. Die MLightCAD-Bibliothek verwendet einen globalen Dokumentmanager und eine globale DWG-Konverterregistrierung; deshalb verhindert eine Entsorgungsbarriere, dass eine neue Instanz startet, bevor die vorherige vollständig freigegeben wurde.
 
+Vor der Übergabe des lokalen Parserergebnisses an MLightCAD prüft eine Kompatibilitätsschicht ausschließlich `MULTILEADER`-/`MLEADER`-MText aus DWG-Versionen vor `AC1021`; der Referenzfall ist `AC1015` mit `ANSI_1252`. Die Version wird vorrangig aus der sechs Byte langen Originalsignatur und ersatzweise aus `header.ACADVER` gelesen. Ist `DWGCODEPAGE` vorhanden, muss sie eine ANSI-/CP-/Windows-1252-Form bezeichnen. Lässt LibreDWG die Header-Codepage leer, ist der Fallback nur erlaubt, wenn die Originalsignatur unabhängig eine alte DWG belegt und der einzelne Text das starke Packungsmuster erfüllt; eine ausdrücklich andere Codepage sperrt die Korrektur. Manche betroffenen Werte enthalten je JavaScript-Zeichen zwei ursprünglich aufeinanderfolgende Bytes. Modellbereich und Blockdatensätze werden ohne Doppelverarbeitung gleicher Entitäten untersucht. Low- und High-Byte werden in ihre ursprüngliche Reihenfolge gebracht und als Windows-1252 dekodiert. Ein rekonstruiertes NUL beendet den Text und trennt einen von LibreDWG angehängten Binärfooter ab. Moderne DWGs, andere Codepages, normale Unicode-Texte und nicht passende Inhalte bleiben unverändert; MText-Steuerfolgen wie `\P` bleiben erhalten.
+
 Eine Worker-Ablehnung nach einem ausdrücklich ausgelösten Abbruch gehört zum erwarteten Entsorgungspfad und wird nicht als neuer Importfehler an die Oberfläche gemeldet. Echte Parser-, Renderer- oder Workerfehler bleiben davon getrennt und werden weiterhin lokalisiert angezeigt.
 
 ## `EPSG:2169`-Overlay und Kamerabrücke
@@ -61,7 +63,7 @@ Damit die Überlagerung fachlich belastbar ist, muss eine reale DWG mit bekannte
 - Layer werden in den MLightCAD-Szenen einzeln oder gemeinsam sichtbar beziehungsweise unsichtbar gesetzt.
 - Eine Auswahl liefert Objekt-ID, CAD-Typ und Layer. Einzelne Objekte werden über die Wiederherstellung im CAD-Drawer erneut sichtbar; Layer lassen sich im Layer-Drawer einzeln oder vollständig einblenden. Wird die Objekt-Wiederherstellung ausgeführt, schaltet sie zusätzlich alle Layer ein.
 - Für mobile Pointer-Taps ergänzt der Adapter die eingebaute Mausauswahl um einen verzögerten Fallback mit 12-Pixel-Trefferradius. Bewegung, Mehrfingerbedienung sowie Shift-, Ctrl- oder Meta-Taste unterdrücken ihn; eine bereits erfolgte eingebaute Auswahl wird nicht doppelt ausgelöst.
-- Der Textschalter berücksichtigt `TEXT`, `MTEXT`, `ATTRIB` und `ATTDEF` sowohl über Dokumententitäten als auch über gerenderte Textmerkmale in der gesamten Szene. Dadurch werden auch Texte in verschachtelten Blöcken geschaltet; bereits einzeln verborgene Objekte bleiben dabei verborgen.
+- Der Textschalter berücksichtigt `TEXT`, `MTEXT`, `ATTRIB` und `ATTDEF` sowohl über Dokumententitäten als auch über gerenderte Textmerkmale in der gesamten Szene. `LEADER`, `MLEADER` und `MULTILEADER` folgen dem Textzustand als vollständige CAD-Entität, sodass Text, Führungslinien und Pfeile gemeinsam verschwinden. Dadurch werden auch Texte in verschachtelten Blöcken geschaltet; bereits einzeln verborgene Objekte bleiben beim erneuten Einblenden der Texte verborgen.
 - MLightCAD speichert Hinweise als i18n-Schlüssel und übersetzt sie erst beim Rendern. Eine bereits offene Meldung aktualisiert sich deshalb beim Sprachwechsel zwischen DE, FR und EN.
 
 ## Gemeinsame Drawer- und Kartenbedienung
@@ -75,7 +77,7 @@ Damit die Überlagerung fachlich belastbar ist, muss eine reale DWG mit bekannte
 - Beide Karten verwenden dieselben Statuskarten. Die Satellitenkarte ist als kompakter 26-Pixel-Schalter mit erweiterter unsichtbarer Tippfläche ausgeführt und blendet WMTS/WMS sitzungsweit ein oder aus; dadurch ist auch eine CAD-Ansicht ohne Hintergrundkarte möglich. Eine eigene GPS-Karte zeigt die aktuelle Genauigkeit. Die LUREF-Koordinate bleibt separat sichtbar. Der neutrale Kartenuntergrund ist schwarz.
 - Standortlogik, Basiskartensichtbarkeit, Dateireferenz, App-Kopf und Site-Banner sind ebenfalls gemeinsam; parserspezifischer Fortschritt, Warnungen und Rendererzustand bleiben in der jeweiligen Route.
 
-Der `AppHeader` zeigt die Version `v0.2.2` und direkt neben der Sprache genau eine kompakte `ML`-/`OL`-Taste für den Ziel-Viewer. Das `site-info-banner` 1.1.0 steht unten rechts, zeigt „Powered by bf.lu“ und „© Map: geoportail.lu“ und verlinkt Geoportail. Ein Betreiber muss den für eine öffentliche AGPL-Bereitstellung erforderlichen Zugang zum passenden Quellcode zusätzlich sicherstellen.
+Der `AppHeader` zeigt die Version `v0.2.3` und direkt neben der Sprache genau eine kompakte `ML`-/`OL`-Taste für den Ziel-Viewer. Das `site-info-banner` 1.1.0 steht unten rechts, zeigt „Powered by bf.lu“ und „© Map: geoportail.lu“ und verlinkt Geoportail. Ein Betreiber muss den für eine öffentliche AGPL-Bereitstellung erforderlichen Zugang zum passenden Quellcode zusätzlich sicherstellen.
 
 ## Lebenszyklus und Entsorgung
 

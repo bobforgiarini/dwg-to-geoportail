@@ -1,8 +1,8 @@
-# Netlify-Konfiguration 0.2.2
+# Netlify-Konfiguration 0.2.3
 
 ## Bereitstellungsstatus
 
-Für Version 0.2.2 wird kein manueller Netlify-Deploy ausgeführt. Das vorhandene Git-basierte Netlify-Projekt übernimmt Build und Veröffentlichung automatisch nach dem Push auf `main`.
+Für Version 0.2.3 wird kein manueller Netlify-Deploy ausgeführt. Das vorhandene Git-basierte Netlify-Projekt übernimmt Build und Veröffentlichung automatisch nach dem Push auf `main`.
 
 Die Anwendung benötigt keine Netlify Function, kein Upload-Ziel, keine Dokumentdatenbank und keine Umgebungsvariable. DWG-Dateien werden ausschließlich vom Browser des Nutzers verarbeitet.
 
@@ -46,6 +46,8 @@ Die ältere `/wasm/`-Pipeline behält ihr langfristiges Immutable-Caching. Solle
 
 Die MLightCAD-Seite selbst ist ein lazy geladener JavaScript-Chunk. Erst ein Aufruf von `/mlightcad` lädt diesen Chunk und die darin referenzierten MLightCAD-/Three.js-Bibliotheken.
 
+Die `AC1015`-/Windows-1252-Kompatibilitätskorrektur und das gemeinsame Schalten von Text und Führungslinien liegen in diesem Anwendungs-Chunk. Version 0.2.3 fügt deshalb keine Route, Function, Umgebungsvariable oder weitere Worker-/WASM-Datei hinzu; die vorhandenen Cache- und Content-Type-Regeln bleiben gültig.
+
 ## Externe Laufzeitanfragen
 
 - Geoportail liefert WMTS-/WMS-Kartenbilder.
@@ -63,5 +65,6 @@ Ein vollständig netzunabhängiger Betrieb ist mit der aktuellen externen MLight
 - OpenLayers- und MLightCAD-Chunktrennung kontrollieren: der initiale Aufruf von `/` soll den MLightCAD-Viewer nicht aktivieren.
 - Geoportail-WMTS und den sichtbaren WMS-Fallback prüfen.
 - reale LUREF-DWG ausschließlich lokal in beiden Viewern abnehmen; Lage, Layer, Auswahl, Deckkraft und bekannte Einschränkungen dokumentieren.
+- mit einer lokalen alten `AC1015`-Referenzdatei lesbare `MULTILEADER`-Texte und das vollständige Ausblenden von `LEADER`-/`MULTILEADER`-Geometrie prüfen.
 - HTTPS-Standortfunktion in iOS Safari und Android Chrome testen.
 - öffentlich zugänglichen Link auf den exakt eingesetzten `AGPL-3.0-only`-Quellcode bereitstellen.

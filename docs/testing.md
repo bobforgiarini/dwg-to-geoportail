@@ -1,4 +1,4 @@
-# Test- und Abnahmeplan 0.2.2
+# Test- und Abnahmeplan 0.2.3
 
 ## Automatisiert
 
@@ -58,6 +58,17 @@ Neue Schwerpunkte in 0.2.2:
 - nur eine scrollende Layerliste bei festem Drawer-Kopf
 - kompakte 26-Pixel-Satelliten-Card und schwarzer Kartenhintergrund
 
+Neue Schwerpunkte in 0.2.3:
+
+- Erkennung paarweise gepackter `MULTILEADER`-/`MLEADER`-MText-Werte aus vor Unicode liegenden Windows-1252-DWGs einschließlich `AC1015` und Rückgewinnung der ursprünglichen Zeichen einschließlich MText-Steuerfolgen
+- Versionsbestimmung aus der originalen sechs Byte langen DWG-Signatur, wenn LibreDWG `ACADVER` und `DWGCODEPAGE` im Parsermodell leer lässt
+- stark begrenzter Windows-1252-Fallback bei belegter alter Originalsignatur und leerer Header-Codepage; ausdrücklich andere Codepages bleiben gesperrt
+- unveränderte Übergabe moderner DWGs, bereits korrekter Unicode-Texte sowie unvollständiger oder nicht plausibler Kandidaten
+- einmalige Normalisierung gleicher Entitätsreferenzen aus Modellbereich und Blockdatensätzen
+- Ende des rekonstruierten Textes am NUL-Byte, ohne einen nachfolgenden LibreDWG-Binärfooter als Beschriftung zu übernehmen
+- Schalten vollständiger `LEADER`-, `MLEADER`- und `MULTILEADER`-Entitäten mit Text, Führungslinien und Pfeilen
+- weiterhin verborgener Zustand einzeln ausgeblendeter Anmerkungen, wenn der globale Textschalter wieder aktiviert wird
+
 `npm run build` führt TypeScript und Vite aus. Der Produktionsbuild muss sowohl die vier bisherigen Dateien unter `dist/wasm/` als auch diese drei Dateien unter `dist/mlightcad-workers/` enthalten:
 
 - `libredwg-parser-worker.js`
@@ -79,6 +90,13 @@ Releaseprüfung 0.2.2 am 25. August 2026:
 - Browser-Produktionspreview: Nach Schließen und erneutem Öffnen bleiben `app.scrollTop = 0` und die Unterkanten von App, Karte, Modal-Overlay und Drawer identisch
 - Browser-Produktionspreview: Drawer `z-index: 100` liegt oberhalb des MLightCAD-Overlays `z-index: 4`; kein Drawer-Kopf enthält eine Kreuz-Schaltfläche
 - Browser-Produktionspreview: Satelliten-Card ist 26 Pixel hoch und der Kartenhintergrund wird schwarz berechnet
+
+Releaseprüfung 0.2.3 am 25. August 2026:
+
+- `npm test`: 19 Testdateien und 78 Tests bestanden
+- `npm run build`: TypeScript- und Vite-Produktionsbuild bestanden
+- alle vier Dateien unter `dist/wasm/` und alle drei Dateien unter `dist/mlightcad-workers/` vorhanden
+- lokale Parserprüfung mit `2023- Bestandskanal_Junglinster.dwg`: 1.087 von 1.087 betroffenen `MULTILEADER`-Texten normalisiert; danach 0 verbleibende CJK-Ersatztexte
 
 ## Manuell vor einem Produktiveinsatz
 
@@ -111,11 +129,13 @@ Releaseprüfung 0.2.2 am 25. August 2026:
 - kompakte `ML`-/`OL`-Taste neben DE/FR/EN, Version im Kopf und Banner rechts mit exaktem Text prüfen; nur der drehbare bestehende Viewer zeigt seine Nordausrichtung
 - die MLightCAD-Deckkraft bei sichtbarer und ausgeblendeter Basiskarte prüfen: unbelegte Pixel müssen vollständig transparent bleiben, nur CAD-Geometrie und -Füllungen dürfen ihre Deckkraft ändern
 - Texte in direkt gezeichneten und verschachtelten Blöcken gemeinsam aus- und einblenden
+- in einer alten `AC1015`-DWG lesbare `MULTILEADER`-Beschriftungen einschließlich Umlauten, Sonderzeichen und MText-Zeilenumbrüchen mit der CAD-Referenz vergleichen
+- Texte ausschalten und bestätigen, dass bei `LEADER`, `MLEADER` und `MULTILEADER` auch sämtliche zugehörigen Führungslinien und Pfeile verschwinden; beim Einschalten müssen nur ansonsten sichtbare Anmerkungen zurückkehren
 - einen sichtbaren MLightCAD-Hinweis öffnen und die Sprache wechseln; die Meldung muss ohne erneutes Auslösen live übersetzt werden
 - im Browser-Netzwerkprotokoll bestätigen, dass keine Anfrage den DWG-Dateiinhalt überträgt
 - Netlify-Produktionsbuild in mobilem Safari und Chrome abnehmen
 
-## Erwartete reale DWG-Abnahme 0.2.1
+## Erwartete reale DWG-Abnahme 0.2.3
 
 Eine reale DWG-Fixture ist bewusst nicht im Repository enthalten und darf nicht an einen externen Dienst übertragen werden. Für jede lokal bereitgestellte 2D-DWG mit bekannten LUREF-Koordinaten werden folgende Punkte dokumentiert:
 
@@ -125,16 +145,16 @@ Eine reale DWG-Fixture ist bewusst nicht im Repository enthalten und darf nicht 
 4. Georeferenzierung: mehrere bekannte Kontrollpunkte bei eingepasster Ansicht und in mehreren Zoomstufen mit dem Geoportail-Orthofoto vergleichen. Sichtbare Verschiebung oder zoomabhängige Drift wird mit Meter- beziehungsweise Pixelabweichung protokolliert.
 5. Darstellung: repräsentative Linien, Polylinien, Bögen, Kreise, Blöcke und Texte gegen die CAD-Referenz prüfen. HATCH-Abweichungen werden ausdrücklich dem offenen [Upstream-Thema #230](https://github.com/mlightcad/cad-viewer/issues/230) zugeordnet, sofern sie diesem Fehlerbild entsprechen.
 6. Bedienung: Deckkraft bei 0, 60, 70 und 100 Prozent, einzelne und alle Layer, Auswahl, Objekt-/Layer-Ausblendung, Wiederherstellung und „Zeichnung einpassen“ prüfen.
-7. Text: `TEXT`, `MTEXT`, `ATTRIB` und `ATTDEF` direkt im Modellbereich und in verschachtelten Blöcken schalten. Proprietäre Textobjekte werden separat protokolliert.
+7. Text: `TEXT`, `MTEXT`, `ATTRIB` und `ATTDEF` direkt im Modellbereich und in verschachtelten Blöcken schalten. In alten `AC1015`-Dateien `MULTILEADER`-Beschriftungen gegen die Referenz lesen und `LEADER`, `MLEADER` sowie `MULTILEADER` einschließlich ihrer gesamten Führungslinien schalten. Proprietäre Textobjekte werden separat protokolliert.
 8. Lebenszyklus: laufenden Import abbrechen, Datei ersetzen, beide Routen mehrfach wechseln und anschließend prüfen, dass nur der aktuelle Canvas und Worker aktiv sind.
 
-XRefs, proprietäre benutzerdefinierte Objekte und 3D-Inhalte sind keine positiven Abnahmekriterien für 0.2.1. Ihr Fehlen oder ihre abweichende Darstellung muss als bekannte Grenze festgehalten werden. Ein erfolgreicher automatisierter Testlauf allein gilt nicht als reale DWG-Abnahme.
+XRefs, proprietäre benutzerdefinierte Objekte und 3D-Inhalte sind keine positiven Abnahmekriterien für 0.2.3. Ihr Fehlen oder ihre abweichende Darstellung muss als bekannte Grenze festgehalten werden. Ein erfolgreicher automatisierter Testlauf allein gilt nicht als reale DWG-Abnahme.
 
-## Reale Referenz-DWG für 0.2.1
+## Reale Referenz-DWG für 0.2.3
 
-`2023- Bestandskanal_Junglinster.dwg` ist der verbindliche lokale Stabilitätsfall für Version 0.2.1. Die Datei ist 11,31 MiB groß und ergibt im MLightCAD-Dokument 66.816 Objekte auf 316 Layern. Sie wird nicht in Git aufgenommen und nicht an einen Server übertragen.
+`2023- Bestandskanal_Junglinster.dwg` ist der verbindliche lokale Stabilitäts- und Kodierungsfall für Version 0.2.3. Die alte `AC1015`-Datei ist 11,31 MiB groß und ergibt im MLightCAD-Dokument 66.816 Objekte auf 316 Layern. Sie wird nicht in Git aufgenommen und nicht an einen Server übertragen.
 
-Beim vorherigen Produktionsstand erreichte der Import nach ungefähr einer Minute die Renderphase bei 100 Prozent, bevor die Oberfläche vollständig bereit wurde. Die 0.2.1-Abnahme muss deshalb ausdrücklich bestätigen:
+Beim vorherigen Produktionsstand erreichte der Import nach ungefähr einer Minute die Renderphase bei 100 Prozent, bevor die Oberfläche vollständig bereit wurde. Die 0.2.3-Abnahme muss deshalb weiterhin ausdrücklich bestätigen:
 
 - Der Tab stürzt weder auf Desktop noch auf einem unterstützten Mobilgerät ab.
 - Während Analyse und Rendern bleibt der Import abbrechbar; der 18-Pixel-Spinner vergrößert den Drawer nicht.
@@ -143,7 +163,16 @@ Beim vorherigen Produktionsstand erreichte der Import nach ungefähr einer Minut
 - Pan, Zoom, GPS-Zentrierung und Einpassen führen CAD und Orthofoto gemeinsam. Auch bei tiefem Zoom bleibt kein Renderer sichtbar zurück.
 - Basiskarte aus zeigt ausschließlich die CAD-Zeichnung auf transparentem Hintergrund. Die Deckkraft verändert nur sichtbare CAD-Objekte und Füllungen.
 - Textschalter, Layerausblendung, Objektausblendung und Wiederherstellung funktionieren auch bei diesem Dokument.
+- `MULTILEADER`-Beschriftungen erscheinen als lesbarer Windows-1252-Text statt als ostasiatische Ersatzzeichen; Zahlen, Umlaute, Sonderzeichen und MText-Formatierung stimmen mit der CAD-Referenz überein.
+- Bei ausgeschalteten Texten bleiben keine Führungslinien oder Pfeile von `LEADER`, `MLEADER` oder `MULTILEADER` sichtbar.
 - Nach Entfernen, Ersetzen und Viewerwechsel sind Worker, Dokumentreferenzen, Szene, Renderer und WebGL-Kontext freigegeben.
+
+Lokale Parser-Abnahme 0.2.3:
+
+- Die Originaldatei wurde direkt mit der lokal installierten LibreDWG-Fassung gelesen; sie wurde weder kopiert noch hochgeladen.
+- Das Parsermodell enthielt 1.087 `MULTILEADER`-Entitäten mit dem betroffenen Byte-Paar-Muster.
+- Die Kompatibilitätskorrektur normalisierte alle 1.087 Werte; anschließend enthielt keiner dieser Texte mehr CJK-Ersatzzeichen.
+- Stichproben ergaben wieder lesbare Kanaltexte einschließlich MText-Steuerfolgen und Windows-1252-Sonderzeichen wie `‰`.
 
 Lokale Produktions-Preview-Abnahme 0.2.1 auf Desktop:
 

@@ -33,7 +33,20 @@ const TAP_MOVE_TOLERANCE_PX = 10;
 const MOBILE_TOUCH_ZOOM_SPEED = 2.25;
 const FIT_CAMERA_SYNC_DELAY_MS = 350;
 
-const TEXT_ENTITY_TYPES = new Set(['TEXT', 'MTEXT', 'ATTRIB', 'ATTDEF']);
+// LEADER and MULTILEADER annotations are a single CAD entity whose rendered
+// geometry contains both the annotation and its leader line. Hiding only the
+// glyph nodes leaves disconnected arrows on the map, so these entities follow
+// the text visibility setting as a whole. MLEADER is retained as an alias used
+// by some converter versions.
+const TEXT_CONTROLLED_ENTITY_TYPES = new Set([
+  'TEXT',
+  'MTEXT',
+  'ATTRIB',
+  'ATTDEF',
+  'LEADER',
+  'MLEADER',
+  'MULTILEADER',
+]);
 
 let disposalBarrier: Promise<void> = Promise.resolve();
 
@@ -554,7 +567,9 @@ export class MlightCadViewerAdapter {
     // 60k+ entity array beside MLightCAD's own model and scene structures.
     for (const entity of modelSpace.newIterator()) {
       counts.set(entity.layer, (counts.get(entity.layer) ?? 0) + 1);
-      if (TEXT_ENTITY_TYPES.has(entity.dxfTypeName.toUpperCase())) this.textObjectIds.add(entity.objectId);
+      if (TEXT_CONTROLLED_ENTITY_TYPES.has(entity.dxfTypeName.toUpperCase())) {
+        this.textObjectIds.add(entity.objectId);
+      }
     }
     this.collectRenderedTextSceneObjects(manager.curView);
 

@@ -2,6 +2,18 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.2.3] – 2026-08-25
+
+### Behoben
+
+- fehlerhaft paarweise gepackte Windows-1252-Zeichen in `MULTILEADER`-Beschriftungen alter `AC1015`-DWGs vor der MLightCAD-Konvertierung normalisiert; bereits korrekte Texte bleiben unverändert
+- MLightCAD-Textschalter auf vollständige `LEADER`-, `MLEADER`- und `MULTILEADER`-Entitäten erweitert, damit beim Ausblenden der Beschriftungen keine verwaisten Führungslinien oder Pfeile sichtbar bleiben
+
+### Prüfung
+
+- Regressionstests für die selektive Windows-1252-Rückgewinnung, unveränderte reguläre Unicode-Texte und die vollständige Sichtbarkeit der Führungslinien ergänzt
+- lokale Referenzprüfung mit `2023- Bestandskanal_Junglinster.dwg`: 1.087 von 1.087 betroffenen `MULTILEADER`-Texten normalisiert, danach 0 verbleibende CJK-Ersatztexte
+
 ## [0.2.2] – 2026-08-25
 
 ### Behoben

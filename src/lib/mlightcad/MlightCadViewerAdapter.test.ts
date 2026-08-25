@@ -41,6 +41,7 @@ interface AdapterInternals {
   layers: CadOverlayLayer[];
   manager: unknown;
   view: unknown;
+  bindDocument: (manager: unknown) => void;
   bindSelection: (view: unknown) => void;
   bindWebglContextLoss: (view: unknown) => void;
   collectRenderedTextSceneObjects: (view: unknown) => void;
@@ -257,6 +258,72 @@ describe('MlightCadViewerAdapter controls', () => {
     adapter.restoreHiddenObjects();
     expect(textRoot.visible).toBe(true);
     expect(setVisible).toHaveBeenLastCalledWith('INSERT-1', true);
+  });
+
+  it('hides complete leader entities with CAD texts and preserves object and layer visibility', () => {
+    const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+    const setVisible = vi.fn();
+    const layerChanged = new AdapterEvent<void>();
+    const entities = [
+      { objectId: 'TEXT-1', dxfTypeName: 'TEXT', layer: 'NOTES' },
+      { objectId: 'LEADER-1', dxfTypeName: 'LEADER', layer: 'NOTES' },
+      { objectId: 'MLEADER-1', dxfTypeName: 'MLEADER', layer: 'NOTES' },
+      { objectId: 'MULTILEADER-1', dxfTypeName: 'MULTILEADER', layer: 'NOTES' },
+      { objectId: 'LINE-1', dxfTypeName: 'LINE', layer: 'NOTES' },
+    ];
+    const view = {
+      setEntitySceneVisible: setVisible,
+      selectionSet: { clear: vi.fn() },
+      cadScene: {
+        modelSpaceLayout: {
+          layers: new Map([['NOTES', {
+            entityCount: entities.length,
+            internalObject: { _unbatchedEntities: new Map() },
+          }]]),
+        },
+      },
+    };
+    const manager = {
+      curView: view,
+      curDocument: {
+        database: {
+          tables: {
+            blockTable: {
+              modelSpace: { newIterator: () => entities.values() },
+            },
+          },
+        },
+        layerStore: {
+          getLayers: () => [{ name: 'NOTES', isOn: false, isFrozen: false }],
+          events: { changed: layerChanged },
+        },
+      },
+    };
+    internals(adapter).view = view;
+    internals(adapter).bindDocument(manager);
+
+    adapter.setTextsVisible(false);
+    expect(setVisible.mock.calls).toEqual(expect.arrayContaining([
+      ['TEXT-1', false],
+      ['LEADER-1', false],
+      ['MLEADER-1', false],
+      ['MULTILEADER-1', false],
+    ]));
+    expect(setVisible).not.toHaveBeenCalledWith('LINE-1', false);
+    expect(adapter.currentLayers).toEqual([
+      { id: 'NOTES', name: 'NOTES', visible: false, featureCount: entities.length },
+    ]);
+
+    adapter.hideObject('MULTILEADER-1');
+    setVisible.mockClear();
+    adapter.setTextsVisible(true);
+    expect(setVisible).toHaveBeenCalledWith('LEADER-1', true);
+    expect(setVisible).toHaveBeenCalledWith('MLEADER-1', true);
+    expect(setVisible).toHaveBeenCalledWith('MULTILEADER-1', false);
+    expect(adapter.currentLayers[0].visible).toBe(false);
+
+    adapter.restoreHiddenObjects();
+    expect(setVisible).toHaveBeenLastCalledWith('MULTILEADER-1', true);
   });
 
   it('emits a synchronized camera after programmatic center and fit operations', () => {

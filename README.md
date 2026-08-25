@@ -1,6 +1,6 @@
 # DWG to Geoportail
 
-Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Version 0.2.2 stellt zwei CAD-Viewer parallel bereit und stabilisiert deren gemeinsame Kartenbedienung und mobile Drawer.
+Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Version 0.2.3 stellt zwei CAD-Viewer parallel bereit, korrigiert fehlerhaft gepackte `MULTILEADER`-Texte alter `AC1015`-DWGs im MLightCAD-Pfad und schaltet Beschriftungen zusammen mit ihren Führungslinien.
 
 ## Viewer und Routen
 
@@ -26,6 +26,8 @@ Der Umschalter im Kopfbereich verwendet die Browser-History. Die lokal ausgewäh
 - CAD-Deckkraft in beiden Viewern von 0 bis 100 Prozent mit den Vorgaben Karte, Mix und CAD; im MLightCAD-Viewer betrifft sie ausschließlich die CAD-Zeichenfläche, deren unbelegte Pixel transparent bleiben
 - DWG-Layer einzeln oder gemeinsam schalten
 - CAD-Objekte auswählen, Objekt oder Layer ausblenden und verborgene Objekte wiederherstellen
+- selektive MLightCAD-Kompatibilitätskorrektur für als Zeichenpaare gepackte Windows-1252-`MULTILEADER`-Beschriftungen alter `AC1015`-Dateien; bereits korrekte Texte werden nicht verändert
+- globaler Textschalter für direkte und verschachtelte Texte; im MLightCAD-Viewer werden `LEADER`, `MLEADER` und `MULTILEADER` einschließlich Führungslinien und Pfeilen als vollständige Anmerkung geschaltet
 - dieselben viewportfesten modalen „DWG & Darstellung“-, Objekt- und Layer-Drawer in beiden Viewern; Griff, Tipp außerhalb und Escape schließen den offenen Drawer ohne die Karte zu verschieben
 - dieselben gruppierten Kartenaktionen in beiden Viewern: Layer und CAD oben sowie Standort und Zeichnung einpassen unten über dem Site-Banner
 - kompakter Objekt-Drawer; Deckkraft, Textschalter und Verborgen-Zähler liegen in beiden Viewern im gemeinsamen CAD-Drawer
@@ -60,16 +62,16 @@ npm run preview
 
 Der Build erzeugt `dist/` einschließlich der bisherigen Dateien unter `dist/wasm/` und der getrennten MLightCAD-Dateien unter `dist/mlightcad-workers/`. Eine reale DWG-Fixture ist nicht im Repository enthalten; die erwartete lokale Abnahme ist in [docs/testing.md](docs/testing.md) beschrieben.
 
-## Grenzen von Version 0.2.2
+## Grenzen von Version 0.2.3
 
 - Beide Viewer erwarten 2D-Modellbereichsdaten in absoluten LUREF-Meterkoordinaten; es gibt keine automatische Georeferenzierung.
 - XRefs, proprietäre benutzerdefinierte CAD-Objekte und 3D-Darstellung gehören nicht zum abgenommenen Funktionsumfang.
 - MLightCAD kann Schraffuren abweichend darstellen; der Upstream-Fehler wird in [mlightcad/cad-viewer #230](https://github.com/mlightcad/cad-viewer/issues/230) verfolgt.
-- Der MLightCAD-Textschalter erfasst `TEXT`, `MTEXT`, `ATTRIB` und `ATTDEF` einschließlich gerenderter Texte in verschachtelten Blöcken. Proprietäre Textobjekte können weiterhin vom Parser ausgelassen werden.
+- Der MLightCAD-Textschalter erfasst `TEXT`, `MTEXT`, `ATTRIB` und `ATTDEF` einschließlich gerenderter Texte in verschachtelten Blöcken sowie vollständige `LEADER`-, `MLEADER`- und `MULTILEADER`-Entitäten. Proprietäre oder vom Parser ausgelassene Textobjekte können weiterhin fehlen.
 - Dateien über 10 MB werden gewarnt, können aber weiterhin lokal importiert und abgebrochen werden.
 - MLightCAD lädt unterstützende CAD-/Schriftressourcen zur Laufzeit von der konfigurierten jsDelivr-Quelle; die DWG selbst wird nicht dorthin gesendet.
 
-Weitere Informationen: [Architektur](docs/architecture.md), [Netlify](docs/netlify.md), [Tests](docs/testing.md) und [Release 0.2.2](docs/releases/0.2.2.md).
+Weitere Informationen: [Architektur](docs/architecture.md), [Netlify](docs/netlify.md), [Tests](docs/testing.md) und [Release 0.2.3](docs/releases/0.2.3.md).
 
 ## Lizenz und Quellcode
 

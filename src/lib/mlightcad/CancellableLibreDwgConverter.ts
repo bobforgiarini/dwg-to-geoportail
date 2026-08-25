@@ -6,6 +6,7 @@ import {
   type AcDbParsingTaskResult,
   type AcDbWorkerApi,
 } from '@mlightcad/data-model';
+import { normalizeLegacyMLeaderTextEncoding } from './mleaderTextEncoding';
 
 /**
  * The upstream converter destroys its worker only after parsing finishes. This
@@ -27,6 +28,11 @@ export class CancellableLibreDwgConverter extends AcDbLibreDwgConverter {
     const workerUrl = this.config.parserWorkerUrl;
     if (!workerUrl) throw new Error('A LibreDWG parser worker URL is required');
 
+    // AcDbWorkerApi transfers the complete ArrayBuffer to its worker, which
+    // detaches it in this thread. Preserve only the DWG signature needed by
+    // the legacy MLeader normalizer before handing the file to the worker.
+    const sourceSignature = data.slice(0, 6);
+
     const api = acdbCreateWorkerApi({
       workerUrl,
       timeout: this.getParserWorkerTimeout(data, timeout),
@@ -37,6 +43,9 @@ export class CancellableLibreDwgConverter extends AcDbLibreDwgConverter {
     try {
       const result = await api.execute<ArrayBuffer, AcDbParsingTaskResult<DwgDatabase>>(data);
       AcDbOpenDatabaseError.throwOnWorkerParseFailure(result);
+      if (result.data.model) {
+        normalizeLegacyMLeaderTextEncoding(result.data.model, sourceSignature);
+      }
       return result.data;
     } finally {
       api.destroy();
