@@ -120,7 +120,7 @@ describe('MlightCadMap interaction handover', () => {
     expect(harness.interaction.setActive).toHaveBeenLastCalledWith(true);
     expect(queryByRole('button')).not.toBeInTheDocument();
     expect(harness.viewOptions.at(-1)).toMatchObject({ minResolution: 0 });
-    expect(harness.viewOptions.at(-1)).toMatchObject({ projection: 'EPSG:3857' });
+    expect(harness.viewOptions.at(-1)).toMatchObject({ projection: 'EPSG:2169' });
     expect(harness.viewOptions.at(-1)).not.toHaveProperty('extent');
 
     harness.viewports.at(-1)?.dispatchEvent(new WheelEvent('wheel'));
@@ -212,7 +212,7 @@ describe('MlightCadMap interaction handover', () => {
     });
   });
 
-  it('coalesces rapid CAD camera events into one asynchronous map update', () => {
+  it('mirrors every CAD camera event synchronously like the 0.2.4 coupling', () => {
     let cameraListener: ((camera: MlightCadCamera) => void) | null = null;
     const removeListener = vi.fn();
     const adapter = {
@@ -225,49 +225,33 @@ describe('MlightCadMap interaction handover', () => {
         },
       },
     } as unknown as MlightCadViewerAdapter;
-    let frame: FrameRequestCallback | null = null;
-    const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
-      frame = callback;
-      return 42;
-    });
-    const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
     const onCoordinate = vi.fn();
-    try {
-      const { unmount } = render(<MlightCadMap
-        adapter={adapter}
-        basemapHealth={{ mode: 'wmts', status: 'ready', generation: 0, transitionReason: 'tile-loaded' }}
-        basemapHealthReporter={{
-          sourceMounted: vi.fn(), tileLoadStart: vi.fn(), tileLoadEnd: vi.fn(), tileLoadError: vi.fn(),
-        }}
-        basemapVisible
-        mlightControlsActive
-        location={idleLocation}
-        onCoordinate={onCoordinate}
-        onManualMove={vi.fn()}
-      />);
+    const { unmount } = render(<MlightCadMap
+      adapter={adapter}
+      basemapHealth={{ mode: 'wmts', status: 'ready', generation: 0, transitionReason: 'tile-loaded' }}
+      basemapHealthReporter={{
+        sourceMounted: vi.fn(), tileLoadStart: vi.fn(), tileLoadEnd: vi.fn(), tileLoadError: vi.fn(),
+      }}
+      basemapVisible
+      mlightControlsActive
+      location={idleLocation}
+      onCoordinate={onCoordinate}
+      onManualMove={vi.fn()}
+    />);
 
-      act(() => {
-        cameraListener?.({ center: [10, 20], resolution: 4 });
-        cameraListener?.({ center: [30, 40], resolution: 2 });
-        cameraListener?.({ center: [50, 60], resolution: 1 });
-      });
-      expect(requestFrame).toHaveBeenCalledOnce();
-      expect(harness.view.setCenter).not.toHaveBeenCalled();
+    act(() => {
+      cameraListener?.({ center: [10, 20], resolution: 4 });
+      cameraListener?.({ center: [30, 40], resolution: 2 });
+      cameraListener?.({ center: [50, 60], resolution: 1 });
+    });
+    expect(harness.view.setCenter).toHaveBeenCalledTimes(3);
+    expect(harness.view.setCenter).toHaveBeenLastCalledWith([50, 60]);
+    expect(harness.view.setResolution).toHaveBeenLastCalledWith(1);
+    expect(harness.renderSync).toHaveBeenCalledTimes(3);
+    expect(onCoordinate).toHaveBeenLastCalledWith([50, 60]);
 
-      act(() => { frame?.(16); });
-      expect(harness.view.setCenter).toHaveBeenCalledOnce();
-      expect(harness.view.setCenter).toHaveBeenCalledWith([50, 60]);
-      expect(harness.view.setResolution).toHaveBeenCalledWith(1);
-      expect(harness.renderSync).not.toHaveBeenCalled();
-      expect(onCoordinate).toHaveBeenCalledWith([50, 60]);
-
-      unmount();
-      expect(removeListener).toHaveBeenCalledOnce();
-      expect(cancelFrame).not.toHaveBeenCalled();
-    } finally {
-      requestFrame.mockRestore();
-      cancelFrame.mockRestore();
-    }
+    unmount();
+    expect(removeListener).toHaveBeenCalledOnce();
   });
 
   it('limits map pixel ratio and tile cache on coarse-pointer devices', () => {

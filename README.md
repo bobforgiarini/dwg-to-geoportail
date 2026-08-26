@@ -1,6 +1,6 @@
 # DWG to Geoportail
 
-Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Version 0.3.0 ergänzt einen komplexitätsbasierten DWG-Preflight, speicherwirksame Layer-/Blockprofile und einen ausfallsicheren WMTS-/WMS-Wechsel. Keine Datei wird allein aufgrund ihrer Größe blockiert.
+Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Version 0.3.2 verbindet die Funktionen aus 0.3.0 wieder mit der direkten MLightCAD-/LUREF-Kamerakopplung aus 0.2.4. Keine Datei wird allein aufgrund ihrer Größe blockiert.
 
 ## Viewer und Routen
 
@@ -24,7 +24,7 @@ Der Umschalter im Kopfbereich verwendet die Browser-History. Die lokal ausgewäh
 - zwei unabhängig implementierte 2D-Viewer für den Vergleich realer Zeichnungen
 - bestehende OpenLayers-Pipeline für Linien, Polylinien, Bögen, Kreise, Ellipsen, Splines, Punkte, Texte, Schraffuren und rekursive Blöcke
 - automatische LUREF-Ausreißerfilterung im bestehenden Viewer
-- MLightCAD als transparenter WebGL-Layer über der in `EPSG:3857` betriebenen OpenLayers-Basiskarte; die Kamerabrücke transformiert Mittelpunkt und lokale Auflösung aus LUREF
+- MLightCAD als transparenter WebGL-Layer über einer in `EPSG:2169` betriebenen OpenLayers-Basiskarte; Mittelpunkt und lokale Auflösung werden ohne asynchrone Zwischenkopplung direkt aus der CAD-Kamera übernommen
 - hybride Kartensteuerung: Ohne fertig geladene DWG bedient OpenLayers Pan und Zoom; nach `ready` übernimmt MLightCAD die CAD- und Kartenbewegung
 - Synchronisierung von CAD-Mittelpunkt und Metern pro Bildschirmpixel mit der Geoportail-Kamera, einschließlich expliziter Übergabe nach Standortzentrierung und „Zeichnung einpassen“
 - MLightCAD-Bewegung ausdrücklich im `PAN`-Modus; Desktopsteuerung bleibt erhalten, der mobile Pinch-Zoom ist weniger empfindlich und kurze Taps wählen weiterhin über den mobilen Auswahl-Fallback aus

@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { lurefToMap } from '../crs';
-import {
-  cameraPixelError,
-  lurefResolutionToWebMercator,
-  projectCadCameraToMap,
-  readCadCamera,
-  syncCadCameraToMap,
-} from './cameraBridge';
+import { cameraPixelError, readCadCamera, syncCadCameraToMap } from './cameraBridge';
 
 describe('MLightCAD camera bridge', () => {
   it('maps the WCS center and metres per CSS pixel without an affine offset', () => {
@@ -28,10 +21,10 @@ describe('MLightCAD camera bridge', () => {
     expect(camera.resolution).toBe(1);
   });
 
-  it('projects deep LUREF CAD zoom to Web Mercator and keeps the map north-up', () => {
+  it('synchronously applies deep CAD zoom and north-up rotation to the LUREF map', () => {
     const calls: unknown[][] = [];
     const camera = {
-      center: [80_000, 100_000] as [number, number],
+      center: [1_176.41, 44_976.64] as [number, number],
       resolution: 0.00001,
     };
     const synced = syncCadCameraToMap({
@@ -41,27 +34,11 @@ describe('MLightCAD camera bridge', () => {
     }, camera);
 
     expect(synced).toBe(true);
-    expect(calls[0]).toEqual(['center', lurefToMap(camera.center)]);
-    expect(calls[1]?.[0]).toBe('resolution');
-    expect(calls[1]?.[1]).toBeCloseTo(
-      lurefResolutionToWebMercator(camera.center, camera.resolution) ?? 0,
-      12,
-    );
-    expect(calls[2]).toEqual(['rotation', 0]);
-  });
-
-  it('preserves the local metres-per-pixel scale at a known Luxembourg point', () => {
-    const center: [number, number] = [80_000, 100_000];
-    const projected = projectCadCameraToMap({ center, resolution: 0.25 });
-    const onePixelEast = lurefToMap([center[0] + 0.25, center[1]]);
-
-    expect(projected).not.toBeNull();
-    expect(projected?.center).toEqual(lurefToMap(center));
-    expect(cameraPixelError(
-      projected!.center,
-      [onePixelEast[0], onePixelEast[1]],
-      projected!.resolution,
-    )).toBeCloseTo(1, 4);
+    expect(calls).toEqual([
+      ['center', camera.center],
+      ['resolution', camera.resolution],
+      ['rotation', 0],
+    ]);
   });
 
   it('ignores an invalid renderer camera instead of corrupting the map view', () => {

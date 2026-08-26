@@ -1,5 +1,4 @@
 import type { MlightCadCamera } from './types';
-import { lurefToMap } from '../crs';
 
 export interface CadCameraView {
   center: { x: number; y: number };
@@ -24,66 +23,19 @@ export function readCadCamera(view: CadCameraView): MlightCadCamera {
   };
 }
 
-function isFiniteCoordinate(coordinate: readonly number[]): coordinate is [number, number] {
-  return Number.isFinite(coordinate[0]) && Number.isFinite(coordinate[1]);
-}
-
-/**
- * Returns the local EPSG:3857 scale at one LUREF coordinate.
- *
- * OpenLayers renders Geoportail in Web Mercator while MLightCAD keeps its
- * authoritative camera in drawing metres (EPSG:2169). A centred difference
- * over one drawing metre is stable even at very deep CAD zoom levels and
- * avoids treating one Web Mercator map unit as one LUREF metre.
- */
-export function lurefResolutionToWebMercator(
-  center: [number, number],
-  lurefResolution: number,
-): number | null {
-  if (!isFiniteCoordinate(center) || !Number.isFinite(lurefResolution) || lurefResolution <= 0) {
-    return null;
-  }
-
-  const west = lurefToMap([center[0] - 1, center[1]]);
-  const east = lurefToMap([center[0] + 1, center[1]]);
-  const south = lurefToMap([center[0], center[1] - 1]);
-  const north = lurefToMap([center[0], center[1] + 1]);
-  if (![west, east, south, north].every(isFiniteCoordinate)) return null;
-
-  const xScale = Math.hypot(east[0] - west[0], east[1] - west[1]) / 2;
-  const yScale = Math.hypot(north[0] - south[0], north[1] - south[1]) / 2;
-  // readCadCamera measures its CSS-pixel resolution along the screen X axis.
-  // Use that same basis here; averaging both axes introduces a measurable
-  // scale error because the historic LUREF datum transformation is not
-  // perfectly isotropic.
-  const localScale = Number.isFinite(xScale) && xScale > 0 ? xScale : yScale;
-  const projected = lurefResolution * localScale;
-  return Number.isFinite(projected) && projected > 0 ? projected : null;
-}
-
-/** Projects a complete CAD camera snapshot into the OpenLayers map CRS. */
-export function projectCadCameraToMap(camera: MlightCadCamera): MlightCadCamera | null {
+/** Applies one renderer camera snapshot directly to the LUREF OpenLayers view. */
+export function syncCadCameraToMap(view: SyncedMapView, camera: MlightCadCamera): boolean {
   if (
-    !isFiniteCoordinate(camera.center)
+    !Number.isFinite(camera.center[0])
+    || !Number.isFinite(camera.center[1])
     || !Number.isFinite(camera.resolution)
     || camera.resolution <= 0
   ) {
-    return null;
+    return false;
   }
 
-  const center = lurefToMap(camera.center);
-  const resolution = lurefResolutionToWebMercator(camera.center, camera.resolution);
-  if (!isFiniteCoordinate(center) || resolution === null) return null;
-  return { center: [center[0], center[1]], resolution };
-}
-
-/** Applies one renderer camera snapshot to OpenLayers without animation or feedback. */
-export function syncCadCameraToMap(view: SyncedMapView, camera: MlightCadCamera): boolean {
-  const projected = projectCadCameraToMap(camera);
-  if (!projected) return false;
-
-  view.setCenter(projected.center);
-  view.setResolution(projected.resolution);
+  view.setCenter([camera.center[0], camera.center[1]]);
+  view.setResolution(camera.resolution);
   view.setRotation(0);
   return true;
 }

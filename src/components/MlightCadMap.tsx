@@ -18,13 +18,8 @@ import type TileWMS from 'ol/source/TileWMS';
 import type WMTS from 'ol/source/WMTS';
 import 'ol/ol.css';
 import type { BasemapHealthReporter, BasemapHealthState } from '../lib/basemapHealth';
-import { lurefToMap, mapToLuref } from '../lib/crs';
 import { bindBasemapSourceHealth, createBasemapLayer } from '../lib/geoportail';
-import {
-  lurefResolutionToWebMercator,
-  projectCadCameraToMap,
-  syncCadCameraToMap,
-} from '../lib/mlightcad/cameraBridge';
+import { syncCadCameraToMap } from '../lib/mlightcad/cameraBridge';
 import type { MlightCadViewerAdapter } from '../lib/mlightcad/MlightCadViewerAdapter';
 import type { LocationTrackingState } from '../types/models';
 
@@ -41,7 +36,6 @@ interface Props {
 }
 
 const MOBILE_TILE_CACHE_SIZE = 32;
-const COORDINATE_UPDATE_INTERVAL_MS = 100;
 
 export function isMemoryConstrainedMapRuntime(): boolean {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
@@ -81,7 +75,7 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
 
   useEffect(() => {
     if (!target.current) return;
-    const center = transform([6.13, 49.61], 'EPSG:4326', 'EPSG:3857');
+    const center = transform([6.13, 49.61], 'EPSG:4326', 'EPSG:2169');
     const interactions = defaultInteractions({
       altShiftDragRotate: false,
       pinchRotate: false,
@@ -98,17 +92,14 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
         // previous zoom-in clamp so OpenLayers can follow every CAD resolution.
         maxResolution: 1_000_000_000,
         minResolution: 0,
-        projection: 'EPSG:3857',
+        projection: 'EPSG:2169',
         resolution: 50,
         rotation: 0,
       }),
     });
     const updateCoordinate = () => {
       const currentCenter = map.getView().getCenter();
-      if (currentCenter) {
-        const luref = mapToLuref(currentCenter);
-        onCoordinateRef.current([luref[0], luref[1]]);
-      }
+      if (currentCenter) onCoordinateRef.current([currentCenter[0], currentCenter[1]]);
     };
     const handlePointerDrag = () => onManualMoveRef.current();
     const handleWheel = () => onManualMoveRef.current();
@@ -173,73 +164,32 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
 
   useEffect(() => {
     if (!adapter) return;
-    let pendingCamera: { center: [number, number]; resolution: number } | null = null;
-    let pendingCoordinate: [number, number] | null = null;
-    let animationFrame: number | null = null;
-    let coordinateTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastCoordinateUpdate = Number.NEGATIVE_INFINITY;
-
-    const publishCoordinate = () => {
-      coordinateTimer = null;
-      if (!pendingCoordinate) return;
-      const coordinate = pendingCoordinate;
-      pendingCoordinate = null;
-      lastCoordinateUpdate = performance.now();
-      onCoordinateRef.current(coordinate);
-    };
-    const scheduleCoordinate = (coordinate: [number, number]) => {
-      pendingCoordinate = coordinate;
-      const remaining = COORDINATE_UPDATE_INTERVAL_MS - (performance.now() - lastCoordinateUpdate);
-      if (remaining <= 0) publishCoordinate();
-      else if (coordinateTimer == null) coordinateTimer = setTimeout(publishCoordinate, remaining);
-    };
-    const flushCamera = () => {
-      animationFrame = null;
-      const camera = pendingCamera;
-      pendingCamera = null;
+    return adapter.events.camera.addEventListener(({ center, resolution }) => {
       const map = mapRef.current;
-      if (!camera || !map || !syncCadCameraToMap(map.getView(), camera)) return;
-      // View changes already schedule OpenLayers' next render. Calling
-      // renderSync here blocks MLightCAD's own animation loop and made a
-      // desktop drag pay for every intermediate camera event.
-      scheduleCoordinate(camera.center);
-    };
-    const removeListener = adapter.events.camera.addEventListener((camera) => {
-      pendingCamera = camera;
-      if (animationFrame == null) animationFrame = requestAnimationFrame(flushCamera);
+      if (!map || !syncCadCameraToMap(map.getView(), { center, resolution })) return;
+      onCoordinateRef.current(center);
+      map.renderSync();
     });
-    return () => {
-      removeListener();
-      if (animationFrame != null) cancelAnimationFrame(animationFrame);
-      if (coordinateTimer != null) clearTimeout(coordinateTimer);
-    };
   }, [adapter]);
 
   useEffect(() => {
     locationSource.clear();
     if (!location.position) return;
-    const lurefCenter = transform(
+    const center = transform(
       [location.position.coords.longitude, location.position.coords.latitude],
       'EPSG:4326',
       'EPSG:2169',
-    ) as [number, number];
-    const projectedCenter = lurefToMap(lurefCenter);
-    const center: [number, number] = [projectedCenter[0], projectedCenter[1]];
-    const accuracyRadius = lurefResolutionToWebMercator(
-      lurefCenter,
-      location.position.coords.accuracy,
-    ) ?? location.position.coords.accuracy;
+    );
     locationSource.addFeatures([
-      new Feature({ geometry: new Circle(center, accuracyRadius), kind: 'accuracy' }),
+      new Feature({ geometry: new Circle(center, location.position.coords.accuracy), kind: 'accuracy' }),
       new Feature({ geometry: new Point(center), kind: 'position' }),
     ]);
     if (location.follow === 'following' && !mlightControlsActive) {
       const view = mapRef.current?.getView();
-      const targetCamera = projectCadCameraToMap({ center: lurefCenter, resolution: 2 });
-      const currentResolution = view?.getResolution() ?? targetCamera?.resolution ?? 2;
+      const currentResolution = view?.getResolution() ?? 2;
       view?.animate({
         center,
-        resolution: Math.min(currentResolution, targetCamera?.resolution ?? 2),
+        resolution: Math.min(currentResolution, 2),
         duration: 350,
       });
     }

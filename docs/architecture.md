@@ -1,4 +1,4 @@
-# Architektur 0.3.1
+# Architektur 0.3.2
 
 ## Überblick
 
@@ -7,7 +7,7 @@ DWG to Geoportail ist eine statisch auslieferbare React-Single-Page-App ohne Bac
 | Route | CAD-Pipeline | Kartendarstellung |
 | --- | --- | --- |
 | `/` | `@flyfish-dev/cad-viewer`, anwendungseigene Normalisierung und OpenLayers-Vektorfeatures | OpenLayers in `EPSG:3857` |
-| `/mlightcad` | MLightCAD, LibreDWG-Konverter und Three.js | transparenter CAD-WebGL-Canvas über OpenLayers in `EPSG:3857` |
+| `/mlightcad` | MLightCAD, LibreDWG-Konverter und Three.js | transparenter CAD-WebGL-Canvas über OpenLayers in `EPSG:2169` |
 
 `RootApp` hält beide Routen im gemeinsamen `CadSessionProvider`. Der MLightCAD-Code wird mit `React.lazy` erst beim Öffnen seiner Route geladen. Immer nur ein CAD-Renderer ist gemountet; ein Viewerwechsel wartet auf den vollständigen Dispose-Pfad des vorherigen Renderers.
 
@@ -105,9 +105,9 @@ Unterstützt werden unter anderem Linien, Polylinien mit Bulge-Bögen, Kreise, B
 
 `MlightCadCanvas` erzeugt für die aktuelle Dateirevision einen `MlightCadViewerAdapter`. Der Adapter prüft die statischen Worker, liest die Datei mit genau einem abbrechbaren Parser-Worker, wendet Preflight und Ladeprofil an und öffnet anschließend ausschließlich den 2D-Modellbereich. Three.js rendert auf einem Canvas mit `clearAlpha = 0`; CAD-Deckkraft verändert nur CAD-Pixel und dunkelt die Karte nicht ab.
 
-MLightCAD arbeitet in den absoluten LUREF-WCS-Koordinaten der DWG. Die OpenLayers-Karte darunter läuft in `EPSG:3857`. Die Kamerabrücke transformiert den CAD-Mittelpunkt sowie eine benachbarte LUREF-Probe nach Web Mercator und leitet daraus die lokale Kartenauflösung ab. GPS zentriert zuerst die autoritative CAD-Kamera; OpenLayers folgt ohne Animation.
+MLightCAD und die OpenLayers-Karte darunter arbeiten beide in den absoluten LUREF-WCS-Koordinaten `EPSG:2169`. Wie im flüssigen Stand 0.2.4 überträgt die Kamerabrücke Mittelpunkt und Meter-pro-CSS-Pixel-Auflösung ohne Projektion oder asynchrone Zwischenstufe direkt auf die Kartenansicht. Jede MLightCAD-Kamerameldung wird im selben Bewegungszyklus mit `renderSync()` dargestellt. Dadurch bleiben CAD-Canvas und Orthofoto auch bei schnellem Pan und Zoom bildgleich gekoppelt. Die Geoportail-Quelle selbst bleibt in `EPSG:3857`; OpenLayers übernimmt deren Kachelreprojektion in die LUREF-View.
 
-MLightCAD kann während eines Maus- oder Touchzugs mehrere Kamerameldungen innerhalb desselben Bildschirmframes liefern. Die Brücke hält deshalb nur den neuesten Stand und koppelt OpenLayers einmal per `requestAnimationFrame`. Mittelpunkt und Auflösung lösen dort die normale asynchrone Darstellung aus; ein synchrones `renderSync()` innerhalb der MLightCAD-Animationsschleife wird bewusst vermieden. Die sichtbare LUREF-Koordinatenanzeige wird getrennt davon auf zehn Aktualisierungen pro Sekunde begrenzt.
+GPS wird zuerst nach LUREF transformiert. Marker, Genauigkeitskreis und eine autoritative CAD-Zentrierung verwenden anschließend dieselben Meterkoordinaten wie Zeichnung und Karte.
 
 Ohne bereites CAD-Dokument bedient OpenLayers die Karte. Nach `ready` übernimmt MLightCAD Pan und Zoom. Die MLightCAD-Ansicht bleibt nordfixiert; der drehbare Legacy-Viewer behält seinen Nordpfeil.
 

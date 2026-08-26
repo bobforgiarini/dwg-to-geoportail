@@ -2,6 +2,20 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.3.2] – 2026-08-26
+
+### Behoben
+
+- die vollständige MLightCAD-Kamerakopplung des flüssigen Stands `0.2.4` wiederhergestellt: OpenLayers arbeitet in der MLightCAD-Ansicht wieder direkt in LUREF `EPSG:2169`
+- CAD-Mittelpunkt und Meter-pro-Pixel-Auflösung werden ohne Web-Mercator-Transformation unmittelbar auf OpenLayers übertragen
+- jede MLightCAD-Kamerameldung aktualisiert und rendert die Hintergrundkarte wieder synchron im selben Bewegungszyklus; dadurch entsteht kein sichtbarer Frame Abstand zwischen CAD und Orthofoto
+- GPS-Marker und Genauigkeitskreis werden in der MLightCAD-Karte wieder direkt in LUREF-Metern geführt
+
+### Beibehalten
+
+- adaptiver Preflight, Block-/Layerfilter, gemeinsame Drawer, Speicherbegrenzungen und der WMTS-/WMS-Zustandsautomat aus `0.3.0` bleiben unverändert
+- die in `0.3.1` ergänzte Unterdrückung redundanter Basemap-Statusmeldungen bleibt aktiv, da sie nicht in den Kamera-Hotpath eingreift
+
 ## [0.3.1] – 2026-08-26
 
 ### Behoben
