@@ -1,6 +1,6 @@
 # Drittanbieterhinweise
 
-Version 0.2.3 verwendet Open-Source-Bibliotheken aus `package-lock.json`. Die jeweiligen Pakete behalten ihre eigenen Lizenzbedingungen; die vollständigen installierten Fassungen sind für reproduzierbare Builds über `package-lock.json` festgelegt.
+Version 0.2.4 verwendet Open-Source-Bibliotheken aus `package-lock.json`. Die jeweiligen Pakete behalten ihre eigenen Lizenzbedingungen; die vollständigen installierten Fassungen sind für reproduzierbare Builds über `package-lock.json` festgelegt.
 
 ## Anwendungslizenz
 
@@ -43,7 +43,7 @@ Projektquellen: <https://github.com/mlightcad/cad-viewer> und <https://github.co
 
 Die MIT-Lizenz des MLightCAD-Kerns ändert nicht die GPL-Bedingungen des für DWG aktivierten LibreDWG-Konverters. Die Anwendung bleibt als Gesamtprojekt unter `AGPL-3.0-only`; GPL-Komponenten behalten ihre jeweiligen Hinweise und Bedingungen.
 
-Version 0.2.3 verändert keine dieser eingebundenen Drittanbieterfassungen. Die Kompatibilitätskorrektur für fehlerhaft gepackte Windows-1252-`MULTILEADER`-Texte verarbeitet ausschließlich das lokal zurückgegebene Parserergebnis im Anwendungscode; Worker- und WASM-Binärdateien werden nicht modifiziert.
+Version 0.2.4 verändert keine dieser eingebundenen Drittanbieterfassungen. Die Kompatibilitätskorrektur für fehlerhaft gepackte Windows-1252-`MULTILEADER`-Texte verarbeitet ausschließlich das lokal zurückgegebene Parserergebnis im Anwendungscode; Worker- und WASM-Binärdateien werden nicht modifiziert.
 
 ## Geoportail Luxembourg Open Data
 

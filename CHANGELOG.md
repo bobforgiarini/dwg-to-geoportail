@@ -2,6 +2,16 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.2.4] – 2026-08-26
+
+### Behoben
+
+- Netlify-TypeScript-Build für die `AC1015`-Testfixture repariert: Die DWG-Signatur wird nun in einem garantiert echten `ArrayBuffer` aufgebaut und nicht mehr über das allgemeinere `ArrayBufferLike` von `Uint8Array.buffer` übergeben
+
+### Prüfung
+
+- 19 Testdateien mit 78 Tests sowie den vollständigen TypeScript-/Vite-Produktionsbuild erfolgreich ausgeführt
+
 ## [0.2.3] – 2026-08-25
 
 ### Behoben

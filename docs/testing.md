@@ -1,4 +1,4 @@
-# Test- und Abnahmeplan 0.2.3
+# Test- und Abnahmeplan 0.2.4
 
 ## Automatisiert
 
@@ -97,6 +97,12 @@ Releaseprüfung 0.2.3 am 25. August 2026:
 - `npm run build`: TypeScript- und Vite-Produktionsbuild bestanden
 - alle vier Dateien unter `dist/wasm/` und alle drei Dateien unter `dist/mlightcad-workers/` vorhanden
 - lokale Parserprüfung mit `2023- Bestandskanal_Junglinster.dwg`: 1.087 von 1.087 betroffenen `MULTILEADER`-Texten normalisiert; danach 0 verbleibende CJK-Ersatztexte
+
+Releaseprüfung 0.2.4 am 26. August 2026:
+
+- `npm test`: 19 Testdateien und 78 Tests bestanden; davon 14 fokussierte MLeader-Encoding-Tests
+- `npm run build`: TypeScript- und Vite-Produktionsbuild nach der expliziten `ArrayBuffer`-Fixture bestanden
+- die Laufzeitlogik der MLeader-Korrektur bleibt unverändert; der Patch beseitigt ausschließlich die strengere Netlify-Typprüfung der Testfixture
 
 ## Manuell vor einem Produktiveinsatz
 

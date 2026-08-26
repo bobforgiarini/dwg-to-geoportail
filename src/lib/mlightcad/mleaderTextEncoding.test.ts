@@ -31,8 +31,13 @@ function database(
   } as unknown as DwgDatabase;
 }
 
-function dwgSource(version: string): Uint8Array {
-  return Uint8Array.from(version, (character) => character.charCodeAt(0));
+function dwgSource(version: string): ArrayBuffer {
+  const buffer = new ArrayBuffer(version.length);
+  const bytes = new Uint8Array(buffer);
+  for (let index = 0; index < version.length; index += 1) {
+    bytes[index] = version.charCodeAt(index);
+  }
+  return buffer;
 }
 
 describe('decodePackedWindows1252MLeaderText', () => {
@@ -95,7 +100,7 @@ describe('normalizeLegacyMLeaderTextEncoding', () => {
     const mleader = entity('MULTILEADER', packedTextWithBinaryFooter);
     const drawing = database([mleader], [], { ACADVER: '', DWGCODEPAGE: '' });
 
-    expect(normalizeLegacyMLeaderTextEncoding(drawing, dwgSource('AC1015').buffer)).toBe(1);
+    expect(normalizeLegacyMLeaderTextEncoding(drawing, dwgSource('AC1015'))).toBe(1);
     expect((mleader as unknown as { textContent: string }).textContent).toBe(
       '{\\W0.8;-9,37- \\PDN250PP \\Pl=91,78‰}',
     );

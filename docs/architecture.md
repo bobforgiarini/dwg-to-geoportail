@@ -1,8 +1,8 @@
-# Architektur 0.2.3
+# Architektur 0.2.4
 
 ## Überblick
 
-Die Anwendung ist eine statisch auslieferbare React-Single-Page-App ohne Backend, Upload-Endpunkt oder Anwendungsdatenbank. Version 0.2.3 bindet zwei CAD-Pipelines unter einer gemeinsamen Oberfläche ein, korrigiert einen eng begrenzten alten `MULTILEADER`-Kodierungsfall im MLightCAD-Pfad und vereinheitlicht Kartensteuerung, Statusanzeigen und Drawer:
+Die Anwendung ist eine statisch auslieferbare React-Single-Page-App ohne Backend, Upload-Endpunkt oder Anwendungsdatenbank. Version 0.2.4 bindet zwei CAD-Pipelines unter einer gemeinsamen Oberfläche ein, korrigiert einen eng begrenzten alten `MULTILEADER`-Kodierungsfall im MLightCAD-Pfad und vereinheitlicht Kartensteuerung, Statusanzeigen und Drawer:
 
 | Route | CAD-Pipeline | Ausgabe |
 | --- | --- | --- |
@@ -77,7 +77,7 @@ Damit die Überlagerung fachlich belastbar ist, muss eine reale DWG mit bekannte
 - Beide Karten verwenden dieselben Statuskarten. Die Satellitenkarte ist als kompakter 26-Pixel-Schalter mit erweiterter unsichtbarer Tippfläche ausgeführt und blendet WMTS/WMS sitzungsweit ein oder aus; dadurch ist auch eine CAD-Ansicht ohne Hintergrundkarte möglich. Eine eigene GPS-Karte zeigt die aktuelle Genauigkeit. Die LUREF-Koordinate bleibt separat sichtbar. Der neutrale Kartenuntergrund ist schwarz.
 - Standortlogik, Basiskartensichtbarkeit, Dateireferenz, App-Kopf und Site-Banner sind ebenfalls gemeinsam; parserspezifischer Fortschritt, Warnungen und Rendererzustand bleiben in der jeweiligen Route.
 
-Der `AppHeader` zeigt die Version `v0.2.3` und direkt neben der Sprache genau eine kompakte `ML`-/`OL`-Taste für den Ziel-Viewer. Das `site-info-banner` 1.1.0 steht unten rechts, zeigt „Powered by bf.lu“ und „© Map: geoportail.lu“ und verlinkt Geoportail. Ein Betreiber muss den für eine öffentliche AGPL-Bereitstellung erforderlichen Zugang zum passenden Quellcode zusätzlich sicherstellen.
+Der `AppHeader` zeigt die Version `v0.2.4` und direkt neben der Sprache genau eine kompakte `ML`-/`OL`-Taste für den Ziel-Viewer. Das `site-info-banner` 1.1.0 steht unten rechts, zeigt „Powered by bf.lu“ und „© Map: geoportail.lu“ und verlinkt Geoportail. Ein Betreiber muss den für eine öffentliche AGPL-Bereitstellung erforderlichen Zugang zum passenden Quellcode zusätzlich sicherstellen.
 
 ## Lebenszyklus und Entsorgung
 

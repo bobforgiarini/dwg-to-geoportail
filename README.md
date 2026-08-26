@@ -1,6 +1,6 @@
 # DWG to Geoportail
 
-Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Version 0.2.3 stellt zwei CAD-Viewer parallel bereit, korrigiert fehlerhaft gepackte `MULTILEADER`-Texte alter `AC1015`-DWGs im MLightCAD-Pfad und schaltet Beschriftungen zusammen mit ihren Führungslinien.
+Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Version 0.2.4 stellt zwei CAD-Viewer parallel bereit, korrigiert fehlerhaft gepackte `MULTILEADER`-Texte alter `AC1015`-DWGs im MLightCAD-Pfad und schaltet Beschriftungen zusammen mit ihren Führungslinien.
 
 ## Viewer und Routen
 
@@ -62,7 +62,7 @@ npm run preview
 
 Der Build erzeugt `dist/` einschließlich der bisherigen Dateien unter `dist/wasm/` und der getrennten MLightCAD-Dateien unter `dist/mlightcad-workers/`. Eine reale DWG-Fixture ist nicht im Repository enthalten; die erwartete lokale Abnahme ist in [docs/testing.md](docs/testing.md) beschrieben.
 
-## Grenzen von Version 0.2.3
+## Grenzen von Version 0.2.4
 
 - Beide Viewer erwarten 2D-Modellbereichsdaten in absoluten LUREF-Meterkoordinaten; es gibt keine automatische Georeferenzierung.
 - XRefs, proprietäre benutzerdefinierte CAD-Objekte und 3D-Darstellung gehören nicht zum abgenommenen Funktionsumfang.
@@ -71,7 +71,7 @@ Der Build erzeugt `dist/` einschließlich der bisherigen Dateien unter `dist/was
 - Dateien über 10 MB werden gewarnt, können aber weiterhin lokal importiert und abgebrochen werden.
 - MLightCAD lädt unterstützende CAD-/Schriftressourcen zur Laufzeit von der konfigurierten jsDelivr-Quelle; die DWG selbst wird nicht dorthin gesendet.
 
-Weitere Informationen: [Architektur](docs/architecture.md), [Netlify](docs/netlify.md), [Tests](docs/testing.md) und [Release 0.2.3](docs/releases/0.2.3.md).
+Weitere Informationen: [Architektur](docs/architecture.md), [Netlify](docs/netlify.md), [Tests](docs/testing.md) und [Release 0.2.4](docs/releases/0.2.4.md).
 
 ## Lizenz und Quellcode
 
