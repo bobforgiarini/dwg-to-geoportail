@@ -37,18 +37,18 @@ describe('CadSessionProvider', () => {
     const file = new File(['drawing'], 'drawing.dwg');
 
     act(() => result.current.setFile(file));
-    act(() => result.current.setViewer('mlightcad'));
+    act(() => result.current.setViewer('legacy'));
 
-    expect(result.current.activeViewer).toBe('mlightcad');
+    expect(result.current.activeViewer).toBe('legacy');
     expect(result.current.file).toBe(file);
-    expect(window.location.pathname).toBe('/mlightcad');
+    expect(window.location.pathname).toBe('/openlayers');
 
     act(() => {
       window.history.replaceState(null, '', '/');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
 
-    expect(result.current.activeViewer).toBe('legacy');
+    expect(result.current.activeViewer).toBe('mlightcad');
     expect(result.current.file).toBe(file);
     expect(result.current.fileRevision).toBe(1);
   });
@@ -60,11 +60,21 @@ describe('CadSessionProvider', () => {
     act(() => result.current.toggleBasemapVisible());
     expect(result.current.basemapVisible).toBe(false);
 
-    act(() => result.current.setViewer('mlightcad'));
+    act(() => result.current.setViewer('legacy'));
     expect(result.current.basemapVisible).toBe(false);
 
     act(() => result.current.setBasemapVisible(true));
     expect(result.current.basemapVisible).toBe(true);
+  });
+
+  it('retains the selected MLightCAD quality while switching renderers', () => {
+    const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
+
+    expect(result.current.cadRenderQuality).toBe('auto');
+    act(() => result.current.setCadRenderQuality('sharp'));
+    act(() => result.current.setViewer('legacy'));
+
+    expect(result.current.cadRenderQuality).toBe('sharp');
   });
 
   it('retains Geoportail health while switching renderers', () => {
@@ -77,7 +87,7 @@ describe('CadSessionProvider', () => {
     });
     expect(result.current.basemapHealth).toMatchObject({ mode: 'wmts', status: 'ready' });
 
-    act(() => result.current.setViewer('mlightcad'));
+    act(() => result.current.setViewer('legacy'));
     expect(result.current.basemapHealth).toMatchObject({ mode: 'wmts', status: 'ready' });
   });
 

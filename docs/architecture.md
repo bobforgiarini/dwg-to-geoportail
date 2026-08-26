@@ -1,4 +1,4 @@
-# Architektur 0.3.2
+# Architektur 0.4.0
 
 ## Überblick
 
@@ -6,10 +6,10 @@ DWG to Geoportail ist eine statisch auslieferbare React-Single-Page-App ohne Bac
 
 | Route | CAD-Pipeline | Kartendarstellung |
 | --- | --- | --- |
-| `/` | `@flyfish-dev/cad-viewer`, anwendungseigene Normalisierung und OpenLayers-Vektorfeatures | OpenLayers in `EPSG:3857` |
-| `/mlightcad` | MLightCAD, LibreDWG-Konverter und Three.js | transparenter CAD-WebGL-Canvas über OpenLayers in `EPSG:2169` |
+| `/` | MLightCAD, LibreDWG-Konverter und Three.js | transparenter CAD-WebGL-Canvas über OpenLayers in `EPSG:2169` |
+| `/openlayers` | `@flyfish-dev/cad-viewer`, anwendungseigene Normalisierung und OpenLayers-Vektorfeatures | OpenLayers in `EPSG:3857` |
 
-`RootApp` hält beide Routen im gemeinsamen `CadSessionProvider`. Der MLightCAD-Code wird mit `React.lazy` erst beim Öffnen seiner Route geladen. Immer nur ein CAD-Renderer ist gemountet; ein Viewerwechsel wartet auf den vollständigen Dispose-Pfad des vorherigen Renderers.
+`RootApp` hält beide Routen im gemeinsamen `CadSessionProvider`. MLightCAD ist der Standard-Viewer und wird serverseitig beziehungsweise ohne Browserpfad als Ausgangszustand verwendet. Die frühere Route `/mlightcad` bleibt als kompatibler MLightCAD-Einstieg erhalten; `/openlayers` wählt ausschließlich die Legacy-Pipeline. Beide Viewer werden mit `React.lazy` als getrennte Routenmodule geladen. Immer nur ein CAD-Renderer ist gemountet; ein Viewerwechsel wartet auf den vollständigen Dispose-Pfad des vorherigen Renderers.
 
 ## Sitzung, Privatsphäre und Wiederanlauf
 
@@ -76,13 +76,24 @@ Benannte fachliche Blöcke, Texte und Hatches werden nicht ungefragt entfernt. D
 - zyklische Blockgraphen werden mit Besuchspfad und Tiefenlimit beendet.
 - Position, Rotation, Skalierung und Attribute verbleibender INSERTs bleiben unverändert.
 
-Das Original wird niemals verändert. Version 0.3.0 besitzt keinen CAD-Editor und schreibt keine neue oder „optimierte“ DWG-Datei.
+Das Original wird niemals verändert. Version 0.4.0 besitzt keinen CAD-Editor und schreibt keine neue oder „optimierte“ DWG-Datei.
 
-## Block-Drawer und Sichtbarkeitsmodell
+## Layer-, Block-Drawer und Sichtbarkeitsmodell
 
-Beide Viewer verwenden den gemeinsamen `BlockSheet` auf Basis derselben `BottomSheet`-Komponente wie der Layer-Drawer. Griff, Animation, Außenklick, Escape-Verhalten, Typografie und Touchziele bleiben dadurch identisch; es gibt keine Kreuz-Schaltfläche im Drawer-Kopf.
+Beide Viewer verwenden `LayerSheet` und `BlockSheet` auf Basis derselben `BottomSheet`-Komponente und desselben kompakten Drawer-Layouts. Griff, Animation, Außenklick, Escape-Verhalten, Suchfeld, Aktionszeile, Typografie und Touchziele bleiben dadurch identisch; es gibt keine Kreuz-Schaltfläche im Drawer-Kopf.
 
-Der Drawer zeigt:
+Der Layer-Drawer zeigt:
+
+- Suche nach Layername oder interner Kennung
+- Zähler für sichtbare und ausgeblendete Layer
+- „Alle anzeigen“ und „Alle ausblenden“
+- Objektzahl pro Layer
+- eine aus Objektzahl und Gerätebudget abgeleitete Belastungseinstufung `niedrig`, `mittel` oder `hoch`
+- einen Neuladehinweis für Layer, die durch das aktuelle Ladeprofil nicht im aufgebauten Modell vorhanden sind
+
+Sichtbarkeitsänderungen an bereits aufgebauten Layern wirken unmittelbar. Ist ein Layer im Worker vor dem Szenen- beziehungsweise Featureaufbau gefiltert worden, kennzeichnet der Drawer den nötigen CAD-Neuaufbau. „Änderungen anwenden“ sammelt diese strukturellen Änderungen und startet genau einen kontrollierten Neuaufbau aus der weiterhin lokalen Originaldatei.
+
+Der Block-Drawer zeigt:
 
 - Suche sowie sichtbare und ausgeblendete Zähler
 - „Alle anzeigen“ und „Alle ausblenden“
@@ -110,6 +121,27 @@ MLightCAD und die OpenLayers-Karte darunter arbeiten beide in den absoluten LURE
 GPS wird zuerst nach LUREF transformiert. Marker, Genauigkeitskreis und eine autoritative CAD-Zentrierung verwenden anschließend dieselben Meterkoordinaten wie Zeichnung und Karte.
 
 Ohne bereites CAD-Dokument bedient OpenLayers die Karte. Nach `ready` übernimmt MLightCAD Pan und Zoom. Die MLightCAD-Ansicht bleibt nordfixiert; der drehbare Legacy-Viewer behält seinen Nordpfeil.
+
+## Adaptive MLightCAD-Canvas-Qualität
+
+Die Qualitätswahl steuert ausschließlich die Pixeldichte des transparenten MLightCAD-WebGL-Canvas. Geometrie, Weltkoordinaten, Kameraauflösung und CAD-/Kartenkopplung bleiben identisch; geändert wird nur, wie viele physische WebGL-Pixel für einen CSS-Pixel gerendert werden.
+
+| Modus | Effektive Pixeldichte | Verhalten |
+| --- | --- | --- |
+| `Auto` | 1× bis 2× | verwendet die native Gerätedichte bis höchstens 2× und reduziert abhängig von Gerätespeicher, Dateigröße vor dem Preflight sowie anschließend gemessener Risikostufe |
+| `Scharf` | native Dichte bis 2,5× | priorisiert die CAD-Kantenschärfe, überschreitet aber auch auf einem DPR-3-Gerät nie 2,5× |
+| `Speichersparend` | 1× | minimiert die WebGL-Framebufferfläche unabhängig von der nativen Gerätedichte |
+
+Der Auto-Resolver beginnt nie unter 1× und verwendet folgende Schutzstufen:
+
+- höchstens 2× bei unauffälligem Geräte- und Preflightzustand
+- höchstens 1,5× bei erhöhter Preflight-Risikostufe
+- 1× bei hoher Risikostufe oder höchstens 2 GiB gemeldetem Gerätespeicher
+- vor vorliegendem Preflight höchstens 1,5× auf mobilen Geräten und 1× bei einer Datei über 10 MiB
+
+Nach dem kompakten Preflight wird die Auto-Auflösung mit der tatsächlich gemessenen Risikostufe erneut bestimmt. Ein Wechsel der Qualitätsstufe setzt die Pixeldichte am bestehenden Three.js-Renderer und markiert die Ansicht für eine neue Darstellung; die DWG-Geometrie wird dafür nicht neu interpretiert.
+
+Die OpenLayers-Basiskarte darunter gehört ausdrücklich nicht zu dieser Auswahl. Sie behält ihren unabhängigen Karten- und Kachelcache-Lebenszyklus und rendert auf mobilen beziehungsweise grob bedienten Geräten weiterhin mit DPR 1. Damit entsteht auf iPhones keine pauschale gemeinsame DPR-3-Fläche für Karte und CAD: `Auto` begrenzt den CAD-Canvas auf 2×, `Scharf` auf 2,5× und `Speichersparend` auf 1×, während die mobile Karte bei 1× bleibt.
 
 ## LibreDWG-Speicher und Lebenszyklus
 

@@ -5,8 +5,8 @@ export interface ViewerNavigationOptions {
 }
 
 const VIEWER_PATHS: Readonly<Record<ViewerKind, string>> = {
-  legacy: '/',
-  mlightcad: '/mlightcad',
+  legacy: '/openlayers',
+  mlightcad: '/',
 };
 
 /** Returns the app route for a CAD renderer without touching browser state. */
@@ -15,12 +15,13 @@ export function getViewerHref(viewer: ViewerKind): string {
 }
 
 /**
- * Resolves a browser pathname to a renderer. Unknown routes deliberately fall
- * back to the established viewer, which is also the app's root experience.
+ * Resolves a browser pathname to a renderer. The former `/mlightcad` route
+ * remains a compatible alias; every non-Legacy route falls back to MLightCAD,
+ * which is the app's root experience.
  */
 export function resolveViewerKind(pathname: string): ViewerKind {
   const normalizedPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
-  return normalizedPath === VIEWER_PATHS.mlightcad ? 'mlightcad' : 'legacy';
+  return normalizedPath === VIEWER_PATHS.legacy ? 'legacy' : 'mlightcad';
 }
 
 /**

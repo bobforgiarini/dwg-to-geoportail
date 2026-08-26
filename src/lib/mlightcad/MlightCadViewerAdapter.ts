@@ -22,6 +22,12 @@ import { readCadCamera } from './cameraBridge';
 import { CancellableLibreDwgConverter } from './CancellableLibreDwgConverter';
 import { normalizeCadOpacity, opacityToCss } from './opacity';
 import {
+  resolveCadRenderQuality,
+  type CadRenderQualityContext,
+  type CadRenderQualityMode,
+  type ResolvedCadRenderQuality,
+} from './renderQuality';
+import {
   AdapterEvent,
   type MlightCadCamera,
   type MlightCadAdapterEvents,
@@ -114,6 +120,15 @@ function sameCanonicalValues(left: string[], right: string[]): boolean {
     && [...leftValues].every((value) => rightValues.has(value));
 }
 
+function isMobileCadDevice(explicitMobile?: boolean): boolean {
+  if (explicitMobile !== undefined) return explicitMobile;
+  if (typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches) return true;
+  return typeof navigator !== 'undefined'
+    && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+}
+
 export function shouldUseLowMemoryCadMode(fileSize: number, explicitMobile?: boolean): boolean {
   if (fileSize > LARGE_DWG_BYTES || explicitMobile === true) return true;
   if (typeof window !== 'undefined'
@@ -183,6 +198,8 @@ export class MlightCadViewerAdapter {
   private readonly cameraSyncTimers = new Set<ReturnType<typeof setTimeout>>();
   private textVisible = true;
   private opacity = 100;
+  private renderQualityMode: CadRenderQualityMode = 'auto';
+  private renderQualityContext: CadRenderQualityContext = {};
   private generation = 0;
   private disposed = false;
   private disposePromise: Promise<void> | null = null;
@@ -209,9 +226,20 @@ export class MlightCadViewerAdapter {
     return this.preflight;
   }
 
+  get currentRenderQuality(): ResolvedCadRenderQuality {
+    return resolveCadRenderQuality(this.renderQualityMode, this.renderQualityContext);
+  }
+
   async load(file: File, options: MlightCadLoadOptions = {}): Promise<void> {
     const generation = ++this.generation;
     const lowMemory = shouldUseLowMemoryCadMode(file.size, options.device?.mobile);
+    this.renderQualityContext = {
+      nativePixelRatio: this.container.ownerDocument.defaultView?.devicePixelRatio,
+      mobile: isMobileCadDevice(options.device?.mobile),
+      memoryGiB: options.device?.memoryGiB,
+      fileSize: file.size,
+      risk: null,
+    };
     try {
       await disposalBarrier;
       await awaitCadRuntimeDisposal();
@@ -237,6 +265,8 @@ export class MlightCadViewerAdapter {
         loadProfile: options.loadProfile,
         onPreflight: (report) => {
           this.preflight = report;
+          this.renderQualityContext = { ...this.renderQualityContext, risk: report.risk.level };
+          this.applyRenderQuality();
           this.appliedLoadProfile = options.loadProfile ?? {
             mode: 'full', hiddenLayerIds: [], hiddenBlockNames: [], hiddenEntityCategories: [],
           };
@@ -286,7 +316,7 @@ export class MlightCadViewerAdapter {
       const view = manager.curView;
       this.manager = manager;
       this.view = view;
-      this.configureLowMemoryRenderer(view, lowMemory);
+      this.configureRenderQuality(view);
       this.configureTransparentRenderer(view);
       this.hideEmbeddedCommandLine();
       this.bindCamera(view);
@@ -397,6 +427,11 @@ export class MlightCadViewerAdapter {
     this.opacity = normalizeCadOpacity(value);
     this.container.style.removeProperty('opacity');
     if (this.view) this.view.renderer.domElement.style.opacity = opacityToCss(this.opacity);
+  }
+
+  setRenderQuality(mode: CadRenderQualityMode): void {
+    this.renderQualityMode = mode;
+    this.applyRenderQuality();
   }
 
   setLayerVisible(layerId: string, visible: boolean): void {
@@ -582,11 +617,14 @@ export class MlightCadViewerAdapter {
     this.container.style.removeProperty('opacity');
   }
 
-  private configureLowMemoryRenderer(view: AcTrView2d, enabled: boolean): void {
-    if (!enabled) return;
-    // A DPR of 3 renders nine times as many pixels as DPR 1. The CAD remains
-    // geometrically exact while avoiding a large mobile GPU allocation.
-    view.renderer.internalRenderer.setPixelRatio(1);
+  private configureRenderQuality(view: AcTrView2d): void {
+    const { pixelRatio } = this.currentRenderQuality;
+    view.renderer.internalRenderer.setPixelRatio(pixelRatio);
+    view.isDirty = true;
+  }
+
+  private applyRenderQuality(): void {
+    if (this.view) this.configureRenderQuality(this.view);
   }
 
   private configureTouchNavigation(view: AcTrView2d): void {

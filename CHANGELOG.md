@@ -2,6 +2,28 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.4.0] – 2026-08-26
+
+### Hinzugefügt
+
+- adaptive MLightCAD-Canvas-Qualität im Drawer „DWG & Darstellung“ ergänzt: `Auto` rendert mit bis zu 2×, `Scharf` mit der nativen Pixeldichte bis höchstens 2,5× und `Speichersparend` fest mit 1×
+- der Auto-Modus reduziert die CAD-Auflösung bei knappen Gerätespeichern sowie erhöhter oder hoher Preflight-Risikoeinstufung; vor abgeschlossenem Preflight werden große beziehungsweise mobile Importe vorsichtig behandelt
+
+### Geändert
+
+- MLightCAD ist jetzt der Standard-Viewer unter `/`; der bisherige OpenLayers-Viewer bleibt als Legacy-Ansicht unter `/openlayers` erreichbar
+- der Viewer-Umschalter verwendet die neuen Routen, während die lokale DWG-Sitzung und das Ladeprofil beim Wechsel erhalten bleiben
+- der Layer-Drawer verwendet jetzt Layout und Bedienelemente des Block-Drawers: Suche, sichtbare und ausgeblendete Zähler, gemeinsame Sichtbarkeitsaktionen und kompakte Layerzeilen
+- jede Layerzeile zeigt Objektzahl und geschätzte Belastung; aus dem geladenen Modell gefilterte Layer werden mit einem Neuladehinweis gekennzeichnet und lassen sich gesammelt über „Änderungen anwenden“ neu aufbauen
+- die im Kopf angezeigte Version wird aus den Paketmetadaten gelesen und zeigt damit ebenfalls `0.4.0`
+- die Qualitätswahl verändert ausschließlich die Pixeldichte des MLightCAD-WebGL-Canvas; die darunterliegende OpenLayers-Basiskarte behält ihre unabhängige mobile Speicherregel mit DPR 1
+- iPhones rendern nicht mehr pauschal den vollständigen nativen DPR 3: `Auto` endet spätestens bei 2×, `Scharf` spätestens bei 2,5× und `Speichersparend` bei 1×
+
+### Prüfung
+
+- 36 Testdateien mit 171 Tests sowie den vollständigen TypeScript-/Vite-Produktionsbuild erfolgreich ausgeführt
+- Produktionsvorschau für `/` und `/openlayers` ohne Browserfehler geprüft; MLightCAD-Qualitätswahl auf 390 × 844 Pixel kontrolliert und ihre Sitzungserhaltung beim Viewerwechsel bestätigt
+
 ## [0.3.2] – 2026-08-26
 
 ### Behoben

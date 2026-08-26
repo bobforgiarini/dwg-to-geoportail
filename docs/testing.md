@@ -1,10 +1,10 @@
-# Test- und Abnahmeplan 0.3.2
+# Test- und Abnahmeplan 0.4.0
 
 ## Grundsatz
 
 Automatisierte Tests prüfen Datenstrukturen, Filterung, Zustandsautomaten und Lebenszyklus. Sie ersetzen weder den visuellen Vergleich mit einer bekannten LUREF-DWG noch einen echten Speichertest in iOS Safari. Private DWG-Dateien bleiben außerhalb des Repositorys und werden nicht an einen externen Dienst übertragen.
 
-Finaler lokaler Stand vom 26. August 2026: **31 Testdateien mit 145 Tests bestanden**, TypeScript- und Vite-Produktionsbuild bestanden. Die weiterhin ausstehenden Prüfungen auf echter iPhone-Hardware sind unten ausdrücklich als manuelle Abnahme markiert.
+Finaler automatisierter Stand für Version 0.4.0: **36 Testdateien und 171 Tests erfolgreich**. Der TypeScript-/Vite-Produktionsbuild ist ebenfalls erfolgreich. Die Produktionsvorschau wurde unter `/` und `/openlayers` ohne Browserfehler geprüft; der MLightCAD-Drawer wurde zusätzlich bei 390 × 844 Pixel kontrolliert. Die Prüfungen mit realen DWGs auf echter iPhone-Hardware bleiben unten ausdrücklich als manuelle Abnahme markiert.
 
 ## Automatisierte Prüfung
 
@@ -46,12 +46,24 @@ Zusätzlich wird geprüft:
 - der Filter verändert das ursprüngliche Parserdokument nicht
 - geschätzte und tatsächlich verbleibende Entitäts-/Blockzahlen liegen im dokumentierten Näherungsrahmen
 
-### Sitzung, Block-Drawer und Bedienung
+### Sitzung, Routen und Bedienung
 
 - `CadLoadProfile` und Preflight-Bericht bleiben beim Viewerwechsel erhalten; eine neue DWG setzt beide zurück
+- `/` löst MLightCAD als Standard-Viewer auf; `/openlayers` öffnet ausschließlich die OpenLayers-Legacy-Ansicht
+- der Viewer-Umschalter schreibt die jeweils kanonische Route in die Browser-History und bewahrt dabei die lokale Dateisitzung
+- die bisherige Route `/mlightcad` bleibt ein kompatibler MLightCAD-Einstieg; unbekannte SPA-Pfade fallen auf den Standard-Viewer zurück
+- die Version im App-Kopf entspricht `package.json` und zeigt für diesen Release `0.4.0`
+
+### Layer- und Block-Drawer
+
+- Layer- und Block-Drawer verwenden denselben `BottomSheet` sowie dasselbe kompakte Layout, besitzen keinen Kreuz-Button und schließen über Außentipp beziehungsweise Escape
+- die Layersuche filtert ohne Beachtung der Groß-/Kleinschreibung nach Name und Kennung; ein leerer Trefferzustand wird verständlich angezeigt
+- sichtbare und ausgeblendete Layerzähler beziehen sich auf die vollständige Layerliste und bleiben beim Suchen korrekt
+- „Alle anzeigen“ und „Alle ausblenden“ schalten die gesamte Layerliste und sind bei wirkungslosen Aktionen deaktiviert
+- jede Layerzeile zeigt ihre Objektzahl und eine aus Objektzahl sowie Gerätebudget abgeleitete Belastung `niedrig`, `mittel` oder `hoch`
+- im Ladeprofil gefilterte Layer erhalten einen Neuladehinweis; „Änderungen anwenden“ ist nur bei ausstehenden strukturellen Änderungen aktiv und löst genau einen kontrollierten CAD-Neuaufbau aus
 - Suche, sichtbare/ausgeblendete Zähler, „Alle anzeigen“ und „Alle ausblenden“ im Block-Drawer funktionieren
 - benannte Blöcke, Systemblöcke und XRefs erscheinen in der korrekten Gruppe; Systemblöcke sind einklappbar
-- Block- und Layer-Drawer verwenden denselben `BottomSheet`, besitzen keinen Kreuz-Button und schließen über Außentipp beziehungsweise Escape
 - direkt erreichbare Modellbereichsblöcke schalten ohne vollständigen Neuimport
 - verschachtelte oder vorher weggefilterte Blöcke verlangen „Änderungen anwenden“ und lösen genau einen kontrollierten CAD-Neuaufbau aus
 - Kartenmittelpunkt, Zoom, GPS-Zustand, Deckkraft und Drawerzustand bleiben bei diesem Neuaufbau erhalten
@@ -93,12 +105,25 @@ Zusätzlich wird geprüft:
 ### Projektion und Kamerabrücke
 
 - bekannte LUREF-Punkte werden korrekt zwischen `EPSG:2169` und `EPSG:3857` transformiert
-- die MLightCAD-OpenLayers-View arbeitet wie in 0.2.4 direkt in `EPSG:2169`
+- die MLightCAD-OpenLayers-View unter `/` arbeitet wie in 0.2.4 direkt in `EPSG:2169`
 - die Kamerabrücke übernimmt LUREF-Mittelpunkt und Meter-pro-Pixel-Auflösung unverändert
 - mehrere MLightCAD-Kamerameldungen werden jeweils unmittelbar und synchron auf OpenLayers übertragen; kein CAD-Frame darf einer älteren Kartenkamera vorauslaufen
 - wiederholte erfolgreiche Kachelabschlüsse im bereits erreichten Zustand `ready` benachrichtigen React nicht erneut
 - GPS zentriert zuerst die CAD-Kamera, anschließend folgt OpenLayers ohne Animation
 - beim Pan, Pinch, Mausrad, Einpassen und tiefen Zoom bleibt die Abweichung zwischen CAD und Orthofoto bei einer bekannten Referenz unter zwei CSS-Pixeln
+
+### Adaptive MLightCAD-Canvas-Qualität
+
+- `Auto` übernimmt die native Gerätedichte höchstens bis 2×; ein simuliertes iPhone mit DPR 3 darf daher keinen WebGL-Pixelratio 3 erhalten
+- `Scharf` übernimmt die native Gerätedichte höchstens bis 2,5× und skaliert Geräte mit kleinerem nativen DPR nicht künstlich hoch
+- `Speichersparend` liefert unabhängig von Gerät, Datei und Preflight immer 1×
+- `Auto` liefert bei höchstens 2 GiB gemeldetem Gerätespeicher oder hoher Preflight-Risikostufe 1×
+- `Auto` begrenzt eine erhöhte Preflight-Risikostufe auf höchstens 1,5× und eine unauffällige Zeichnung auf höchstens 2×
+- solange der Preflight noch aussteht, erhält eine mobile Datei höchstens 1,5× und eine Datei über 10 MiB 1×; nach dem Bericht wird die Stufe erneut aus der gemessenen Risikoklasse bestimmt
+- ein Qualitätswechsel setzt den Pixelratio des bestehenden MLightCAD-/Three.js-Renderers und markiert die Ansicht als darstellungsbedürftig, ohne CAD-Geometrie oder OpenLayers-Kamera neu aufzubauen
+- der Schalter erscheint nur für MLightCAD im Drawer „DWG & Darstellung“, kennzeichnet den aktiven Modus mit `aria-pressed` und ist in DE, FR und EN vollständig beschriftet
+- die OpenLayers-Basiskarte verwendet auf mobilen beziehungsweise grob bedienten Geräten weiterhin DPR 1; keine MLightCAD-Qualitätsstufe darf ihren Pixelratio verändern
+- `Auto`, `Scharf` und `Speichersparend` ändern weder CAD-Weltkoordinaten noch Meter-pro-CSS-Pixel der Kamerabrücke
 
 ### i18n und Regression
 
@@ -117,7 +142,7 @@ Nach `npm run build` müssen mindestens vorhanden sein:
 - `dist/mlightcad-workers/0.3.0/libredwg-web.wasm`
 - `dist/mlightcad-workers/0.3.0/mtext-renderer-worker.js`
 
-Das LibreDWG-WASM muss valide sein und 128 MiB Anfangsspeicher deklarieren. Browseranfragen beider Viewer müssen denselben Releasepfad verwenden und dürfen nicht auf unversionierte oder alte 0.2.x-URLs zurückfallen. Die MLightCAD-Route bleibt lazy geladen; ein Aufruf von `/` darf den großen MLightCAD-/Three.js-Chunk nicht vorab aktivieren.
+Das LibreDWG-WASM muss valide sein und 128 MiB Anfangsspeicher deklarieren. Browseranfragen beider Viewer müssen denselben Releasepfad verwenden und dürfen nicht auf unversionierte oder alte 0.2.x-URLs zurückfallen. Beide Routenmodule bleiben lazy geladen: `/` lädt den MLightCAD-/Three.js-Viewer, `/openlayers` die Legacy-Pipeline; die jeweils andere Viewer-Pipeline darf nicht unnötig vorab aktiviert werden.
 
 ## Manuelle mobile Abnahme
 
@@ -135,7 +160,7 @@ Das LibreDWG-WASM muss valide sein und 128 MiB Anfangsspeicher deklarieren. Brow
 
 Die bekannte lokale Junglinster-DWG bleibt außerhalb von Git. Sie ist größer als 10 MiB und dient als Stabilitätsfall, nicht als öffentliches Testasset:
 
-Lokal abgeschlossen wurde ein Durchlauf mit der 11,31-MB-Datei und 66.816 erkannten Objekten: Der neue Worker lud sie auf dem Desktop sowohl in `/mlightcad` als auch in `/`; es gab keine 10-MiB-Sperre. Dabei wurde zusätzlich die vollständige versionierte Worker-Abhängigkeitskette im Produktions-Preview geprüft. Ein auf 390 × 844 Pixel gesetzter Desktop-Browser ist dabei nur eine responsive UI-Prüfung und kein Ersatz für iOS Safari.
+Der dokumentierte 0.3.x-Basislauf mit der 11,31-MB-Datei und 66.816 erkannten Objekten ersetzt keine neue 0.4.0-Abnahme. Der vollständige Durchlauf des zusammengeführten 0.4.0-Stands unter den neuen kanonischen Routen ist **ausstehend**. Ein auf 390 × 844 Pixel gesetzter Desktop-Browser bleibt nur eine responsive UI-Prüfung und kein Ersatz für iOS Safari.
 
 - auf einem leistungsfähigen Desktop vollständig laden
 - auf einem echten iPhone zuerst das empfohlene Profil prüfen
@@ -143,7 +168,7 @@ Lokal abgeschlossen wurde ein Durchlauf mit der 11,31-MB-Datei und 66.816 erkann
 - Layer-, Block-, Text- und HATCH-Darstellung gegen die CAD-Referenz vergleichen
 - einen direkten Block sofort ausblenden
 - einen verschachtelten Block über „Änderungen anwenden“ entfernen und ausschließlich diesen Strukturzweig kontrollieren
-- zwischen `/` und `/mlightcad` wechseln und prüfen, dass dasselbe Profil erneut angewendet wird
+- zwischen `/` und `/openlayers` wechseln und prüfen, dass dasselbe Profil erneut angewendet wird
 - Netzwerkprotokoll kontrollieren: DWG-Bytes verlassen das Gerät nicht
 
 Ein erfolgreicher Lauf auf einem einzelnen Desktop belegt keine iPhone-Kompatibilität. Die oben genannten iPhone-Schritte sind noch offen. iOS Safari kann den gesamten Tab bei Speicherdruck beenden; dieses Verhalten muss auf realer Hardware geprüft und als verbleibendes Risiko dokumentiert werden.
@@ -160,7 +185,12 @@ Ein erfolgreicher Lauf auf einem einzelnen Desktop belegt keine iPhone-Kompatibi
 
 - DE/FR/EN auf schmalem iPhone- und Android-Viewport prüfen
 - Block-, Layer-, CAD- und Objekt-Drawer wiederholt öffnen, außen schließen und lange Listen scrollen; kein Drawer darf die App verschieben
+- Layer- und Block-Drawer nebeneinander vergleichen: Suchfeld, Zähler, Aktionsleiste, Zeilenabstände, Icons, Belastungs-Badges und Touchziele müssen übereinstimmen
+- Layersuche, Objektzahlen und Belastungs-Badges mit einer Zeichnung mit vielen Layern prüfen; einen vorab gefilterten Layer auswählen und Neuladehinweis sowie „Änderungen anwenden“ kontrollieren
 - prüfen, dass alle Drawer oberhalb von OpenLayers, WebGL, Kartenbuttons und Site-Banner liegen
+- im MLightCAD-Drawer nacheinander `Auto`, `Scharf` und `Speichersparend` wählen; CAD-Linienschärfe, Bedienbarkeit und unveränderte Kartenlage bei jedem Wechsel vergleichen
+- auf einem iPhone mit DPR 3 kontrollieren, dass der CAD-Canvas in `Auto` höchstens 2×, in `Scharf` höchstens 2,5× und in `Speichersparend` genau 1× verwendet; die mobile OpenLayers-Basiskarte muss in allen drei Fällen bei DPR 1 bleiben
+- eine Zeichnung mit hoher Preflight-Risikostufe in `Auto` laden und den Rückgang auf 1× sowie die gegenüber `Scharf` geringere WebGL-Speicherbelegung beobachten
 - Pan, Pinch, Mausrad, GPS, Einpassen und tiefen Zoom in beiden Viewern testen
 - fünf Imports und fünf Viewerwechsel mit Browser-Speicherwerkzeugen beobachten; Worker, Canvas und WebGL-Kontexte müssen nach Dispose auf den Sollzustand zurückfallen
 - Standortberechtigung erlaubt und abgelehnt sowie pausierte Folge und Wiederaufnahme prüfen
@@ -172,4 +202,4 @@ Ein erfolgreicher Lauf auf einem einzelnen Desktop belegt keine iPhone-Kompatibi
 - Upload, Netlify Function, Datenbank oder persistente Dateispeicherung
 - positive Darstellungsgarantie für XRefs, Papierlayouts, proprietäre Custom Entities oder 3D-Inhalte
 
-Es erfolgt für 0.3.0 kein manueller Netlify-Deploy. Nach einem späteren GitHub-Push übernimmt ausschließlich der vorhandene Git-basierte Netlify-Build die Bereitstellung.
+Nach einem GitHub-Push übernimmt das vorhandene Git-basierte Netlify-Projekt Build und Bereitstellung von Version 0.4.0. Die dortigen Ergebnisse und die manuelle Routenabnahme sind bis dahin ausstehend.

@@ -20,6 +20,7 @@ const harness = vi.hoisted(() => {
     setCamera: vi.fn(),
     setLayerVisible: vi.fn(),
     setOpacity: vi.fn(),
+    setRenderQuality: vi.fn(),
     setTextsVisible: vi.fn(),
   };
   return {
@@ -77,7 +78,9 @@ vi.mock('../components/MlightCadCanvas', async () => {
     file: File | null;
     fileRevision: number;
     opacity: number;
+    renderQuality: 'auto' | 'sharp' | 'memory';
     onAdapterChange: (adapter: typeof harness.adapter | null) => void;
+    onCamera: (camera: { center: [number, number]; resolution: number }) => void;
     onProgress: (progress: { phase: 'ready'; percentage: number }) => void;
     onReady: (ready: { layers: typeof harness.layers; blocks: []; entityCount: number; preflight: null }) => void;
   };
@@ -94,6 +97,7 @@ vi.mock('../components/MlightCadCanvas', async () => {
 
         props.onAdapterChange(harness.adapter);
         const timer = window.setTimeout(() => {
+          props.onCamera({ center: [80_000, 100_000], resolution: 2 });
           props.onProgress({ phase: 'ready', percentage: 100 });
           props.onReady({ layers: harness.layers, blocks: [], entityCount: 12, preflight: null });
         }, 0);
@@ -124,7 +128,7 @@ function renderPage() {
 describe('MLightCAD viewer page integration', () => {
   beforeEach(async () => {
     await i18n.changeLanguage('de');
-    window.history.replaceState(null, '', '/mlightcad');
+    window.history.replaceState(null, '', '/');
     vi.clearAllMocks();
     Object.assign(harness.locationState, {
       permission: 'idle', position: null, accuracy: null, follow: 'off', error: null,
@@ -180,6 +184,8 @@ describe('MLightCAD viewer page integration', () => {
 
     fireEvent.click(getByRole('button', { name: i18n.t('openCadControls') }));
     const cadDialog = getByRole('dialog', { name: i18n.t('cadControlsTitle') });
+    fireEvent.click(within(cadDialog).getByRole('button', { name: `${i18n.t('quality.sharp.label')} · ${i18n.t('quality.sharp.ratio')}` }));
+    expect((harness.canvasProps.mock.calls.at(-1)?.[0] as { renderQuality: string }).renderQuality).toBe('sharp');
     fireEvent.click(within(cadDialog).getByRole('button', { name: i18n.t('hideTexts') }));
     expect(harness.adapter.setTextsVisible).toHaveBeenCalledWith(false);
   });
@@ -209,5 +215,26 @@ describe('MLightCAD viewer page integration', () => {
     expect(harness.adapter.centerOn).not.toHaveBeenCalled();
 
     await waitFor(() => expect(harness.adapter.centerOn).toHaveBeenCalledOnce());
+  });
+
+  it('groups layer changes into one reload and restores the CAD camera', async () => {
+    const { container, getByRole } = renderPage();
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [new File(['dwg'], 'layers.dwg')] } });
+
+    await waitFor(() => expect(getByRole('button', { name: i18n.t('layers') })).toBeEnabled());
+    fireEvent.click(getByRole('button', { name: i18n.t('layers') }));
+    fireEvent.click(getByRole('button', { name: i18n.t('layerDrawer.hideLayer', { name: 'Draft' }) }));
+    fireEvent.click(getByRole('button', { name: i18n.t('layerDrawer.showLayer', { name: 'Draft' }) }));
+
+    const apply = getByRole('button', { name: i18n.t('layerDrawer.applyChanges') });
+    expect(apply).toBeEnabled();
+    fireEvent.click(apply);
+
+    await waitFor(() => {
+      const latestProps = harness.canvasProps.mock.calls.at(-1)?.[0] as { fileRevision: number } | undefined;
+      expect(latestProps?.fileRevision).toBe(2);
+      expect(harness.adapter.setCamera).toHaveBeenCalledWith({ center: [80_000, 100_000], resolution: 2 });
+    });
   });
 });

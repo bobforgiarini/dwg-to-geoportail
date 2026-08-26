@@ -3,7 +3,9 @@ import { FileUp, RotateCcw, Trash2, Type, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { BottomSheet } from './BottomSheet';
 import { CadOpacityControl } from './CadOpacityControl';
+import { CadRenderQualityControl } from './CadRenderQualityControl';
 import { LoadingSpinner } from './LoadingSpinner';
+import type { CadRenderQualityMode } from '../lib/mlightcad/renderQuality';
 
 interface Props {
   open: boolean;
@@ -14,6 +16,7 @@ interface Props {
   progressLabel: string;
   message: string | null;
   opacity: number;
+  renderQuality?: CadRenderQualityMode;
   cadTextVisible: boolean;
   hiddenObjectCount: number;
   controlsDisabled: boolean;
@@ -24,6 +27,7 @@ interface Props {
   onRemoveFile: () => void;
   onCancel: () => void;
   onOpacityChange: (value: number) => void;
+  onRenderQualityChange?: (value: CadRenderQualityMode) => void;
   onToggleTexts: () => void;
   onRestoreHidden: () => void;
 }
@@ -37,6 +41,7 @@ export function CadControlSheet({
   progressLabel,
   message,
   opacity,
+  renderQuality,
   cadTextVisible,
   hiddenObjectCount,
   controlsDisabled,
@@ -47,6 +52,7 @@ export function CadControlSheet({
   onRemoveFile,
   onCancel,
   onOpacityChange,
+  onRenderQualityChange,
   onToggleTexts,
   onRestoreHidden,
 }: Props) {
@@ -103,6 +109,9 @@ export function CadControlSheet({
       <section className="cad-control-section" aria-labelledby="display-control-title">
         <h3 id="display-control-title">{t('cadDisplay')}</h3>
         <CadOpacityControl value={opacity} onChange={onOpacityChange} />
+        {renderQuality && onRenderQualityChange && (
+          <CadRenderQualityControl value={renderQuality} onChange={onRenderQualityChange} />
+        )}
         <div className="cad-display-actions">
           <button
             className={!cadTextVisible ? 'active' : ''}

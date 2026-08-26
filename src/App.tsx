@@ -8,6 +8,7 @@ import { createBlockSheetItems, createBlockSheetLabels } from './components/bloc
 import { CadControlSheet } from './components/CadControlSheet';
 import { DwgPreparationSheet } from './components/DwgPreparationSheet';
 import { LayerSheet } from './components/LayerSheet';
+import { createLayerSheetItems, createLayerSheetLabels, isLayerHidden, layerIdentityMatches } from './components/layerSheetModel';
 import { MapActionControls } from './components/MapActionControls';
 import { MapCanvas, type MapCanvasHandle } from './components/MapCanvas';
 import { MapStatusBadges } from './components/MapStatusBadges';
@@ -54,6 +55,7 @@ export default function App() {
   const [pendingProfile, setPendingProfile] = useState<CadLoadProfile | null>(null);
   const [blockReturnToPreparation, setBlockReturnToPreparation] = useState(false);
   const [blockReloadPending, setBlockReloadPending] = useState(false);
+  const [layerReloadPending, setLayerReloadPending] = useState(false);
   const [basemapSuspended, setBasemapSuspended] = useState(false);
 
   useEffect(() => {
@@ -156,6 +158,7 @@ export default function App() {
       setHiddenFeatureIds(new Set(result.autoHiddenFeatureIds));
       setImportState('ready');
       setBlockReloadPending(false);
+      setLayerReloadPending(false);
       setMessage(null);
     } catch (error) {
       if (!isCurrentImport()) return;
@@ -191,6 +194,8 @@ export default function App() {
     setDwg(null);
     setSelection(null);
     setHiddenFeatureIds(new Set());
+    setBlockReloadPending(false);
+    setLayerReloadPending(false);
     setImportState('idle');
     setMessage(null);
   // A revision deliberately retriggers parsing even when the same File object is selected.
@@ -204,6 +209,8 @@ export default function App() {
       if (fileInput.current) fileInput.current.value = '';
       return;
     }
+    setBlockReloadPending(false);
+    setLayerReloadPending(false);
     session.setFile(file);
     setPreserveViewOnImport(false);
     setDrawerState('controls');
@@ -225,31 +232,40 @@ export default function App() {
     abortController.current = null;
     controller?.abort();
     cancelDwgImport();
+    setBlockReloadPending(false);
+    setLayerReloadPending(false);
     session.clearFile();
   };
 
-  const toggleLayer = (id: string) => {
+  const setLayerVisible = (id: string, visible: boolean) => {
     if (layerSheetMode === 'preparation') {
-      const currentlyHidden = pendingProfile?.hiddenLayerIds.includes(id) ?? false;
       setPendingProfile((current) => current ? {
         ...current,
         mode: 'filtered',
-        hiddenLayerIds: currentlyHidden ? current.hiddenLayerIds.filter((layer) => layer !== id) : [...current.hiddenLayerIds, id],
+        hiddenLayerIds: visible
+          ? current.hiddenLayerIds.filter((layer) => layer !== id)
+          : current.hiddenLayerIds.includes(id) ? current.hiddenLayerIds : [...current.hiddenLayerIds, id],
       } : current);
       return;
     }
-    const layer = dwg?.layers.find((candidate) => candidate.id === id || candidate.name === id);
-    const reportLayer = session.preflightReport?.layers.find((candidate) => candidate.id === id || candidate.name === id);
+    const reportLayer = session.preflightReport?.layers.find((candidate) => layerIdentityMatches(candidate, id));
+    const layer = dwg?.layers.find((candidate) => (
+      layerIdentityMatches(candidate, id)
+      || Boolean(reportLayer && (layerIdentityMatches(candidate, reportLayer.id) || layerIdentityMatches(candidate, reportLayer.name)))
+    ));
     if (!layer && !reportLayer) return;
-    const wasFiltered = session.loadProfile.hiddenLayerIds.some((layerId) => layerId.toLocaleLowerCase('en-US') === id.toLocaleLowerCase('en-US'));
-    const visible = layer ? !layer.visible : wasFiltered;
-    session.setLayerProfileVisible(id, visible);
+    const profileLayer = reportLayer ?? layer!;
+    const wasFiltered = isLayerHidden(profileLayer, session.loadProfile.hiddenLayerIds);
+    session.setLayerProfileVisible(profileLayer.id, visible);
+    if (visible && profileLayer.name !== profileLayer.id) session.setLayerProfileVisible(profileLayer.name, true);
     setDwg((current) => current ? {
-      ...current, layers: current.layers.map((candidate) => candidate.id === id ? { ...candidate, visible: !candidate.visible } : candidate),
+      ...current,
+      layers: current.layers.map((candidate) => (
+        layerIdentityMatches(candidate, layer?.id ?? id) ? { ...candidate, visible } : candidate
+      )),
     } : current);
     if (visible && wasFiltered) {
-      setPreserveViewOnImport(true);
-      session.reloadFile();
+      setLayerReloadPending(true);
     }
   };
   const setAllLayers = (visible: boolean) => {
@@ -265,8 +281,7 @@ export default function App() {
     for (const layer of session.preflightReport?.layers ?? dwg?.layers ?? []) session.setLayerProfileVisible(layer.id, visible);
     setDwg((current) => current ? { ...current, layers: current.layers.map((layer) => ({ ...layer, visible })) } : current);
     if (reloadRequired) {
-      setPreserveViewOnImport(true);
-      session.reloadFile();
+      setLayerReloadPending(true);
     }
   };
   const setBlockVisible = (id: string, visible: boolean) => {
@@ -319,6 +334,7 @@ export default function App() {
     } : current);
     session.resetLoadProfile();
     setBlockReloadPending(false);
+    setLayerReloadPending(false);
     if (reloadRequired) {
       setPreserveViewOnImport(true);
       session.reloadFile();
@@ -366,18 +382,22 @@ export default function App() {
         featureCount: layer.expandedEntityCount,
       })) ?? [])
     : (session.preflightReport?.layers.map((reportLayer) => {
-        const rendered = dwg?.layers.find((layer) => layer.id === reportLayer.id || layer.name === reportLayer.name);
-        const hidden = session.loadProfile.hiddenLayerIds.some((id) => (
-          id.toLocaleLowerCase('en-US') === reportLayer.id.toLocaleLowerCase('en-US')
-          || id.toLocaleLowerCase('en-US') === reportLayer.name.toLocaleLowerCase('en-US')
-        ));
+        const rendered = dwg?.layers.find((layer) => layerIdentityMatches(layer, reportLayer.id) || layerIdentityMatches(layer, reportLayer.name));
+        const hidden = isLayerHidden(reportLayer, session.loadProfile.hiddenLayerIds);
         return {
           id: reportLayer.id,
           name: reportLayer.name,
           visible: !hidden && (rendered?.visible ?? true),
-          featureCount: rendered?.featureCount ?? reportLayer.expandedEntityCount,
+          featureCount: Math.max(rendered?.featureCount ?? 0, reportLayer.expandedEntityCount),
         };
       }) ?? dwg?.layers ?? []);
+  const layerSheetItems = createLayerSheetItems(
+    layerSheetLayers,
+    layerSheetMode === 'preparation' ? pendingProfile ?? session.loadProfile : session.loadProfile,
+    preparationReport?.risk.deviceBudget ?? session.preflightReport?.risk.deviceBudget ?? 150_000,
+    layerSheetMode !== 'preparation',
+    layerReloadPending,
+  );
 
   return (
     <main className={`app-shell ${drawerState || layerSheetMode ? 'drawer-open' : 'drawer-closed'}`}>
@@ -518,14 +538,21 @@ export default function App() {
       />
       <LayerSheet
         open={layerSheetMode !== null}
-        layers={layerSheetLayers}
+        layers={layerSheetItems}
+        labels={createLayerSheetLabels(t)}
         onClose={() => {
           const returnToPreparation = layerSheetMode === 'preparation';
           setLayerSheetMode(null);
           if (returnToPreparation) setDrawerState('prepare');
         }}
-        onToggle={toggleLayer}
-        onSetAll={setAllLayers}
+        onSetVisible={setLayerVisible}
+        onSetAllVisible={setAllLayers}
+        applyPending={layerReloadPending}
+        onApplyChanges={layerSheetMode === 'loaded' ? () => {
+          setLayerReloadPending(false);
+          setPreserveViewOnImport(true);
+          session.reloadFile();
+        } : undefined}
       />
     </main>
   );

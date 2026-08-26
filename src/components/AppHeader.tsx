@@ -1,5 +1,6 @@
 import { Boxes, Languages, MapPinned } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import packageJson from '../../package.json';
 import { useCadSession, type ViewerKind } from '../session/CadSessionContext';
 
 export function AppHeader() {
@@ -14,7 +15,7 @@ export function AppHeader() {
       <div className="brand-mark" aria-hidden="true"><MapPinned size={21} /></div>
       <div className="brand-copy">
         <strong>{t('appName')}</strong>
-        <span>v0.3.0</span>
+        <span>v{packageJson.version}</span>
       </div>
       <a
         className="viewer-toggle"

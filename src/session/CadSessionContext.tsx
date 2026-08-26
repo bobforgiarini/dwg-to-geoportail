@@ -20,6 +20,7 @@ import {
   type DwgImportRecoveryMarker,
 } from '../lib/cad/importRecovery';
 import type { CadLoadProfile, DwgPreflightReport } from '../lib/cad/preflightTypes';
+import type { CadRenderQualityMode } from '../lib/mlightcad/renderQuality';
 import {
   getViewerHref,
   navigateBrowserToViewer,
@@ -43,6 +44,7 @@ export interface CadSession {
   preflightReport: DwgPreflightReport | null;
   loadProfile: CadLoadProfile;
   cadTextVisible: boolean;
+  cadRenderQuality: CadRenderQualityMode;
   hiddenObjectIds: string[];
   /** Marker left by a previous hard tab termination; contains metadata only. */
   recoveryMarker: DwgImportRecoveryMarker | null;
@@ -65,6 +67,7 @@ export interface CadSessionContextValue extends CadSession {
   setBlockProfileVisible: (blockName: string, visible: boolean) => void;
   resetLoadProfile: () => void;
   setCadTextVisible: (visible: boolean) => void;
+  setCadRenderQuality: (quality: CadRenderQualityMode) => void;
   setObjectHidden: (objectId: string, hidden: boolean) => void;
   restoreHiddenObjects: () => void;
   clearRecoveryPreparationRequirement: () => void;
@@ -74,7 +77,7 @@ export interface CadSessionContextValue extends CadSession {
 const CadSessionContext = createContext<CadSessionContextValue | null>(null);
 
 function readInitialViewer(): ViewerKind {
-  return typeof window === 'undefined' ? 'legacy' : resolveViewerKind(window.location.pathname);
+  return typeof window === 'undefined' ? 'mlightcad' : resolveViewerKind(window.location.pathname);
 }
 
 const EMPTY_LOAD_PROFILE: CadLoadProfile = {
@@ -99,6 +102,7 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
   const [preflightReport, setPreflightReport] = useState<DwgPreflightReport | null>(null);
   const [loadProfile, setLoadProfileState] = useState<CadLoadProfile>(EMPTY_LOAD_PROFILE);
   const [cadTextVisible, setCadTextVisible] = useState(true);
+  const [cadRenderQuality, setCadRenderQuality] = useState<CadRenderQualityMode>('auto');
   const [hiddenObjectIds, setHiddenObjectIds] = useState<string[]>([]);
   const [recoveryMarker, setRecoveryMarker] = useState<DwgImportRecoveryMarker | null>(
     () => consumeDwgImportRecoveryMarker(),
@@ -239,6 +243,7 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       preflightReport,
       loadProfile,
       cadTextVisible,
+      cadRenderQuality,
       hiddenObjectIds,
       recoveryMarker,
       recoveryPreparationRequired,
@@ -255,12 +260,13 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       setBlockProfileVisible,
       resetLoadProfile,
       setCadTextVisible,
+      setCadRenderQuality,
       setObjectHidden,
       restoreHiddenObjects,
       clearRecoveryPreparationRequirement,
       reloadFile,
     }),
-    [activeViewer, basemapHealth, basemapHealthReporter, basemapVisible, cadTextVisible, clearFile, clearRecoveryPreparationRequirement, file, fileRevision, hiddenObjectIds, loadProfile, preflightReport, recoveryMarker, recoveryPreparationRequired, reloadFile, resetLoadProfile, restoreHiddenObjects, setBlockProfileVisible, setFile, setLayerProfileVisible, setLoadProfile, setObjectHidden, setViewer, toggleBasemapVisible],
+    [activeViewer, basemapHealth, basemapHealthReporter, basemapVisible, cadRenderQuality, cadTextVisible, clearFile, clearRecoveryPreparationRequirement, file, fileRevision, hiddenObjectIds, loadProfile, preflightReport, recoveryMarker, recoveryPreparationRequired, reloadFile, resetLoadProfile, restoreHiddenObjects, setBlockProfileVisible, setFile, setLayerProfileVisible, setLoadProfile, setObjectHidden, setViewer, toggleBasemapVisible],
   );
 
   return <CadSessionContext.Provider value={value}>{children}</CadSessionContext.Provider>;

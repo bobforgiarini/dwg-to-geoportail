@@ -229,11 +229,12 @@ describe('legacy viewer controls', () => {
     fireEvent.click(getByRole('button', { name: 'Mount prepared legacy' }));
     await waitFor(() => expect(importDwg).toHaveBeenCalledOnce());
     fireEvent.click(getByRole('button', { name: i18n.t('layers') }));
-    const hiddenRow = getByText('Hidden').closest('label') as HTMLLabelElement;
-    const checkbox = hiddenRow.querySelector('input') as HTMLInputElement;
-    expect(checkbox).not.toBeChecked();
+    expect(getByText('Hidden')).toBeInTheDocument();
+    const hiddenRow = getByRole('button', { name: i18n.t('layerDrawer.showLayer', { name: 'Hidden' }) });
+    expect(hiddenRow).toHaveAttribute('aria-pressed', 'false');
 
-    fireEvent.click(checkbox);
+    fireEvent.click(hiddenRow);
+    fireEvent.click(getByRole('button', { name: i18n.t('layerDrawer.applyChanges') }));
     await waitFor(() => expect(importDwg).toHaveBeenCalledTimes(2));
   });
 });

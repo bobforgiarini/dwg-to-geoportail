@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CadOverlayLayer } from '../../types/models';
 import type { CadOverlayBlock } from '../cad/preflightTypes';
+import type { CadRenderQualityContext } from './renderQuality';
 import { AdapterEvent } from './types';
 
 const runtimeHarness = vi.hoisted(() => ({
@@ -49,11 +50,12 @@ interface AdapterInternals {
   bindSelection: (view: unknown) => void;
   bindWebglContextLoss: (view: unknown) => void;
   collectRenderedTextSceneObjects: (view: unknown) => void;
-  configureLowMemoryRenderer: (view: unknown, enabled: boolean) => void;
+  configureRenderQuality: (view: unknown) => void;
   configureTransparentRenderer: (view: unknown) => void;
   configureTouchNavigation: (view: unknown) => void;
   hideEmbeddedCommandLine: () => void;
   describeObject: (id: string) => unknown;
+  renderQualityContext: CadRenderQualityContext;
 }
 
 function overlayBlock(name: string, init: Partial<CadOverlayBlock> = {}): CadOverlayBlock {
@@ -177,7 +179,7 @@ describe('MlightCadViewerAdapter controls', () => {
 
     adapter.setOpacity(60);
     internals(adapter).configureTransparentRenderer(view);
-    internals(adapter).configureLowMemoryRenderer(view, true);
+    adapter.setRenderQuality('memory');
 
     expect(container.style.opacity).toBe('');
     expect(canvas.style.opacity).toBe('0.6');
@@ -188,7 +190,59 @@ describe('MlightCadViewerAdapter controls', () => {
     expect((view as typeof view & { isDirty: boolean }).isDirty).toBe(true);
   });
 
-  it('uses DPR 1 mode for mobile/coarse devices independently of DWG size', () => {
+  it('updates only the CAD WebGL pixel ratio when render quality changes', () => {
+    const setPixelRatio = vi.fn();
+    const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+    const view = {
+      renderer: { internalRenderer: { setPixelRatio } },
+      isDirty: false,
+    };
+    internals(adapter).view = view;
+    internals(adapter).renderQualityContext = {
+      nativePixelRatio: 3,
+      mobile: true,
+      risk: 'low',
+    };
+
+    adapter.setRenderQuality('auto');
+    expect(setPixelRatio).toHaveBeenLastCalledWith(2);
+    expect(adapter.currentRenderQuality.pixelRatio).toBe(2);
+
+    adapter.setRenderQuality('sharp');
+    expect(setPixelRatio).toHaveBeenLastCalledWith(2.5);
+
+    adapter.setRenderQuality('memory');
+    expect(setPixelRatio).toHaveBeenLastCalledWith(1);
+    expect(view.isDirty).toBe(true);
+  });
+
+  it('can upgrade Auto quality after a conservative preflight-pending start', () => {
+    const setPixelRatio = vi.fn();
+    const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+    const view = {
+      renderer: { internalRenderer: { setPixelRatio } },
+      isDirty: false,
+    };
+    internals(adapter).view = view;
+    internals(adapter).renderQualityContext = {
+      nativePixelRatio: 3,
+      mobile: true,
+      fileSize: 12 * 1024 * 1024,
+      risk: null,
+    };
+
+    internals(adapter).configureRenderQuality(view);
+    expect(setPixelRatio).toHaveBeenLastCalledWith(1);
+
+    internals(adapter).renderQualityContext = {
+      ...internals(adapter).renderQualityContext,
+      risk: 'low',
+    };
+    internals(adapter).configureRenderQuality(view);
+    expect(setPixelRatio).toHaveBeenLastCalledWith(2);
+  });
+
+  it('uses low-memory import chunks for mobile/coarse devices independently of render quality', () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, 'matchMedia');
     try {
       Object.defineProperty(window, 'matchMedia', {

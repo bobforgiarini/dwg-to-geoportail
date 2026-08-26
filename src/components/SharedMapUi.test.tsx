@@ -4,6 +4,7 @@ import i18n from '../i18n';
 import { BottomSheet } from './BottomSheet';
 import { CadControlSheet } from './CadControlSheet';
 import { LayerSheet } from './LayerSheet';
+import { createLayerSheetLabels } from './layerSheetModel';
 import { LoadingSpinner } from './LoadingSpinner';
 import { MapActionControls } from './MapActionControls';
 import { MapStatusBadges } from './MapStatusBadges';
@@ -135,10 +136,11 @@ describe('shared map UI', () => {
     const { getByRole } = render(
       <LayerSheet
         open
-        layers={[{ id: 'A', name: 'Layer A', visible: true, featureCount: 4 }]}
+        layers={[{ id: 'A', name: 'Layer A', visible: true, objectCount: 4, cost: 'low', requiresReload: false }]}
+        labels={createLayerSheetLabels(i18n.t)}
         onClose={vi.fn()}
-        onToggle={vi.fn()}
-        onSetAll={vi.fn()}
+        onSetVisible={vi.fn()}
+        onSetAllVisible={vi.fn()}
       />,
     );
 
