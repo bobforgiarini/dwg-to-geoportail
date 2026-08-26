@@ -9,6 +9,7 @@ import { resolveCadColor } from '@flyfish-dev/cad-viewer';
 import type { CadDocument, CadEntity, CadPoint3D } from '@flyfish-dev/cad-viewer';
 import { LUREF_CODE, WEB_MERCATOR_CODE } from '../crs';
 import type { CadOverlayLayer } from '../../types/models';
+import { createCadObjectKey } from './objectKey';
 
 type Matrix = [number, number, number, number, number, number];
 type XY = [number, number];
@@ -418,16 +419,26 @@ export function convertCadDocument(document: CadDocument): CadConversionResult {
     geometry.transform(LUREF_CODE, WEB_MERCATOR_CODE);
     const feature = new Feature({ geometry });
     const featureId = `${entity.handle ?? entity.id ?? entity.type}-${features.length}`;
+    const objectKey = createCadObjectKey(String(entity.handle ?? entity.id ?? featureId), stack);
+    const normalizedType = String(entity.type ?? '').trim().toUpperCase();
+    const isCadAnnotation = kind === 'text'
+      || normalizedType === 'LEADER'
+      || normalizedType === 'MLEADER'
+      || normalizedType === 'MULTILEADER';
     feature.setId(featureId);
     feature.setProperties({
       featureId,
+      objectKey,
       layerId,
       cadType: entity.type,
       cadColor: resolveCadColor(entity, document, { background: '#334b36', foreground: '#ffffff', contrastMode: 'preserve' }),
       label: kind === 'text' ? String(entity.text ?? entity.value ?? '') : '',
       textHeight: entity.textHeight ?? entity.height,
-      isCadText: kind === 'text',
+      // Text visibility intentionally includes annotation leader geometry so
+      // hiding its label never leaves orphaned arrows/lines behind.
+      isCadText: isCadAnnotation,
       isLurefNational: coordinateInExtent(authoredCenter, NATIONAL_LUREF_BOUNDS),
+      blockPath: [...stack],
     });
     features.push(feature);
     layerCounts.set(layerId, (layerCounts.get(layerId) ?? 0) + 1);

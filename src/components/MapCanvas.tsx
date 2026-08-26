@@ -21,47 +21,58 @@ import type TileWMS from 'ol/source/TileWMS';
 import type WMTS from 'ol/source/WMTS';
 import type Geometry from 'ol/geom/Geometry';
 import 'ol/ol.css';
-import { createBasemapLayer } from '../lib/geoportail';
+import type { BasemapHealthReporter, BasemapHealthState } from '../lib/basemapHealth';
+import { bindBasemapSourceHealth, createBasemapLayer } from '../lib/geoportail';
 import { mapToLuref } from '../lib/crs';
 import { normalizeCadOpacity } from '../lib/mlightcad/opacity';
-import type { BasemapMode, DwgImportResult, LocationTrackingState, SelectedCadObject } from '../types/models';
+import type { DwgImportResult, LocationTrackingState, SelectedCadObject } from '../types/models';
+import { browserPreflightDevice } from '../lib/cad/importRecovery';
 
 interface Props {
   dwg: DwgImportResult | null;
   visibleLayers: Set<string>;
   location: LocationTrackingState;
-  basemapMode: BasemapMode;
+  basemapHealth: BasemapHealthState;
+  basemapHealthReporter: BasemapHealthReporter;
   basemapVisible: boolean;
-  onWmtsError: () => void;
+  basemapSuspended?: boolean;
   onManualMove: () => void;
   onCoordinate: (coordinate: Coordinate) => void;
   hiddenFeatureIds: Set<string>;
+  hiddenObjectKeys: Set<string>;
+  hiddenBlockNames: Set<string>;
   selectedFeatureId: string | null;
   onCadSelect: (selection: SelectedCadObject | null) => void;
   cadTextVisible: boolean;
   cadOpacity: number;
+  fitOnDwgChange?: boolean;
 }
 
 export interface MapCanvasHandle {
   fitDrawing: () => void;
 }
 
-export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({ dwg, visibleLayers, location, basemapMode, basemapVisible, onWmtsError, onManualMove, onCoordinate, hiddenFeatureIds, selectedFeatureId, onCadSelect, cadTextVisible, cadOpacity }, ref) {
+export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({ dwg, visibleLayers, location, basemapHealth, basemapHealthReporter, basemapVisible, basemapSuspended = false, onManualMove, onCoordinate, hiddenFeatureIds, hiddenObjectKeys, hiddenBlockNames, selectedFeatureId, onCadSelect, cadTextVisible, cadOpacity, fitOnDwgChange = true }, ref) {
   const { t } = useTranslation();
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
+  const memoryConstrained = useRef(browserPreflightDevice().mobile === true);
   const baseRef = useRef<TileLayer<WMTS | TileWMS> | null>(null);
   const basemapVisibleRef = useRef(basemapVisible);
   const cadSource = useMemo(() => new VectorSource(), []);
   const locationSource = useMemo(() => new VectorSource(), []);
   const visibleRef = useRef(visibleLayers);
   const hiddenRef = useRef(hiddenFeatureIds);
+  const hiddenObjectKeysRef = useRef(hiddenObjectKeys);
+  const hiddenBlocksRef = useRef(hiddenBlockNames);
   const selectedRef = useRef(selectedFeatureId);
   const onCadSelectRef = useRef(onCadSelect);
   const cadTextVisibleRef = useRef(cadTextVisible);
   const [rotation, setRotation] = useState(0);
   visibleRef.current = visibleLayers;
   hiddenRef.current = hiddenFeatureIds;
+  hiddenObjectKeysRef.current = hiddenObjectKeys;
+  hiddenBlocksRef.current = hiddenBlockNames;
   selectedRef.current = selectedFeatureId;
   onCadSelectRef.current = onCadSelect;
   cadTextVisibleRef.current = cadTextVisible;
@@ -72,9 +83,12 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
     declutter: true,
     style: (feature) => {
       if (!visibleRef.current.has(String(feature.get('layerId')))) return undefined;
+      const blockPath = (feature.get('blockPath') as string[] | undefined) ?? [];
+      if (blockPath.some((name) => hiddenBlocksRef.current.has(name.toLocaleLowerCase('en-US')))) return undefined;
       if (!cadTextVisibleRef.current && feature.get('isCadText') === true) return undefined;
       const featureId = String(feature.get('featureId') ?? feature.getId() ?? '');
-      if (hiddenRef.current.has(featureId)) return undefined;
+      const objectKey = String(feature.get('objectKey') ?? featureId);
+      if (hiddenRef.current.has(featureId) || hiddenObjectKeysRef.current.has(objectKey)) return undefined;
       const color = String(feature.get('cadColor') || '#f1be88');
       const label = String(feature.get('label') || '');
       const selected = selectedRef.current === featureId;
@@ -121,12 +135,10 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
 
   useEffect(() => {
     if (!target.current) return;
-    const base = createBasemapLayer(basemapMode);
-    base.setVisible(basemapVisible);
-    baseRef.current = base;
     const map = new Map({
       target: target.current,
-      layers: [base, cadLayer, locationLayer],
+      pixelRatio: memoryConstrained.current ? 1 : (window.devicePixelRatio || 1),
+      layers: [cadLayer, locationLayer],
       controls: defaultControls({ zoom: false, rotate: false, attribution: false }),
       view: new View({ center: fromLonLat([6.13, 49.61]), zoom: 12, minZoom: 7, maxZoom: 21 }),
     });
@@ -149,9 +161,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
       if (!featureId || hiddenRef.current.has(featureId)) return;
       onCadSelectRef.current({
         featureId,
+        objectKey: String(feature.get('objectKey') ?? featureId),
         layerId: String(feature.get('layerId') ?? '0'),
         cadType: String(feature.get('cadType') ?? 'CAD'),
         label: String(feature.get('label') ?? ''),
+        blockPath: (feature.get('blockPath') as string[] | undefined) ?? [],
       });
     });
     const updateRotation = () => setRotation(map.getView().getRotation());
@@ -170,13 +184,32 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const previous = baseRef.current;
-    const replacement = createBasemapLayer(basemapMode);
+    if (basemapSuspended) {
+      const existing = baseRef.current;
+      if (existing) {
+        existing.getSource()?.clear();
+        map.removeLayer(existing);
+        baseRef.current = null;
+      }
+      return;
+    }
+    const replacement = createBasemapLayer(basemapHealth.mode, {
+      cacheSize: memoryConstrained.current ? 32 : undefined,
+    });
+    const source = replacement.getSource();
+    if (!source) return;
+    const unbindHealth = bindBasemapSourceHealth(
+      source,
+      basemapHealth.generation,
+      basemapHealthReporter,
+    );
     replacement.setVisible(basemapVisibleRef.current);
-    if (previous) map.getLayers().setAt(0, replacement);
+    if (baseRef.current) map.getLayers().setAt(0, replacement);
+    else map.getLayers().insertAt(0, replacement);
     baseRef.current = replacement;
-    if (basemapMode === 'wmts') replacement.getSource()?.once('tileloaderror', onWmtsError);
-  }, [basemapMode, onWmtsError]);
+    basemapHealthReporter.sourceMounted(basemapHealth.generation);
+    return unbindHealth;
+  }, [basemapHealth.generation, basemapHealth.mode, basemapHealthReporter, basemapSuspended]);
 
   useEffect(() => {
     baseRef.current?.setVisible(basemapVisible);
@@ -186,14 +219,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
     cadSource.clear();
     if (!dwg) return;
     cadSource.addFeatures(dwg.features as Feature<Geometry>[]);
-    fitDrawing();
-  }, [cadSource, dwg, fitDrawing]);
+    if (fitOnDwgChange) fitDrawing();
+  }, [cadSource, dwg, fitDrawing, fitOnDwgChange]);
 
   useEffect(() => {
     cadLayer.setOpacity(normalizeCadOpacity(cadOpacity) / 100);
   }, [cadLayer, cadOpacity]);
 
-  useEffect(() => { cadLayer.changed(); }, [cadLayer, cadTextVisible, hiddenFeatureIds, selectedFeatureId, visibleLayers]);
+  useEffect(() => { cadLayer.changed(); }, [cadLayer, cadTextVisible, hiddenBlockNames, hiddenFeatureIds, hiddenObjectKeys, selectedFeatureId, visibleLayers]);
 
   useEffect(() => {
     locationSource.clear();

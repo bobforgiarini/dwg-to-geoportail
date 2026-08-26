@@ -1,4 +1,11 @@
 import type { CadOverlayLayer, SelectedCadObject } from '../../types/models';
+import type {
+  CadLoadDecision,
+  CadLoadProfile,
+  CadOverlayBlock,
+  DwgPreflightOptions,
+  DwgPreflightReport,
+} from '../cad/preflightTypes';
 
 export interface MlightCadCamera {
   center: [number, number];
@@ -14,13 +21,31 @@ export interface MlightCadProgress {
 
 export interface MlightCadReady {
   layers: CadOverlayLayer[];
+  blocks: CadOverlayBlock[];
   entityCount: number;
+  preflight: DwgPreflightReport | null;
+}
+
+export interface MlightCadPreparationResult {
+  decision: CadLoadDecision;
+  profile?: CadLoadProfile;
+}
+
+export interface MlightCadLoadOptions {
+  device?: DwgPreflightOptions['device'];
+  maxBlockDepth?: DwgPreflightOptions['maxBlockDepth'];
+  loadProfile?: CadLoadProfile;
+  onPreparation?: (report: DwgPreflightReport) => Promise<MlightCadPreparationResult>;
+  forcePreparation?: boolean;
+  forceFull?: boolean;
 }
 
 export interface MlightCadAdapterEvents {
   progress: MlightCadProgress;
   camera: MlightCadCamera;
   layers: CadOverlayLayer[];
+  blocks: CadOverlayBlock[];
+  preflight: DwgPreflightReport;
   selection: SelectedCadObject | null;
   ready: MlightCadReady;
   error: Error;

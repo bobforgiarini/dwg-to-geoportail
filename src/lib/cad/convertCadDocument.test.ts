@@ -46,10 +46,12 @@ describe('CAD document conversion', () => {
   it('marks CAD text features for the global text visibility switch', () => {
     const result = convertCadDocument(documentWith([
       { type: 'TEXT', kind: 'text', layer: 'A', insertionPoint: { x: 80_000, y: 100_000 }, text: 'Test' },
+      { type: 'MLEADER', kind: 'line', layer: 'A', startPoint: { x: 80_000, y: 100_000 }, endPoint: { x: 80_005, y: 100_005 } },
       { type: 'LINE', kind: 'line', layer: 'A', startPoint: { x: 80_000, y: 100_000 }, endPoint: { x: 80_010, y: 100_010 } },
     ]));
     expect(result.features[0].get('isCadText')).toBe(true);
-    expect(result.features[1].get('isCadText')).toBe(false);
+    expect(result.features[1].get('isCadText')).toBe(true);
+    expect(result.features[2].get('isCadText')).toBe(false);
   });
 
   it('detects cyclic block references', () => {

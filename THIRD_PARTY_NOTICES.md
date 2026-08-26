@@ -1,6 +1,6 @@
 # Drittanbieterhinweise
 
-Version 0.2.4 verwendet Open-Source-Bibliotheken aus `package-lock.json`. Die jeweiligen Pakete behalten ihre eigenen Lizenzbedingungen; die vollständigen installierten Fassungen sind für reproduzierbare Builds über `package-lock.json` festgelegt.
+Version 0.3.0 verwendet Open-Source-Bibliotheken aus `package-lock.json`. Die jeweiligen Pakete behalten ihre eigenen Lizenzbedingungen; die vollständigen installierten Fassungen sind für reproduzierbare Builds über `package-lock.json` festgelegt.
 
 ## Anwendungslizenz
 
@@ -19,7 +19,7 @@ DWG to Geoportail wird insgesamt unter `AGPL-3.0-only` verteilt; der vollständi
 
 - Projekt: <https://github.com/flyfish-dev/cad-viewer>
 - Lizenz: GNU Affero General Public License v3.0 only (`AGPL-3.0-only`)
-- Enthält beziehungsweise verwendet LibreDWG-WebAssembly für die lokale DWG-Verarbeitung unter `/wasm/`.
+- Stellt weiterhin die Legacy-Normalisierung und 2D-Konvertierung bereit; die native DWG-Analyse läuft in Version 0.3.0 über den unten dokumentierten gemeinsamen LibreDWG-Worker.
 - Lizenz- und NOTICE-Texte der installierten Version befinden sich im npm-Paket unter `node_modules/@flyfish-dev/cad-viewer/`.
 
 ## MLightCAD-Kern
@@ -39,15 +39,18 @@ Projektquellen: <https://github.com/mlightcad/cad-viewer> und <https://github.co
 - `@mlightcad/libredwg-converter` 3.14.2: GNU General Public License v3.0 (`GPL-3.0`)
 - der verwendete transitive Parser `@mlightcad/libredwg-web`: GNU General Public License v3.0 (`GPL-3.0`)
 - Projektquellen: <https://github.com/mlightcad/realdwg-web> und <https://github.com/mlightcad/libredwg-web>
-- Parser-Worker und WASM werden für die Browserausführung nach `/mlightcad-workers/` kopiert.
+- Parser-Worker, öffentliche LibreDWG-API, zugehörige Emscripten-JavaScript-Laufzeit und WASM werden für die Browserausführung nach `/mlightcad-workers/0.3.0/` kopiert.
 
 Die MIT-Lizenz des MLightCAD-Kerns ändert nicht die GPL-Bedingungen des für DWG aktivierten LibreDWG-Konverters. Die Anwendung bleibt als Gesamtprojekt unter `AGPL-3.0-only`; GPL-Komponenten behalten ihre jeweiligen Hinweise und Bedingungen.
 
-Version 0.2.4 verändert keine dieser eingebundenen Drittanbieterfassungen. Die Kompatibilitätskorrektur für fehlerhaft gepackte Windows-1252-`MULTILEADER`-Texte verarbeitet ausschließlich das lokal zurückgegebene Parserergebnis im Anwendungscode; Worker- und WASM-Binärdateien werden nicht modifiziert.
+Version 0.3.0 ändert keine Paketversion des MLightCAD-/LibreDWG-Pfads. Der Produktionsbuild transformiert jedoch die Memory-Section der ausgelieferten `libredwg-web.wasm`-Datei reproduzierbar: Der deklarierte Initialspeicher wird auf 2.048 WASM-Seiten beziehungsweise 128 MiB begrenzt, während vorhandenes Maximum und Memory-Growth-Flags unverändert bleiben. Der anwendungseigene Transformationscode steht unter derselben `AGPL-3.0-only`-Lizenz wie die Anwendung; die transformierte LibreDWG-Binärdatei bleibt unter den GPL-Bedingungen ihres Ursprungspakets.
+
+Diese Buildtransformation ist kein unabhängiger Ersatz-Parser und keine Änderung der LibreDWG-Lizenz. Sie wird mit einem Validierungstest abgesichert. Die bestehende Kompatibilitätskorrektur für fehlerhaft gepackte Windows-1252-`MULTILEADER`-Texte verarbeitet weiterhin ausschließlich das lokal zurückgegebene Parserergebnis im Anwendungscode.
 
 ## Geoportail Luxembourg Open Data
 
-- Dienstübersicht: <https://data.public.lu/en/datasets/carte-de-base-webservices-wms-et-wmts/>
+- Dienstübersicht: <https://data.public.lu/en/datasets/bd-l-ortho-webservices-wms-et-wmts/>
+- Offizieller Open-Data-Endpunkt für WMTS `ortho_2025` und WMS `ortho_latest`: `https://wmts1.geoportail.lu/opendata/service`
 - Die Oberfläche zeigt den Geoportail-Diensthinweis und Link im Site-Banner.
 
 ## Externe MLightCAD-Ressourcen

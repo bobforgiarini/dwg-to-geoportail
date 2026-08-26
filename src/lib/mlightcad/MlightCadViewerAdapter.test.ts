@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CadOverlayLayer } from '../../types/models';
+import type { CadOverlayBlock } from '../cad/preflightTypes';
 import { AdapterEvent } from './types';
 
 const runtimeHarness = vi.hoisted(() => ({
@@ -35,10 +36,13 @@ vi.mock('@mlightcad/libredwg-converter', () => ({
   },
 }));
 
-import { MlightCadViewerAdapter } from './MlightCadViewerAdapter';
+import { MlightCadViewerAdapter, shouldUseLowMemoryCadMode } from './MlightCadViewerAdapter';
 
 interface AdapterInternals {
   layers: CadOverlayLayer[];
+  blocks: CadOverlayBlock[];
+  directBlockObjectIds: Map<string, Set<string>>;
+  objectBlockPaths: Map<string, string[]>;
   manager: unknown;
   view: unknown;
   bindDocument: (manager: unknown) => void;
@@ -50,6 +54,28 @@ interface AdapterInternals {
   configureTouchNavigation: (view: unknown) => void;
   hideEmbeddedCommandLine: () => void;
   describeObject: (id: string) => unknown;
+}
+
+function overlayBlock(name: string, init: Partial<CadOverlayBlock> = {}): CadOverlayBlock {
+  return {
+    id: name,
+    name,
+    kind: 'named',
+    visible: true,
+    instanceCount: 1,
+    directInstanceCount: 1,
+    directEntityCount: 1,
+    recursiveEntityCount: 1,
+    expandedEntityCount: 1,
+    textCount: 0,
+    hatchCount: 0,
+    primaryLayer: '0',
+    referencedBlockNames: [],
+    isNested: false,
+    hasCycle: false,
+    estimatedCost: 1,
+    ...init,
+  };
 }
 
 function internals(adapter: MlightCadViewerAdapter): AdapterInternals {
@@ -162,6 +188,28 @@ describe('MlightCadViewerAdapter controls', () => {
     expect((view as typeof view & { isDirty: boolean }).isDirty).toBe(true);
   });
 
+  it('uses DPR 1 mode for mobile/coarse devices independently of DWG size', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+    try {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: vi.fn(() => ({ matches: true })),
+      });
+      expect(shouldUseLowMemoryCadMode(1_024)).toBe(true);
+
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: vi.fn(() => ({ matches: false })),
+      });
+      expect(shouldUseLowMemoryCadMode(1_024, true)).toBe(true);
+      expect(shouldUseLowMemoryCadMode(11 * 1024 * 1024, false)).toBe(true);
+      expect(shouldUseLowMemoryCadMode(1_024, false)).toBe(false);
+    } finally {
+      if (descriptor) Object.defineProperty(window, 'matchMedia', descriptor);
+      else delete (window as unknown as { matchMedia?: unknown }).matchMedia;
+    }
+  });
+
   it('updates one or all renderer layers and emits snapshots', () => {
     const adapter = new MlightCadViewerAdapter(document.createElement('div'));
     const visibility = new Map([['A', true], ['B', true]]);
@@ -207,9 +255,10 @@ describe('MlightCadViewerAdapter controls', () => {
         },
       },
     };
+    internals(adapter).objectBlockPaths.set('42', ['OUTER', 'INNER']);
 
     expect(internals(adapter).describeObject('42')).toEqual({
-      featureId: '42', layerId: 'FILL', cadType: 'HATCH', label: '',
+      featureId: '42', objectKey: 'outer>inner::42', layerId: 'FILL', cadType: 'HATCH', label: '', blockPath: ['OUTER', 'INNER'],
     });
     adapter.hideObject('42');
     expect(adapter.hiddenObjectCount).toBe(1);
@@ -222,6 +271,32 @@ describe('MlightCadViewerAdapter controls', () => {
     adapter.restoreHiddenObjects();
     expect(adapter.hiddenObjectCount).toBe(0);
     expect(setVisible).toHaveBeenLastCalledWith('42', true);
+
+    expect(adapter.hideObjectByKey('different>instance::42')).toBe(true);
+    expect(adapter.hiddenObjectCount).toBe(1);
+    expect(setVisible).toHaveBeenLastCalledWith('42', false);
+  });
+
+  it('hides direct block references immediately and requests a reload for nested blocks', () => {
+    const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+    const setVisible = vi.fn();
+    internals(adapter).view = { setEntitySceneVisible: setVisible };
+    internals(adapter).blocks = [
+      overlayBlock('DIRECT'),
+      overlayBlock('NESTED', { isNested: true, directInstanceCount: 0 }),
+    ];
+    internals(adapter).directBlockObjectIds.set('direct', new Set(['INSERT-1', 'INSERT-2']));
+
+    expect(adapter.setBlockVisible('DIRECT', false)).toBe(false);
+    expect(setVisible.mock.calls).toEqual(expect.arrayContaining([
+      ['INSERT-1', false],
+      ['INSERT-2', false],
+    ]));
+    expect(adapter.currentBlocks.find((block) => block.name === 'DIRECT')?.visible).toBe(false);
+
+    setVisible.mockClear();
+    expect(adapter.setBlockVisible('NESTED', false)).toBe(true);
+    expect(setVisible).not.toHaveBeenCalled();
   });
 
   it('hides rendered text inside a block without hiding its geometry and preserves hidden-object precedence', () => {
@@ -420,7 +495,7 @@ describe('MlightCadViewerAdapter controls', () => {
       expect(view.pick).toHaveBeenCalledWith({ x: 100, y: 120 }, 12, true);
       expect(applySelection).toHaveBeenCalledOnce();
       expect(emitted.at(-1)).toEqual({
-        featureId: '42', layerId: 'A', cadType: 'LINE', label: '',
+        featureId: '42', objectKey: '::42', layerId: 'A', cadType: 'LINE', label: '', blockPath: [],
       });
 
       // The library's native mouse path may already have selected this id

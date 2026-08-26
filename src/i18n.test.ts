@@ -1,5 +1,21 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import i18n from './i18n';
+import i18n, { resources } from './i18n';
+
+function flatten(value: object, prefix = ''): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const [key, child] of Object.entries(value)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (typeof child === 'string') result.set(path, child);
+    if (child && typeof child === 'object') {
+      for (const [nestedKey, nestedValue] of flatten(child, path)) result.set(nestedKey, nestedValue);
+    }
+  }
+  return result;
+}
+
+function placeholders(value: string): string[] {
+  return [...value.matchAll(/{{\s*([^},\s]+)[^}]*}}/g)].map((match) => match[1]).sort();
+}
 
 describe('translations', () => {
   afterAll(() => void i18n.changeLanguage('de'));
@@ -10,5 +26,22 @@ describe('translations', () => {
       expect(i18n.t(key).length).toBeGreaterThan(3);
     }
     expect(i18n.t('appName')).not.toMatch(/BEST/i);
+  });
+
+  it('keeps every nested key and interpolation placeholder in DE, FR and EN', () => {
+    const translations = Object.fromEntries(Object.entries(resources).map(([language, resource]) => [
+      language,
+      flatten(resource.translation),
+    ])) as Record<'de' | 'fr' | 'en', Map<string, string>>;
+    const referenceKeys = [...translations.de.keys()].sort();
+
+    for (const language of ['fr', 'en'] as const) {
+      expect([...translations[language].keys()].sort()).toEqual(referenceKeys);
+      for (const key of referenceKeys) {
+        expect(placeholders(translations[language].get(key) ?? '')).toEqual(
+          placeholders(translations.de.get(key) ?? ''),
+        );
+      }
+    }
   });
 });

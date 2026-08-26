@@ -1,12 +1,32 @@
 import { AcDbLibreDwgConverter } from '@mlightcad/libredwg-converter';
 import type { DwgDatabase } from '@mlightcad/libredwg-web';
 import {
-  AcDbOpenDatabaseError,
-  acdbCreateWorkerApi,
   type AcDbParsingTaskResult,
-  type AcDbWorkerApi,
 } from '@mlightcad/data-model';
-import { normalizeLegacyMLeaderTextEncoding } from './mleaderTextEncoding';
+import type { CadLoadProfile, DwgPreflightOptions, DwgPreflightReport } from '../cad/preflightTypes';
+import { MlightDwgPreparationWorkerClient } from './MlightDwgPreparationWorkerClient';
+import type { MlightCadPreparationResult } from './types';
+
+const MLIGHTCAD_WASM_BASE_URL = '/mlightcad-workers/0.3.0';
+
+export interface CancellableLibreDwgPreparation {
+  file?: DwgPreflightOptions['file'];
+  device?: DwgPreflightOptions['device'];
+  maxBlockDepth?: DwgPreflightOptions['maxBlockDepth'];
+  loadProfile?: CadLoadProfile;
+  onPreflight?: (report: DwgPreflightReport) => void;
+  onPreparation?: (report: DwgPreflightReport) => Promise<MlightCadPreparationResult>;
+  forcePreparation?: boolean;
+  forceFull?: boolean;
+}
+
+export class MlightCadImportCancelledError extends Error {
+  override name = 'AbortError';
+
+  constructor() {
+    super('MLIGHTCAD_IMPORT_CANCELLED');
+  }
+}
 
 /**
  * The upstream converter destroys its worker only after parsing finishes. This
@@ -14,42 +34,63 @@ import { normalizeLegacyMLeaderTextEncoding } from './mleaderTextEncoding';
  * long-running local DWG import immediately.
  */
 export class CancellableLibreDwgConverter extends AcDbLibreDwgConverter {
-  private parserApi: AcDbWorkerApi | null = null;
+  private parserClient: MlightDwgPreparationWorkerClient | null = null;
+  private preparation: CancellableLibreDwgPreparation = {};
+  private cancelled = false;
+  private report: DwgPreflightReport | null = null;
+
+  get preflightReport(): DwgPreflightReport | null {
+    return this.report;
+  }
+
+  configurePreparation(options: CancellableLibreDwgPreparation): this {
+    this.preparation = options;
+    this.cancelled = false;
+    this.report = null;
+    return this;
+  }
 
   cancel(): void {
-    this.parserApi?.destroy();
-    this.parserApi = null;
+    this.cancelled = true;
+    this.parserClient?.cancel();
+    this.parserClient = null;
   }
 
   protected override async parse(
     data: ArrayBuffer,
     timeout?: number,
   ): Promise<AcDbParsingTaskResult<DwgDatabase>> {
-    const workerUrl = this.config.parserWorkerUrl;
-    if (!workerUrl) throw new Error('A LibreDWG parser worker URL is required');
+    if (this.cancelled) throw new MlightCadImportCancelledError();
 
-    // AcDbWorkerApi transfers the complete ArrayBuffer to its worker, which
-    // detaches it in this thread. Preserve only the DWG signature needed by
-    // the legacy MLeader normalizer before handing the file to the worker.
-    const sourceSignature = data.slice(0, 6);
-
-    const api = acdbCreateWorkerApi({
-      workerUrl,
-      timeout: this.getParserWorkerTimeout(data, timeout),
-      maxConcurrentWorkers: 1,
-    });
-    this.parserApi = api;
+    const client = new MlightDwgPreparationWorkerClient();
+    this.parserClient = client;
 
     try {
-      const result = await api.execute<ArrayBuffer, AcDbParsingTaskResult<DwgDatabase>>(data);
-      AcDbOpenDatabaseError.throwOnWorkerParseFailure(result);
-      if (result.data.model) {
-        normalizeLegacyMLeaderTextEncoding(result.data.model, sourceSignature);
-      }
-      return result.data;
+      const result = await client.execute(
+        data,
+        {
+          wasmBaseUrl: MLIGHTCAD_WASM_BASE_URL,
+          file: this.preparation.file,
+          device: this.preparation.device,
+          maxBlockDepth: this.preparation.maxBlockDepth,
+          loadProfile: this.preparation.loadProfile,
+          forcePreparation: this.preparation.forcePreparation,
+          forceFull: this.preparation.forceFull,
+        },
+        {
+          onPreflight: (report) => {
+            this.report = report;
+            this.preparation.onPreflight?.(report);
+          },
+          onPreparation: this.preparation.onPreparation,
+        },
+        this.getParserWorkerTimeout(data, timeout),
+      );
+      if (this.cancelled) throw new MlightCadImportCancelledError();
+      return result;
     } finally {
-      api.destroy();
-      if (this.parserApi === api) this.parserApi = null;
+      client.destroy();
+      if (this.parserClient === client) this.parserClient = null;
     }
   }
 }

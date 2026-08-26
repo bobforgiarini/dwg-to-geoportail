@@ -12,9 +12,12 @@ const harness = vi.hoisted(() => {
     clearSelection: vi.fn(),
     fitDrawing: vi.fn(),
     hideObject: vi.fn(),
+    hideObjectByKey: vi.fn(() => true),
     hiddenObjectCount: 0,
     restoreHiddenObjects: vi.fn(),
     setAllLayersVisible: vi.fn(),
+    setBlockVisible: vi.fn(() => false),
+    setCamera: vi.fn(),
     setLayerVisible: vi.fn(),
     setOpacity: vi.fn(),
     setTextsVisible: vi.fn(),
@@ -76,7 +79,7 @@ vi.mock('../components/MlightCadCanvas', async () => {
     opacity: number;
     onAdapterChange: (adapter: typeof harness.adapter | null) => void;
     onProgress: (progress: { phase: 'ready'; percentage: number }) => void;
-    onReady: (ready: { layers: typeof harness.layers; entityCount: number }) => void;
+    onReady: (ready: { layers: typeof harness.layers; blocks: []; entityCount: number; preflight: null }) => void;
   };
 
   return {
@@ -92,7 +95,7 @@ vi.mock('../components/MlightCadCanvas', async () => {
         props.onAdapterChange(harness.adapter);
         const timer = window.setTimeout(() => {
           props.onProgress({ phase: 'ready', percentage: 100 });
-          props.onReady({ layers: harness.layers, entityCount: 12 });
+          props.onReady({ layers: harness.layers, blocks: [], entityCount: 12, preflight: null });
         }, 0);
 
         return () => {
@@ -137,12 +140,13 @@ describe('MLightCAD viewer page integration', () => {
 
     expect(actionButtons.map((button) => button.getAttribute('aria-label'))).toEqual([
       i18n.t('layers'),
+      i18n.t('blocksTitle'),
       i18n.t('openCadControls'),
       i18n.t('locationStart'),
       i18n.t('fitDrawing'),
     ]);
     expect(actionButtons[0]).toBeDisabled();
-    expect(actionButtons[3]).toBeDisabled();
+    expect(actionButtons[4]).toBeDisabled();
     expect(getByTestId('mlightcad-map')).toHaveAttribute('data-controls-active', 'false');
     expect(container.querySelector('.mlightcad-interaction-layer')).toHaveClass('openlayers-active');
     expect(getByRole('dialog', { name: i18n.t('cadControlsTitle') })).toBeInTheDocument();

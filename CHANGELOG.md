@@ -2,6 +2,38 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.3.0] – 2026-08-26
+
+### Hinzugefügt
+
+- adaptiven DWG-Preflight ergänzt, der Layer, erreichbare Blockgraphen, Instanzen, Texte, Leader, Schraffuren, Polylinienpunkte, nicht unterstützte Inhalte und das geschätzte Gerätebudget bewertet
+- Vorbereitungssheet für tatsächlich komplexe Zeichnungen mit „Vollständig laden“, empfohlenem Filterprofil, anpassbarer Layer-/Blockauswahl und Abbruch ergänzt; eine Dateigröße allein sperrt den Import niemals
+- speicherwirksames Ladeprofil ergänzt: abgewählte Layer, Blöcke und nicht unterstützte Objektgruppen werden vor Feature-/Szenenaufbau gefiltert, während Blocktransformationen, Attribute und Layer-0-Vererbung erhalten bleiben
+- gemeinsamen Block-Drawer für beide Viewer ergänzt, einschließlich Suche, Sichtbarkeitszählern, benannten beziehungsweise gruppierten Systemblöcken, XRef-Kennzeichnung und Belastungsschätzung
+- Blockpfad und Block-Ausblendaktion im Objekt-Drawer ergänzt; direkte Modellbereichsblöcke lassen sich unmittelbar schalten, strukturelle Änderungen an verschachtelten Blöcken werden durch einen kontrollierten CAD-Neuladevorgang angewendet
+- nicht dateihaltigen Recovery-Marker ergänzt, damit die App nach einem wahrscheinlich vom Browser beendeten Import eine vorbereitete Darstellung empfiehlt
+- gemeinsamen Geoportail-Zustandsautomaten mit `loading`, `ready`, `retrying`, `offline` und `unavailable` für beide Viewer ergänzt
+- automatisierte Tests für Preflight, verschachtelte beziehungsweise zyklische Blöcke, Filterung, Recovery-Marker, Block-Drawer, Basemap-Fallback und den gepatchten WASM-Speicher ergänzt
+- ein anwendungseigener LibreDWG-Module-Worker sendet den kompakten Preflight vor dem Modell, wartet bei Risiko auf die Ladeentscheidung und überträgt erst danach die gefilterte Datenbank; beide Viewer verwenden diesen Pfad
+- die versionierte MLightCAD-Laufzeit liefert neben API und gepatchtem WASM nun auch das tatsächlich referenzierte `libredwg-web.js` aus; ein Regressionstest schützt die relative Assetkette
+
+### Geändert
+
+- Geoportail-WMS-Fallback auf den offiziellen Open-Data-Endpunkt und den Layer `ortho_latest` korrigiert; `ortho_2025` per WMTS bleibt bevorzugt
+- WMTS wechselt nicht mehr beim ersten Kachelfehler: nach drei aufeinanderfolgenden Fehlern folgt ein Retry, nach acht Sekunden Stillstand WMS; WMS wird nach zehn Sekunden ohne Erfolg als nicht verfügbar gemeldet
+- während eines funktionierenden WMS-Fallbacks wird WMTS kontrolliert geprüft und erst nach zwei erfolgreichen Prüfungen wieder aktiviert
+- die ausgelieferten LibreDWG-WASM-Module erhalten reproduzierbar 128 MiB Anfangsspeicher statt 1 GiB; kontrolliertes Speicherwachstum und das vorhandene Maximum bleiben erhalten
+- Worker- und WASM-Ressourcen beider Viewer werden über den gemeinsamen Releasepfad `/mlightcad-workers/0.3.0/` geladen; die nicht mehr verwendete Flyfish-WASM-Kopie wird nicht erneut ausgeliefert
+- Ladeprofil, Layer-, Block-, Text- und Objektzustände werden innerhalb der Sitzung zwischen OpenLayers und MLightCAD geteilt; eine neue DWG setzt sie zurück
+- CAD bleibt bei einem Geoportail-Ausfall auf schwarzem Hintergrund bedienbar
+
+### Bekannte Grenzen
+
+- Version 0.3.0 ist kein CAD-Editor und schreibt keine optimierte oder geänderte DWG; das Original bleibt unverändert im lokalen Browser-Arbeitsspeicher
+- „Vollständig laden“ bleibt auch bei hoher Risikoeinstufung verfügbar, kann aber den von iOS Safari gesetzten Speicherrahmen überschreiten; ein harter Tab-Abbruch kann von JavaScript nicht zuverlässig abgefangen werden
+- ein zuvor aus dem Modell gefilterter Layer oder verschachtelter Block erfordert zum Wiedereinblenden einen erneuten CAD-Aufbau aus der noch ausgewählten lokalen Datei
+- XRefs, Bilder, OLE-/Proxy-Objekte, Papierbereiche und 3D-Inhalte bleiben außerhalb des abgenommenen Darstellungsumfangs
+
 ## [0.2.4] – 2026-08-26
 
 ### Behoben

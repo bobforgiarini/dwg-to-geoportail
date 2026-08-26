@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from './i18n';
 import App from './App';
+import type { DwgPreflightReport } from './lib/cad/preflightTypes';
 import { CadSessionProvider, useCadSession } from './session/CadSessionContext';
 
 const fitDrawing = vi.hoisted(() => vi.fn());
@@ -30,6 +31,44 @@ function renderApp() {
   return render(<CadSessionProvider><App /></CadSessionProvider>);
 }
 
+function legacyResult(file: File) {
+  return {
+    file: { name: file.name, size: file.size, lastModified: file.lastModified },
+    lurefExtent: [60_000, 70_000, 60_100, 70_100],
+    layers: [{ id: '0', name: 'Plan', visible: true, featureCount: 0 }],
+    features: [],
+    autoHiddenFeatureIds: [],
+    warnings: [],
+    blocks: [],
+    preflight: null,
+  };
+}
+
+function filteredLayerReport(file: File): DwgPreflightReport {
+  return {
+    schemaVersion: 1,
+    file: { name: file.name, size: file.size, lastModified: file.lastModified },
+    format: 'dwg',
+    documentVersion: 'AC1032',
+    layers: [
+      { id: '0', name: 'Plan', visible: true, frozen: false, noPlot: false, expandedEntityCount: 1 },
+      { id: 'HIDDEN', name: 'Hidden', visible: false, frozen: true, noPlot: false, expandedEntityCount: 5 },
+    ],
+    blocks: [],
+    entityCounts: {
+      modelEntities: 6, paperSpaceEntities: 0, insertInstances: 0, texts: 0, leaders: 0, mleaders: 0,
+      hatches: 0, solids: 0, polylineVertices: 0, images: 0, oleObjects: 0,
+      proxyObjects: 0, threeDimensional: 0, xrefs: 0,
+    },
+    definedBlockCount: 0,
+    reachableBlockCount: 0,
+    maxBlockDepth: 0,
+    risk: { level: 'low', shouldPrepare: false, estimatedRenderCost: 6, deviceBudget: 100_000, reasons: [] },
+    recommendedProfile: { mode: 'filtered', hiddenLayerIds: ['HIDDEN'], hiddenBlockNames: [], hiddenEntityCategories: [] },
+    warnings: [],
+  };
+}
+
 function DeferredLegacyViewer() {
   const session = useCadSession();
   const [mounted, setMounted] = useState(false);
@@ -40,6 +79,24 @@ function DeferredLegacyViewer() {
       setMounted(true);
     }}>
       Mount legacy
+    </button>
+  );
+}
+
+function PreparedLegacyViewer() {
+  const session = useCadSession();
+  const [mounted, setMounted] = useState(false);
+  if (mounted) return <App />;
+  return (
+    <button onClick={() => {
+      const file = new File(['dwg'], 'prepared.dwg');
+      const report = filteredLayerReport(file);
+      session.setFile(file);
+      session.setPreflightReport(report);
+      session.setLoadProfile(report.recommendedProfile);
+      setMounted(true);
+    }}>
+      Mount prepared legacy
     </button>
   );
 }
@@ -60,6 +117,8 @@ describe('legacy viewer controls', () => {
       features: [],
       autoHiddenFeatureIds: [],
       warnings: ['3d-flattened'],
+      blocks: [],
+      preflight: null,
     }));
   });
 
@@ -71,6 +130,7 @@ describe('legacy viewer controls', () => {
 
     expect(actionLabels).toEqual([
       i18n.t('layers'),
+      i18n.t('blocksTitle'),
       i18n.t('openCadControls'),
       i18n.t('locationStart'),
       i18n.t('fitDrawing'),
@@ -111,5 +171,69 @@ describe('legacy viewer controls', () => {
     expect(queryByRole('dialog', { name: i18n.t('cadControlsTitle') })).not.toBeInTheDocument();
     await waitFor(() => expect(importDwg).toHaveBeenCalledOnce());
     expect(queryByRole('dialog', { name: i18n.t('cadControlsTitle') })).not.toBeInTheDocument();
+  });
+
+  it('ignores a late result from an aborted older import', async () => {
+    let resolveFirst!: (value: ReturnType<typeof legacyResult>) => void;
+    let resolveSecond!: (value: ReturnType<typeof legacyResult>) => void;
+    importDwg
+      .mockImplementationOnce((file: File) => new Promise((resolve) => {
+        resolveFirst = () => resolve(legacyResult(file));
+      }))
+      .mockImplementationOnce((file: File) => new Promise((resolve) => {
+        resolveSecond = () => resolve(legacyResult(file));
+      }));
+    const { container } = renderApp();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const first = new File(['first'], 'first.dwg');
+    const second = new File(['second'], 'second.dwg');
+
+    fireEvent.change(input, { target: { files: [first] } });
+    await waitFor(() => expect(importDwg).toHaveBeenCalledTimes(1));
+    fireEvent.change(input, { target: { files: [second] } });
+    await waitFor(() => expect(importDwg).toHaveBeenCalledTimes(2));
+
+    await act(async () => resolveSecond(legacyResult(second)));
+    await waitFor(() => expect(mapCanvasProps).toHaveBeenLastCalledWith(expect.objectContaining({
+      dwg: expect.objectContaining({ file: expect.objectContaining({ name: 'second.dwg' }) }),
+    })));
+
+    await act(async () => resolveFirst(legacyResult(first)));
+    expect(mapCanvasProps).toHaveBeenLastCalledWith(expect.objectContaining({
+      dwg: expect.objectContaining({ file: expect.objectContaining({ name: 'second.dwg' }) }),
+    }));
+  });
+
+  it('treats an app-worker AbortError as a cancelled import', async () => {
+    const workerCancellation = new Error('MLIGHTCAD_IMPORT_CANCELLED');
+    workerCancellation.name = 'AbortError';
+    importDwg.mockRejectedValueOnce(workerCancellation);
+    const { container, findByText } = renderApp();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    fireEvent.change(input, { target: { files: [new File(['dwg'], 'cancelled.dwg')] } });
+
+    expect(await findByText(i18n.t('importCancelled'))).toBeInTheDocument();
+  });
+
+  it('keeps preflight-filtered layers in the drawer and reloads when they are restored', async () => {
+    importDwg.mockImplementation(async (file: File) => ({
+      ...legacyResult(file),
+      layers: [{ id: '0', name: 'Plan', visible: true, featureCount: 1 }],
+      preflight: filteredLayerReport(file),
+    }));
+    const { getByRole, getByText } = render(
+      <CadSessionProvider><PreparedLegacyViewer /></CadSessionProvider>,
+    );
+
+    fireEvent.click(getByRole('button', { name: 'Mount prepared legacy' }));
+    await waitFor(() => expect(importDwg).toHaveBeenCalledOnce());
+    fireEvent.click(getByRole('button', { name: i18n.t('layers') }));
+    const hiddenRow = getByText('Hidden').closest('label') as HTMLLabelElement;
+    const checkbox = hiddenRow.querySelector('input') as HTMLInputElement;
+    expect(checkbox).not.toBeChecked();
+
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(importDwg).toHaveBeenCalledTimes(2));
   });
 });

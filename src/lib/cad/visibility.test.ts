@@ -2,6 +2,7 @@ import Feature from 'ol/Feature';
 import Point from 'ol/geom/Point';
 import { describe, expect, it } from 'vitest';
 import type { DwgImportResult } from '../../types/models';
+import type { DwgPreflightReport } from './preflightTypes';
 import { countHiddenCadObjects } from './visibility';
 
 function cadFeature(featureId: string, layerId: string) {
@@ -20,6 +21,8 @@ describe('countHiddenCadObjects', () => {
       features: [cadFeature('one', 'visible'), cadFeature('two', 'hidden'), cadFeature('three', 'hidden')],
       autoHiddenFeatureIds: [],
       warnings: [],
+      blocks: [],
+      preflight: {} as DwgPreflightReport,
     } satisfies DwgImportResult;
 
     expect(countHiddenCadObjects(dwg, new Set(['one', 'two']))).toBe(3);

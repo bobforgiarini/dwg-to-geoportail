@@ -14,10 +14,16 @@ const harness = vi.hoisted(() => {
     setRotation: vi.fn(),
   };
   const renderSync = vi.fn();
-  const basemaps: Array<{ setVisible: ReturnType<typeof vi.fn> }> = [];
+  const removeLayer = vi.fn();
+  const basemaps: Array<{
+    getSource: () => { clear: ReturnType<typeof vi.fn> };
+    setVisible: ReturnType<typeof vi.fn>;
+  }> = [];
+  const basemapOptions: unknown[] = [];
+  const mapOptions: unknown[] = [];
   const viewOptions: unknown[] = [];
   const viewports: HTMLDivElement[] = [];
-  return { basemaps, interaction, renderSync, view, viewOptions, viewports };
+  return { basemapOptions, basemaps, interaction, mapOptions, removeLayer, renderSync, view, viewOptions, viewports };
 });
 
 vi.mock('ol/interaction/defaults', () => ({
@@ -32,15 +38,17 @@ vi.mock('ol/View', () => ({
 }));
 
 vi.mock('ol/Map', () => ({
-  default: vi.fn(function Map() {
+  default: vi.fn(function Map(options: unknown) {
+    harness.mapOptions.push(options);
     const viewport = document.createElement('div');
     harness.viewports.push(viewport);
     return {
       getInteractions: () => ({ forEach: (callback: (interaction: typeof harness.interaction) => void) => callback(harness.interaction) }),
-      getLayers: () => ({ setAt: vi.fn() }),
+      getLayers: () => ({ insertAt: vi.fn(), setAt: vi.fn() }),
       getView: () => harness.view,
       getViewport: () => viewport,
       on: vi.fn(),
+      removeLayer: harness.removeLayer,
       renderSync: harness.renderSync,
       setTarget: vi.fn(),
       un: vi.fn(),
@@ -53,9 +61,12 @@ vi.mock('ol/proj', () => ({
 }));
 
 vi.mock('../lib/geoportail', () => ({
-  createBasemapLayer: () => {
+  bindBasemapSourceHealth: () => vi.fn(),
+  createBasemapLayer: (_mode: unknown, options: unknown) => {
+    harness.basemapOptions.push(options);
+    const source = { clear: vi.fn() };
     const layer = {
-      getSource: () => ({ once: vi.fn() }),
+      getSource: () => source,
       setVisible: vi.fn(),
     };
     harness.basemaps.push(layer);
@@ -74,9 +85,12 @@ const idleLocation: LocationTrackingState = {
 describe('MlightCadMap interaction handover', () => {
   beforeEach(() => {
     harness.basemaps.length = 0;
+    harness.basemapOptions.length = 0;
+    harness.mapOptions.length = 0;
     harness.viewOptions.length = 0;
     harness.viewports.length = 0;
     harness.interaction.setActive.mockClear();
+    harness.removeLayer.mockClear();
     harness.renderSync.mockClear();
     Object.values(harness.view).forEach((value) => {
       if (typeof value === 'function' && 'mockClear' in value) value.mockClear();
@@ -90,18 +104,21 @@ describe('MlightCadMap interaction handover', () => {
   it('enables OpenLayers until MLightCAD is ready and renders no north control', () => {
     const props = {
       adapter: null,
-      basemapMode: 'wmts' as const,
+      basemapHealth: { mode: 'wmts', status: 'loading', generation: 0, transitionReason: 'initial' } as const,
+      basemapHealthReporter: {
+        sourceMounted: vi.fn(), tileLoadStart: vi.fn(), tileLoadEnd: vi.fn(), tileLoadError: vi.fn(),
+      },
       basemapVisible: true,
       location: idleLocation,
       onCoordinate: vi.fn(),
       onManualMove: vi.fn(),
-      onWmtsError: vi.fn(),
     };
     const { queryByRole, rerender } = render(<MlightCadMap {...props} mlightControlsActive={false} />);
 
     expect(harness.interaction.setActive).toHaveBeenLastCalledWith(true);
     expect(queryByRole('button')).not.toBeInTheDocument();
     expect(harness.viewOptions.at(-1)).toMatchObject({ minResolution: 0 });
+    expect(harness.viewOptions.at(-1)).toMatchObject({ projection: 'EPSG:3857' });
     expect(harness.viewOptions.at(-1)).not.toHaveProperty('extent');
 
     harness.viewports.at(-1)?.dispatchEvent(new WheelEvent('wheel'));
@@ -114,12 +131,14 @@ describe('MlightCadMap interaction handover', () => {
   it('toggles only the current basemap layer', () => {
     const props = {
       adapter: null,
-      basemapMode: 'wmts' as const,
+      basemapHealth: { mode: 'wmts', status: 'loading', generation: 0, transitionReason: 'initial' } as const,
+      basemapHealthReporter: {
+        sourceMounted: vi.fn(), tileLoadStart: vi.fn(), tileLoadEnd: vi.fn(), tileLoadError: vi.fn(),
+      },
       location: idleLocation,
       mlightControlsActive: false,
       onCoordinate: vi.fn(),
       onManualMove: vi.fn(),
-      onWmtsError: vi.fn(),
     };
     const { rerender } = render(<MlightCadMap {...props} basemapVisible />);
     const currentLayer = harness.basemaps.at(-1);
@@ -127,6 +146,32 @@ describe('MlightCadMap interaction handover', () => {
     rerender(<MlightCadMap {...props} basemapVisible={false} />);
     expect(harness.basemaps.at(-1)).toBe(currentLayer);
     expect(currentLayer?.setVisible).toHaveBeenLastCalledWith(false);
+  });
+
+  it('releases the basemap while CAD preparation needs the mobile memory budget', () => {
+    const props = {
+      adapter: null,
+      basemapHealth: { mode: 'wmts', status: 'loading', generation: 0, transitionReason: 'initial' } as const,
+      basemapHealthReporter: {
+        sourceMounted: vi.fn(), tileLoadStart: vi.fn(), tileLoadEnd: vi.fn(), tileLoadError: vi.fn(),
+      },
+      basemapVisible: true,
+      location: idleLocation,
+      mlightControlsActive: false,
+      onCoordinate: vi.fn(),
+      onManualMove: vi.fn(),
+    };
+    const { rerender } = render(<MlightCadMap {...props} basemapSuspended={false} />);
+    const original = harness.basemaps.at(-1);
+
+    rerender(<MlightCadMap {...props} basemapSuspended />);
+
+    expect(original?.getSource().clear).toHaveBeenCalledOnce();
+    expect(harness.removeLayer).toHaveBeenCalledWith(original);
+    expect(harness.basemaps).toHaveLength(1);
+
+    rerender(<MlightCadMap {...props} basemapSuspended={false} />);
+    expect(harness.basemaps).toHaveLength(2);
   });
 
   it('centres OpenLayers on GPS while no CAD renderer owns the gestures', () => {
@@ -147,13 +192,15 @@ describe('MlightCadMap interaction handover', () => {
 
     render(<MlightCadMap
       adapter={null}
-      basemapMode="wmts"
+      basemapHealth={{ mode: 'wmts', status: 'loading', generation: 0, transitionReason: 'initial' }}
+      basemapHealthReporter={{
+        sourceMounted: vi.fn(), tileLoadStart: vi.fn(), tileLoadEnd: vi.fn(), tileLoadError: vi.fn(),
+      }}
       basemapVisible
       mlightControlsActive={false}
       location={{ ...idleLocation, permission: 'granted', position, accuracy: 6, follow: 'following' }}
       onCoordinate={vi.fn()}
       onManualMove={vi.fn()}
-      onWmtsError={vi.fn()}
     />);
 
     expect(harness.view.animate).toHaveBeenCalledWith({
@@ -161,5 +208,33 @@ describe('MlightCadMap interaction handover', () => {
       resolution: 2,
       duration: 350,
     });
+  });
+
+  it('limits map pixel ratio and tile cache on coarse-pointer devices', () => {
+    const previous = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn(() => ({ matches: true })),
+    });
+    try {
+      render(<MlightCadMap
+        adapter={null}
+        basemapHealth={{ mode: 'wmts', status: 'loading', generation: 0, transitionReason: 'initial' }}
+        basemapHealthReporter={{
+          sourceMounted: vi.fn(), tileLoadStart: vi.fn(), tileLoadEnd: vi.fn(), tileLoadError: vi.fn(),
+        }}
+        basemapVisible
+        mlightControlsActive={false}
+        location={idleLocation}
+        onCoordinate={vi.fn()}
+        onManualMove={vi.fn()}
+      />);
+
+      expect(harness.mapOptions.at(-1)).toMatchObject({ pixelRatio: 1 });
+      expect(harness.basemapOptions.at(-1)).toEqual({ cacheSize: 32 });
+    } finally {
+      if (previous) Object.defineProperty(window, 'matchMedia', previous);
+      else Reflect.deleteProperty(window, 'matchMedia');
+    }
   });
 });

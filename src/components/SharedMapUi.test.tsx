@@ -20,17 +20,21 @@ describe('shared map UI', () => {
     const onLocation = vi.fn();
     const onFitDrawing = vi.fn();
     const onOpenLayers = vi.fn();
+    const onOpenBlocks = vi.fn();
     const onToggleCadControls = vi.fn();
     const { container, getByRole } = render(
       <MapActionControls
         locationMode="paused"
         fitDisabled={false}
         layerCount={12}
+        blockCount={4}
+        blocksOpen={false}
         cadControlsOpen
         hiddenObjectCount={3}
         onLocation={onLocation}
         onFitDrawing={onFitDrawing}
         onOpenLayers={onOpenLayers}
+        onOpenBlocks={onOpenBlocks}
         onToggleCadControls={onToggleCadControls}
       />,
     );
@@ -39,6 +43,7 @@ describe('shared map UI', () => {
     const bottom = container.querySelector('.map-action-group-bottom') as HTMLElement;
     expect(within(top).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
       i18n.t('layers'),
+      i18n.t('blocksTitle'),
       i18n.t('openCadControls'),
     ]);
     expect(within(bottom).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
@@ -49,10 +54,12 @@ describe('shared map UI', () => {
     fireEvent.click(getByRole('button', { name: i18n.t('locationResume') }));
     fireEvent.click(getByRole('button', { name: i18n.t('fitDrawing') }));
     fireEvent.click(getByRole('button', { name: i18n.t('layers') }));
+    fireEvent.click(getByRole('button', { name: i18n.t('blocksTitle') }));
     fireEvent.click(getByRole('button', { name: i18n.t('openCadControls') }));
     expect(onLocation).toHaveBeenCalledOnce();
     expect(onFitDrawing).toHaveBeenCalledOnce();
     expect(onOpenLayers).toHaveBeenCalledOnce();
+    expect(onOpenBlocks).toHaveBeenCalledOnce();
     expect(onToggleCadControls).toHaveBeenCalledOnce();
   });
 
@@ -60,7 +67,7 @@ describe('shared map UI', () => {
     const onToggleBasemap = vi.fn();
     const { getByRole, getByText, rerender } = render(
       <MapStatusBadges
-        basemapMode="wmts"
+        basemapHealth={{ mode: 'wmts', status: 'ready', generation: 0, transitionReason: 'tile-loaded' }}
         basemapVisible
         coordinate={[80_218.123, 87_074.509]}
         accuracy={7.6}
@@ -79,7 +86,7 @@ describe('shared map UI', () => {
 
     rerender(
       <MapStatusBadges
-        basemapMode="wms"
+        basemapHealth={{ mode: 'wms', status: 'ready', generation: 1, transitionReason: 'tile-loaded' }}
         basemapVisible={false}
         coordinate={null}
         accuracy={null}
@@ -145,7 +152,7 @@ describe('shared map UI', () => {
     const { getByRole } = render(
       <BottomSheet open modal ariaLabel={i18n.t('objectDetails')} closeLabel={i18n.t('close')} onClose={onClose}>
         <SelectionPanel
-          selection={{ featureId: '1', layerId: 'A', cadType: 'LINE', label: '' }}
+          selection={{ featureId: '1', objectKey: '::1', layerId: 'A', cadType: 'LINE', label: '', blockPath: [] }}
           layerName="Layer A"
           onHideObject={vi.fn()}
           onHideLayer={vi.fn()}

@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LocateFixed } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AppHeader } from './components/AppHeader';
 import { BottomSheet } from './components/BottomSheet';
+import { BlockSheet, type BlockSheetItem } from './components/BlockSheet';
+import { createBlockSheetItems, createBlockSheetLabels } from './components/blockSheetModel';
 import { CadControlSheet } from './components/CadControlSheet';
+import { DwgPreparationSheet } from './components/DwgPreparationSheet';
 import { LayerSheet } from './components/LayerSheet';
 import { MapActionControls } from './components/MapActionControls';
 import { MapCanvas, type MapCanvasHandle } from './components/MapCanvas';
@@ -11,15 +14,18 @@ import { MapStatusBadges } from './components/MapStatusBadges';
 import { SelectionPanel } from './components/SelectionPanel';
 import { SiteBanner } from './components/SiteBanner';
 import { useLocationTracking } from './hooks/useLocationTracking';
-import { cancelDwgImport, importDwg, RECOMMENDED_DWG_BYTES } from './lib/cad/importDwg';
+import { cancelDwgImport, importDwg, isDwgPreflightError, type DwgPreparationDecision } from './lib/cad/importDwg';
+import { browserPreflightDevice, clearDwgImportMarker, markDwgImportStarted } from './lib/cad/importRecovery';
+import type { CadLoadProfile, DwgPreflightReport } from './lib/cad/preflightTypes';
 import { countHiddenCadObjects } from './lib/cad/visibility';
 import { isUnreadableFileError } from './lib/fileAccessError';
 import { DEFAULT_MLIGHTCAD_OPACITY } from './lib/mlightcad/opacity';
 import { useCadSession } from './session/CadSessionContext';
-import type { BasemapMode, DwgImportResult, SelectedCadObject } from './types/models';
+import type { DwgImportResult, SelectedCadObject } from './types/models';
 
 type ImportState = 'idle' | 'loading' | 'ready' | 'error' | 'cancelled';
-type DrawerState = 'controls' | 'object' | null;
+type DrawerState = 'blocks' | 'controls' | 'object' | 'prepare' | 'prepare-failed' | null;
+type LayerSheetMode = 'loaded' | 'preparation' | null;
 
 function translatedWarning(warning: string, t: (key: string, options?: Record<string, unknown>) => string): string {
   if (warning === '3d-flattened') return t('warning3d');
@@ -38,20 +44,39 @@ export default function App() {
   const [importState, setImportState] = useState<ImportState>(session.file ? 'loading' : 'idle');
   const [message, setMessage] = useState<string | null>(null);
   const [progress, setProgress] = useState('');
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [basemapMode, setBasemapMode] = useState<BasemapMode>('wmts');
+  const [layerSheetMode, setLayerSheetMode] = useState<LayerSheetMode>(null);
   const [coordinate, setCoordinate] = useState<[number, number] | null>(null);
   const [selection, setSelection] = useState<SelectedCadObject | null>(null);
   const [hiddenFeatureIds, setHiddenFeatureIds] = useState<Set<string>>(new Set());
   const [drawerState, setDrawerState] = useState<DrawerState>(session.file ? null : 'controls');
-  const [cadTextVisible, setCadTextVisible] = useState(true);
   const [cadOpacity, setCadOpacity] = useState(DEFAULT_MLIGHTCAD_OPACITY);
+  const [preparationReport, setPreparationReport] = useState<DwgPreflightReport | null>(null);
+  const [pendingProfile, setPendingProfile] = useState<CadLoadProfile | null>(null);
+  const [blockReturnToPreparation, setBlockReturnToPreparation] = useState(false);
+  const [blockReloadPending, setBlockReloadPending] = useState(false);
+  const [basemapSuspended, setBasemapSuspended] = useState(false);
+
+  useEffect(() => {
+    session.setBasemapHealthSuspended(basemapSuspended);
+    return () => session.setBasemapHealthSuspended(false);
+  }, [basemapSuspended, session.setBasemapHealthSuspended]);
+  const [preserveViewOnImport, setPreserveViewOnImport] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const mapCanvas = useRef<MapCanvasHandle>(null);
   const abortController = useRef<AbortController | null>(null);
+  const preparationResolver = useRef<((decision: DwgPreparationDecision) => void) | null>(null);
   const location = useLocationTracking();
 
-  useEffect(() => () => { abortController.current?.abort(); cancelDwgImport(); }, []);
+  useEffect(() => () => {
+    const controller = abortController.current;
+    abortController.current = null;
+    controller?.abort();
+    cancelDwgImport();
+  }, []);
+
+  useEffect(() => {
+    if (session.recoveryMarker) setMessage(t('importRecovery'));
+  }, [session.recoveryMarker, t]);
 
   useEffect(() => {
     if (location.state.error === 'denied') setMessage(t('locationDenied'));
@@ -60,31 +85,88 @@ export default function App() {
   }, [location.state.error, t]);
 
   const visibleLayers = useMemo(() => new Set(dwg?.layers.filter((layer) => layer.visible).map((layer) => layer.id) ?? []), [dwg]);
-  const hiddenObjectCount = useMemo(() => countHiddenCadObjects(dwg, hiddenFeatureIds), [dwg, hiddenFeatureIds]);
+  const hiddenBlockNames = useMemo(() => new Set(
+    session.loadProfile.hiddenBlockNames.map((name) => name.toLocaleLowerCase('en-US')),
+  ), [session.loadProfile.hiddenBlockNames]);
+  const hiddenObjectKeys = useMemo(() => new Set(session.hiddenObjectIds), [session.hiddenObjectIds]);
+  const hiddenObjectCount = useMemo(() => countHiddenCadObjects(dwg, hiddenFeatureIds, hiddenObjectKeys), [dwg, hiddenFeatureIds, hiddenObjectKeys]);
+  const displayedBlocks = preparationReport && (drawerState === 'prepare' || blockReturnToPreparation)
+    ? preparationReport.blocks
+    : (dwg?.blocks ?? session.preflightReport?.blocks ?? []);
+  const activeProfile = blockReturnToPreparation ? pendingProfile : session.loadProfile;
+  const blockItems = useMemo<BlockSheetItem[]>(() => createBlockSheetItems(
+    displayedBlocks,
+    activeProfile ?? session.loadProfile,
+    preparationReport?.risk.deviceBudget ?? session.preflightReport?.risk.deviceBudget ?? 150_000,
+  ), [activeProfile, displayedBlocks, preparationReport?.risk.deviceBudget, session.loadProfile, session.preflightReport?.risk.deviceBudget]);
 
   const chooseFile = () => fileInput.current?.click();
 
-  const importSessionFile = async (file: File) => {
+  const requestPreparation = (report: DwgPreflightReport): Promise<DwgPreparationDecision> => {
+    session.setPreflightReport(report);
+    setPreparationReport(report);
+    setPendingProfile(report.recommendedProfile);
+    setBlockReturnToPreparation(false);
+    setBasemapSuspended(report.risk.level === 'high');
+    setDrawerState('prepare');
+    return new Promise((resolve) => { preparationResolver.current = resolve; });
+  };
+
+  const finishPreparation = (decision: DwgPreparationDecision) => {
+    const resolvedDecision = decision.decision === 'filtered' && !decision.profile && preparationReport
+      ? { ...decision, profile: preparationReport.recommendedProfile }
+      : decision;
+    if (resolvedDecision.decision === 'filtered' && resolvedDecision.profile) session.setLoadProfile(resolvedDecision.profile);
+    if (decision.decision === 'full') session.resetLoadProfile();
+    preparationResolver.current?.(resolvedDecision);
+    preparationResolver.current = null;
+    setDrawerState(null);
+    setBlockReturnToPreparation(false);
+  };
+
+  const importSessionFile = async (file: File, forceFull = false) => {
+    preparationResolver.current?.({ decision: 'cancel' });
+    preparationResolver.current = null;
     abortController.current?.abort();
     cancelDwgImport();
     const controller = new AbortController();
     abortController.current = controller;
     setImportState('loading');
     setProgress('read');
-    setMessage(file.size > RECOMMENDED_DWG_BYTES ? t('tooLarge') : null);
+    setMessage(null);
+    const recoveryMarker = markDwgImportStarted(file);
+    const isCurrentImport = () => abortController.current === controller;
     try {
-      const result = await importDwg(file, controller.signal, (event) => setProgress(event.phase));
+      const result = await importDwg(file, controller.signal, (event) => {
+        if (isCurrentImport()) setProgress(event.phase);
+      }, {
+        initialProfile: session.loadProfile.mode === 'filtered' ? session.loadProfile : undefined,
+        preflight: { device: browserPreflightDevice() },
+        onPreparation: (report) => {
+          if (!isCurrentImport()) return Promise.reject(new DOMException('Import aborted', 'AbortError'));
+          return requestPreparation(report);
+        },
+        forceFull,
+        forcePreparation: !forceFull && session.recoveryPreparationRequired,
+      });
+      if (!isCurrentImport()) return;
       setDwg(result);
+      session.setPreflightReport(result.preflight);
       setSelection(null);
       setHiddenFeatureIds(new Set(result.autoHiddenFeatureIds));
-      setCadTextVisible(true);
       setImportState('ready');
+      setBlockReloadPending(false);
       setMessage(null);
     } catch (error) {
-      if (controller.signal.aborted) {
+      if (!isCurrentImport()) return;
+      if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
         setImportState('cancelled');
         setMessage(t('importCancelled'));
         setDrawerState('controls');
+      } else if (isDwgPreflightError(error)) {
+        setImportState('error');
+        setMessage(null);
+        setDrawerState('prepare-failed');
       } else {
         console.error('DWG import failed', error);
         setImportState('error');
@@ -92,7 +174,12 @@ export default function App() {
         setDrawerState('controls');
       }
     } finally {
-      if (abortController.current === controller) abortController.current = null;
+      clearDwgImportMarker(recoveryMarker);
+      if (isCurrentImport()) {
+        setBasemapSuspended(false);
+        session.clearRecoveryPreparationRequirement();
+        abortController.current = null;
+      }
     }
   };
 
@@ -104,7 +191,6 @@ export default function App() {
     setDwg(null);
     setSelection(null);
     setHiddenFeatureIds(new Set());
-    setCadTextVisible(true);
     setImportState('idle');
     setMessage(null);
   // A revision deliberately retriggers parsing even when the same File object is selected.
@@ -119,42 +205,144 @@ export default function App() {
       return;
     }
     session.setFile(file);
+    setPreserveViewOnImport(false);
     setDrawerState('controls');
     if (fileInput.current) fileInput.current.value = '';
   };
 
   const cancelImport = () => {
+    preparationResolver.current?.({ decision: 'cancel' });
+    preparationResolver.current = null;
     abortController.current?.abort();
     cancelDwgImport();
     setDrawerState('controls');
   };
 
   const removeDwg = () => {
-    abortController.current?.abort();
+    preparationResolver.current?.({ decision: 'cancel' });
+    preparationResolver.current = null;
+    const controller = abortController.current;
+    abortController.current = null;
+    controller?.abort();
     cancelDwgImport();
     session.clearFile();
   };
 
-  const toggleLayer = (id: string) => setDwg((current) => current ? {
-    ...current, layers: current.layers.map((layer) => layer.id === id ? { ...layer, visible: !layer.visible } : layer),
-  } : current);
-  const setAllLayers = (visible: boolean) => setDwg((current) => current ? {
-    ...current, layers: current.layers.map((layer) => ({ ...layer, visible })),
-  } : current);
+  const toggleLayer = (id: string) => {
+    if (layerSheetMode === 'preparation') {
+      const currentlyHidden = pendingProfile?.hiddenLayerIds.includes(id) ?? false;
+      setPendingProfile((current) => current ? {
+        ...current,
+        mode: 'filtered',
+        hiddenLayerIds: currentlyHidden ? current.hiddenLayerIds.filter((layer) => layer !== id) : [...current.hiddenLayerIds, id],
+      } : current);
+      return;
+    }
+    const layer = dwg?.layers.find((candidate) => candidate.id === id || candidate.name === id);
+    const reportLayer = session.preflightReport?.layers.find((candidate) => candidate.id === id || candidate.name === id);
+    if (!layer && !reportLayer) return;
+    const wasFiltered = session.loadProfile.hiddenLayerIds.some((layerId) => layerId.toLocaleLowerCase('en-US') === id.toLocaleLowerCase('en-US'));
+    const visible = layer ? !layer.visible : wasFiltered;
+    session.setLayerProfileVisible(id, visible);
+    setDwg((current) => current ? {
+      ...current, layers: current.layers.map((candidate) => candidate.id === id ? { ...candidate, visible: !candidate.visible } : candidate),
+    } : current);
+    if (visible && wasFiltered) {
+      setPreserveViewOnImport(true);
+      session.reloadFile();
+    }
+  };
+  const setAllLayers = (visible: boolean) => {
+    if (layerSheetMode === 'preparation') {
+      setPendingProfile((current) => current ? {
+        ...current,
+        mode: 'filtered',
+        hiddenLayerIds: visible ? [] : (preparationReport?.layers.map((layer) => layer.id) ?? []),
+      } : current);
+      return;
+    }
+    const reloadRequired = visible && session.loadProfile.hiddenLayerIds.length > 0;
+    for (const layer of session.preflightReport?.layers ?? dwg?.layers ?? []) session.setLayerProfileVisible(layer.id, visible);
+    setDwg((current) => current ? { ...current, layers: current.layers.map((layer) => ({ ...layer, visible })) } : current);
+    if (reloadRequired) {
+      setPreserveViewOnImport(true);
+      session.reloadFile();
+    }
+  };
+  const setBlockVisible = (id: string, visible: boolean) => {
+    const block = displayedBlocks.find((candidate) => candidate.id === id);
+    if (!block) return;
+    if (blockReturnToPreparation) {
+      setPendingProfile((current) => {
+        if (!current) return current;
+        const hidden = current.hiddenBlockNames.some((name) => name.toLocaleLowerCase('en-US') === block.name.toLocaleLowerCase('en-US'));
+        return {
+          ...current,
+          mode: 'filtered',
+          hiddenBlockNames: visible
+            ? current.hiddenBlockNames.filter((name) => name.toLocaleLowerCase('en-US') !== block.name.toLocaleLowerCase('en-US'))
+            : hidden ? current.hiddenBlockNames : [...current.hiddenBlockNames, block.name],
+        };
+      });
+      return;
+    }
+    session.setBlockProfileVisible(block.name, visible);
+    setDwg((current) => current ? {
+      ...current,
+      blocks: current.blocks.map((candidate) => candidate.id === id ? { ...candidate, visible } : candidate),
+    } : current);
+    if (block.isNested || session.loadProfile.mode === 'filtered') setBlockReloadPending(true);
+  };
+  const setAllBlocks = (visible: boolean) => {
+    for (const block of displayedBlocks) {
+      if (blockReturnToPreparation) {
+        setPendingProfile((current) => current ? {
+          ...current,
+          mode: 'filtered',
+          hiddenBlockNames: visible ? [] : displayedBlocks.map((candidate) => candidate.name),
+        } : current);
+        break;
+      }
+      session.setBlockProfileVisible(block.name, visible);
+    }
+    if (!blockReturnToPreparation) setDwg((current) => current ? { ...current, blocks: current.blocks.map((block) => ({ ...block, visible })) } : current);
+    if (!blockReturnToPreparation && displayedBlocks.some((block) => block.isNested || session.loadProfile.mode === 'filtered')) setBlockReloadPending(true);
+  };
   const restoreAllHidden = () => {
+    const reloadRequired = session.loadProfile.mode === 'filtered';
     setHiddenFeatureIds(new Set());
-    setAllLayers(true);
+    session.restoreHiddenObjects();
+    setDwg((current) => current ? {
+      ...current,
+      layers: current.layers.map((layer) => ({ ...layer, visible: true })),
+      blocks: current.blocks.map((block) => ({ ...block, visible: true })),
+    } : current);
+    session.resetLoadProfile();
+    setBlockReloadPending(false);
+    if (reloadRequired) {
+      setPreserveViewOnImport(true);
+      session.reloadFile();
+    }
   };
 
   const hideSelectedObject = () => {
     if (!selection) return;
-    setHiddenFeatureIds((current) => new Set(current).add(selection.featureId));
+    session.setObjectHidden(selection.objectKey, true);
     setSelection(null);
     setDrawerState(null);
   };
   const hideSelectedLayer = () => {
     if (!selection) return;
+    session.setLayerProfileVisible(selection.layerId, false);
     setDwg((current) => current ? { ...current, layers: current.layers.map((layer) => layer.id === selection.layerId ? { ...layer, visible: false } : layer) } : current);
+    setSelection(null);
+    setDrawerState(null);
+  };
+  const hideSelectedBlock = () => {
+    const blockName = selection?.blockPath.at(-1);
+    const block = dwg?.blocks.find((candidate) => candidate.name === blockName || candidate.id === blockName);
+    if (!block) return;
+    setBlockVisible(block.id, false);
     setSelection(null);
     setDrawerState(null);
   };
@@ -165,40 +353,58 @@ export default function App() {
     else setDrawerState((current) => current === 'object' ? null : current);
   };
 
-  const useWmsFallback = useCallback(() => {
-    setBasemapMode('wms');
-    setMessage(t('mapFallback'));
-  }, [t]);
-
   const locationAction = () => {
     if (location.state.follow === 'off') location.start();
     else if (location.state.follow === 'paused') location.resume();
     else location.stop();
   };
-  const locationLabel = location.state.follow === 'off' ? t('locationStart') : location.state.follow === 'paused' ? t('locationResume') : t('locationStop');
+  const layerSheetLayers = layerSheetMode === 'preparation'
+    ? (preparationReport?.layers.map((layer) => ({
+        id: layer.id,
+        name: layer.name,
+        visible: !(pendingProfile?.hiddenLayerIds.includes(layer.id) ?? false),
+        featureCount: layer.expandedEntityCount,
+      })) ?? [])
+    : (session.preflightReport?.layers.map((reportLayer) => {
+        const rendered = dwg?.layers.find((layer) => layer.id === reportLayer.id || layer.name === reportLayer.name);
+        const hidden = session.loadProfile.hiddenLayerIds.some((id) => (
+          id.toLocaleLowerCase('en-US') === reportLayer.id.toLocaleLowerCase('en-US')
+          || id.toLocaleLowerCase('en-US') === reportLayer.name.toLocaleLowerCase('en-US')
+        ));
+        return {
+          id: reportLayer.id,
+          name: reportLayer.name,
+          visible: !hidden && (rendered?.visible ?? true),
+          featureCount: rendered?.featureCount ?? reportLayer.expandedEntityCount,
+        };
+      }) ?? dwg?.layers ?? []);
 
   return (
-    <main className={`app-shell ${drawerState || sheetOpen ? 'drawer-open' : 'drawer-closed'}`}>
+    <main className={`app-shell ${drawerState || layerSheetMode ? 'drawer-open' : 'drawer-closed'}`}>
       <AppHeader />
       <MapCanvas
         ref={mapCanvas}
         dwg={dwg}
         visibleLayers={visibleLayers}
         location={location.state}
-        basemapMode={basemapMode}
+        basemapHealth={session.basemapHealth}
+        basemapHealthReporter={session.basemapHealthReporter}
         basemapVisible={session.basemapVisible}
-        onWmtsError={useWmsFallback}
+        basemapSuspended={basemapSuspended}
         onManualMove={location.pause}
         onCoordinate={(value) => setCoordinate([value[0], value[1]])}
         hiddenFeatureIds={hiddenFeatureIds}
+        hiddenObjectKeys={hiddenObjectKeys}
+        hiddenBlockNames={hiddenBlockNames}
         selectedFeatureId={selection?.featureId ?? null}
         onCadSelect={handleCadSelect}
-        cadTextVisible={cadTextVisible}
+        cadTextVisible={session.cadTextVisible}
         cadOpacity={cadOpacity}
+        fitOnDwgChange={!preserveViewOnImport}
       />
 
       <MapStatusBadges
-        basemapMode={basemapMode}
+        basemapHealth={session.basemapHealth}
         basemapVisible={session.basemapVisible}
         coordinate={coordinate}
         accuracy={location.state.accuracy}
@@ -209,13 +415,16 @@ export default function App() {
         locationMode={location.state.follow}
         fitDisabled={!dwg}
         layerCount={dwg?.layers.length ?? 0}
+        blockCount={dwg?.blocks?.length ?? session.preflightReport?.blocks.length ?? 0}
+        blocksOpen={drawerState === 'blocks'}
         cadControlsOpen={drawerState === 'controls'}
         hiddenObjectCount={hiddenObjectCount}
         onLocation={locationAction}
         onFitDrawing={() => mapCanvas.current?.fitDrawing()}
-        onOpenLayers={() => { setDrawerState(null); setSheetOpen(true); }}
+        onOpenLayers={() => { setDrawerState(null); setLayerSheetMode('loaded'); }}
+        onOpenBlocks={() => { setLayerSheetMode(null); setBlockReturnToPreparation(false); setDrawerState('blocks'); }}
         onToggleCadControls={() => {
-          setSheetOpen(false);
+          setLayerSheetMode(null);
           setDrawerState((current) => current === 'controls' ? null : 'controls');
         }}
       />
@@ -234,6 +443,7 @@ export default function App() {
             layerName={dwg?.layers.find((layer) => layer.id === selection?.layerId)?.name ?? ''}
             onHideObject={hideSelectedObject}
             onHideLayer={hideSelectedLayer}
+            onHideBlock={hideSelectedBlock}
           />
         </div>
       </BottomSheet>
@@ -247,7 +457,7 @@ export default function App() {
         progressLabel={progress}
         message={message}
         opacity={cadOpacity}
-        cadTextVisible={cadTextVisible}
+        cadTextVisible={session.cadTextVisible}
         hiddenObjectCount={hiddenObjectCount}
         controlsDisabled={!dwg || importState !== 'ready'}
         onClose={() => setDrawerState(null)}
@@ -256,7 +466,7 @@ export default function App() {
         onRemoveFile={removeDwg}
         onCancel={cancelImport}
         onOpacityChange={setCadOpacity}
-        onToggleTexts={() => setCadTextVisible((visible) => !visible)}
+        onToggleTexts={() => session.setCadTextVisible(!session.cadTextVisible)}
         onRestoreHidden={restoreAllHidden}
         footer={<>
           {location.state.follow === 'paused' && <button className="follow-banner" onClick={location.resume}><LocateFixed size={17} />{t('locationPaused')} · {t('locationResume')}</button>}
@@ -268,7 +478,55 @@ export default function App() {
 
       <input ref={fileInput} className="visually-hidden" type="file" accept=".dwg,application/acad,application/x-dwg" onChange={(event) => handleFile(event.target.files?.[0])} />
       <SiteBanner />
-      <LayerSheet open={sheetOpen} layers={dwg?.layers ?? []} onClose={() => setSheetOpen(false)} onToggle={toggleLayer} onSetAll={setAllLayers} />
+      <DwgPreparationSheet
+        open={drawerState === 'prepare' || drawerState === 'prepare-failed'}
+        report={preparationReport}
+        profile={pendingProfile}
+        failed={drawerState === 'prepare-failed'}
+        onLoadFull={() => finishPreparation({ decision: 'full' })}
+        onLoadRecommended={() => finishPreparation({ decision: 'filtered', profile: preparationReport?.recommendedProfile })}
+        onApplySelection={() => finishPreparation({ decision: 'filtered', profile: pendingProfile ?? preparationReport?.recommendedProfile })}
+        onEditLayers={() => { setDrawerState(null); setLayerSheetMode('preparation'); }}
+        onEditBlocks={() => { setBlockReturnToPreparation(true); setDrawerState('blocks'); }}
+        onCancel={() => finishPreparation({ decision: 'cancel' })}
+        onTryFull={() => {
+          preparationResolver.current = null;
+          setDrawerState(null);
+          if (session.file) void importSessionFile(session.file, true);
+        }}
+        onDesktopCheck={() => {
+          setMessage(t('preparation.desktopAdvice'));
+          setDrawerState('controls');
+        }}
+      />
+      <BlockSheet
+        open={drawerState === 'blocks'}
+        blocks={blockItems}
+        labels={createBlockSheetLabels(t)}
+        onClose={() => {
+          setDrawerState(blockReturnToPreparation ? 'prepare' : null);
+          setBlockReturnToPreparation(false);
+        }}
+        onSetVisible={setBlockVisible}
+        onSetAllVisible={setAllBlocks}
+        applyPending={blockReloadPending}
+        onApplyChanges={blockReturnToPreparation ? undefined : () => {
+          setBlockReloadPending(false);
+          setPreserveViewOnImport(true);
+          session.reloadFile();
+        }}
+      />
+      <LayerSheet
+        open={layerSheetMode !== null}
+        layers={layerSheetLayers}
+        onClose={() => {
+          const returnToPreparation = layerSheetMode === 'preparation';
+          setLayerSheetMode(null);
+          if (returnToPreparation) setDrawerState('prepare');
+        }}
+        onToggle={toggleLayer}
+        onSetAll={setAllLayers}
+      />
     </main>
   );
 }

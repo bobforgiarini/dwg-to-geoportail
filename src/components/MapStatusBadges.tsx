@@ -1,9 +1,9 @@
-import { Crosshair, EyeOff, LocateFixed, Map } from 'lucide-react';
+import { CloudOff, Crosshair, EyeOff, LocateFixed, Map, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { BasemapMode } from '../types/models';
+import type { BasemapHealthState } from '../lib/basemapHealth';
 
 interface Props {
-  basemapMode: BasemapMode;
+  basemapHealth: BasemapHealthState;
   basemapVisible: boolean;
   coordinate: [number, number] | null;
   accuracy: number | null;
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export function MapStatusBadges({
-  basemapMode,
+  basemapHealth,
   basemapVisible,
   coordinate,
   accuracy,
@@ -19,19 +19,37 @@ export function MapStatusBadges({
 }: Props) {
   const { t } = useTranslation();
   const basemapAction = basemapVisible ? t('hideBasemap') : t('showBasemap');
+  const basemapLabel = !basemapVisible
+    ? t('basemapOff')
+    : basemapHealth.status === 'loading'
+      ? t('basemapLoading')
+      : basemapHealth.status === 'retrying'
+        ? t('basemapRetrying')
+        : basemapHealth.status === 'offline'
+          ? t('basemapOffline')
+          : basemapHealth.status === 'unavailable'
+            ? t('basemapUnavailable')
+            : t(basemapHealth.mode === 'wmts' ? 'basemapWmts' : 'basemapWms');
+  const BasemapIcon = !basemapVisible
+    ? EyeOff
+    : basemapHealth.status === 'offline' || basemapHealth.status === 'unavailable'
+      ? CloudOff
+      : basemapHealth.status === 'loading' || basemapHealth.status === 'retrying'
+        ? RefreshCw
+        : Map;
 
   return (
     <div className="map-status-stack">
       <button
         type="button"
-        className={`map-status-card map-status-basemap ${basemapVisible ? 'is-active' : 'is-hidden'}`}
+        className={`map-status-card map-status-basemap ${basemapVisible ? 'is-active' : 'is-hidden'} is-${basemapHealth.status}`}
         onClick={onToggleBasemap}
         aria-pressed={basemapVisible}
         aria-label={t('basemapToggle')}
         title={basemapAction}
       >
-        {basemapVisible ? <Map size={14} aria-hidden="true" /> : <EyeOff size={14} aria-hidden="true" />}
-        <span>{basemapVisible ? t(basemapMode === 'wmts' ? 'basemapWmts' : 'basemapWms') : t('basemapOff')}</span>
+        <BasemapIcon size={14} aria-hidden="true" />
+        <span>{basemapLabel}</span>
       </button>
 
       {coordinate && (

@@ -1,241 +1,172 @@
-# Test- und Abnahmeplan 0.2.4
+# Test- und Abnahmeplan 0.3.0
 
-## Automatisiert
+## Grundsatz
 
-`npm test` prüft weiterhin die bestehende OpenLayers-Pipeline und zusätzlich die parallele MLightCAD-Integration. Die 0.2.0-Suite bleibt als Regressionstest erhalten.
+Automatisierte Tests prüfen Datenstrukturen, Filterung, Zustandsautomaten und Lebenszyklus. Sie ersetzen weder den visuellen Vergleich mit einer bekannten LUREF-DWG noch einen echten Speichertest in iOS Safari. Private DWG-Dateien bleiben außerhalb des Repositorys und werden nicht an einen externen Dienst übertragen.
 
-Bestehende Schwerpunkte:
+Finaler lokaler Stand vom 26. August 2026: **31 Testdateien mit 144 Tests bestanden**, TypeScript- und Vite-Produktionsbuild bestanden. Die weiterhin ausstehenden Prüfungen auf echter iPhone-Hardware sind unten ausdrücklich als manuelle Abnahme markiert.
 
-- LUREF-Roundtrip und Lage eines bekannten LUREF-Referenzpunkts
-- WMTS-Layer, Matrix-Set, Dienst-URL und WMS-Fallback
-- absolute LUREF-Ausdehnungen und Layer-Metadaten
-- Blocktranslation, Layervererbung und Zyklenerkennung
-- Kurvenapproximation sowie Warnungen für 3D und Papierbereich
-- Schraffuren aus normalisierten und LibreDWG-rohen Begrenzungspfaden
-- stabile CAD-Objekt-IDs, automatische LUREF-Ausreißerfilterung und Sichtbarkeitszählung
-- zentrale UI-Texte einschließlich Umlauten in Deutsch, Französisch und Englisch
+## Automatisierte Prüfung
 
-Neue Schwerpunkte in 0.2.0:
+```sh
+npm test
+npm run build
+```
 
-- Zuordnung von `/` und `/mlightcad`, Links sowie History-Navigation
-- Erhalt derselben lokalen `File`-Referenz beim Viewerwechsel und Revisionswechsel beim Ersetzen oder Entfernen
-- Übergabe von WCS-Mittelpunkt und Metern pro CSS-Pixel durch die MLightCAD-Kamerabrücke
-- Deckkraftvorgaben, Rundung und Begrenzung auf 0 bis 100 Prozent
-- einzelnes und gemeinsames Schalten von MLightCAD-Layern
-- Beschreibung einer Auswahl, Ausblenden und Wiederherstellen eines Objekts
-- `AcEdViewMode.PAN`, ausgeblendete eingebettete Kommandozeile und mobiler Pointer-Tap-Fallback mit 12-Pixel-Trefferradius
-- Unterdrückung der Tap-Auswahl nach Ziehen und bei bereits erfolgter eingebauter Auswahl
-- Schließen eines modalen `BottomSheet` über den gemeinsamen Backdrop, ohne Pointer-Ereignisse aus dem Inhalt als Außentipp zu behandeln
-- kompakte `ML`-/`OL`-Taste und History-Wechsel im App-Kopf
-- identische Vierer-Aktionsreihenfolge und denselben modalen CAD-Drawer im OpenLayers- und MLightCAD-Viewer
-- OpenLayers-Deckkraft, „Zeichnung einpassen“, bestehende Warnungen und geschlossenen Startzustand bei bereits vorhandener Sitzungsdatei
-- vollständiges Beenden der Renderanimation und Freigabe des WebGL-Kontexts bei der Adapter-Entsorgung
+### Preflight und Risikobewertung
 
-Neue Schwerpunkte in 0.2.1:
+- kleine beziehungsweise wenig komplexe Dateien laufen ohne Vorbereitungssheet automatisch vollständig weiter
+- die Dateigröße allein setzt `shouldPrepare` niemals und entfernt die Aktion „Vollständig laden“ nicht
+- erhöhte Renderkosten, Entitätszahl, Blockexpansion, Text-/Hatch-/Polyline-Dichte und begrenztes Gerätebudget liefern nachvollziehbare Risikogründe
+- fehlendes `navigator.deviceMemory` auf einem erkannten Mobilgerät verwendet das konservative Safari-Budget, blockiert aber nicht
+- DWG-Version, Dateimetadaten, Layer, direkte und rekursive Instanzen, Objektarten, Blocktiefe und Warnungen werden stabil in `DwgPreflightReport` abgebildet
+- das empfohlene Profil entfernt zunächst nur ausgeschaltete, eingefrorene und No-Plot-Layer sowie Papierbereich, nicht aufgelöste XRefs, Bilder, OLE-/Proxy- und 3D-Inhalte
+- benannte fachliche Blöcke, Texte und Hatches bleiben im automatisch empfohlenen Profil erhalten
 
-- hybride Gestenzuständigkeit: OpenLayers bleibt ohne DWG und während des Imports interaktiv; erst ein bereiter MLightCAD-Adapter übernimmt Pan und Zoom
-- unveränderte MLightCAD-Desktopsteuerung und reduzierte Pinch-Zoom-Empfindlichkeit auf Touchgeräten
-- explizite CAD-zu-OpenLayers-Synchronisierung nach GPS-Zentrierung und „Zeichnung einpassen“
-- tiefe Zoomstufen und LUREF-Mittelpunkte außerhalb der früheren festen Ausdehnung ohne stehende Basiskarte
-- Reprojektions-Kachelbereich für den realen Referenzmittelpunkt `LUREF 1176.41 / 44976.64`
-- dauerhaft transparenter WebGL-Hintergrund mit `clearAlpha = 0`; der Deckkraftwert gilt nur für den CAD-Canvas
-- Schalten von gerenderten `TEXT`-, `MTEXT`-, `ATTRIB`- und `ATTDEF`-Merkmalen einschließlich verschachtelter Blöcke
-- iterative Layer-/Objekterfassung großer DWGs sowie identische vollständige Entsorgung nach Erfolg, Abbruch, Fehler, Dateiersatz und Viewerwechsel
-- erwartete Worker-Ablehnung nach Abbruch ohne nachträglichen Importfehler
-- sitzungsweit gemeinsame Sichtbarkeit der Geoportail-Basiskarte und klickbare Satelliten-Statuskarte in beiden Viewern
-- GPS-Genauigkeitskarte und identische gruppierte Kartenaktionen in beiden Viewern
-- gemeinsamer Layer-, CAD- und Objekt-Drawer mit Schließen über den Backdrop
-- Fokusbindung, Escape-Schließen und Fokus-Rückgabe der modalen Drawer
-- kompakter Ladespinner mit 18 Pixel Durchmesser
-- drehbarer bestehender Viewer mit Nordausrichtung und nordfixierter MLightCAD-Viewer ohne redundanten Nordpfeil
-- vollständige neue Oberflächentexte und Beschriftungen in Deutsch, Französisch und Englisch
+### Blockgraph und Filter
 
-Neue Schwerpunkte in 0.2.2:
+Synthetische Fixtures müssen folgende Fälle abdecken:
 
-- Anfangs- und Rückgabefokus der Drawer ohne programmgesteuertes Scrollen
-- Griff als einzige sichtbare Drawer-Schließaktion; keine redundanten Kreuz-Schaltflächen in CAD-, Layer- oder Objektkopf
-- viewportfeste Overlay-Geometrie oberhalb von OpenLayers und MLightCAD
-- nur eine scrollende Layerliste bei festem Drawer-Kopf
-- kompakte 26-Pixel-Satelliten-Card und schwarzer Kartenhintergrund
+- direkter Modellbereichs-INSERT
+- benannter und anonymer Block
+- mehrfach verschachtelte Blöcke
+- Zeilen-/Spalten-INSERTs mit Multiplizität
+- zyklische Referenz und maximale Suchtiefe
+- fehlende Blockdefinition
+- XRef-Kennzeichnung
+- nicht mehr erreichbare Blockdefinition nach Filterung
 
-Neue Schwerpunkte in 0.2.3:
+Zusätzlich wird geprüft:
 
-- Erkennung paarweise gepackter `MULTILEADER`-/`MLEADER`-MText-Werte aus vor Unicode liegenden Windows-1252-DWGs einschließlich `AC1015` und Rückgewinnung der ursprünglichen Zeichen einschließlich MText-Steuerfolgen
-- Versionsbestimmung aus der originalen sechs Byte langen DWG-Signatur, wenn LibreDWG `ACADVER` und `DWGCODEPAGE` im Parsermodell leer lässt
-- stark begrenzter Windows-1252-Fallback bei belegter alter Originalsignatur und leerer Header-Codepage; ausdrücklich andere Codepages bleiben gesperrt
-- unveränderte Übergabe moderner DWGs, bereits korrekter Unicode-Texte sowie unvollständiger oder nicht plausibler Kandidaten
-- einmalige Normalisierung gleicher Entitätsreferenzen aus Modellbereich und Blockdatensätzen
-- Ende des rekonstruierten Textes am NUL-Byte, ohne einen nachfolgenden LibreDWG-Binärfooter als Beschriftung zu übernehmen
-- Schalten vollständiger `LEADER`-, `MLEADER`- und `MULTILEADER`-Entitäten mit Text, Führungslinien und Pfeilen
-- weiterhin verborgener Zustand einzeln ausgeblendeter Anmerkungen, wenn der globale Textschalter wieder aktiviert wird
+- Layer `0` erbt den wirksamen Elternlayer eines INSERTs
+- ByLayer-/ByBlock-Eigenschaften und ursprüngliche Layernamen bleiben an den verbleibenden Entitäten erhalten
+- ausgeblendete Layer greifen innerhalb verschachtelter Blockdefinitionen
+- ein abgewählter innerer Block entfernt nur die zugehörigen verschachtelten INSERTs
+- weiterhin erreichbare Definitionen, Position, Rotation, Skalierung und Attribute verbleibender INSERTs bleiben erhalten
+- der Filter verändert das ursprüngliche Parserdokument nicht
+- geschätzte und tatsächlich verbleibende Entitäts-/Blockzahlen liegen im dokumentierten Näherungsrahmen
 
-`npm run build` führt TypeScript und Vite aus. Der Produktionsbuild muss sowohl die vier bisherigen Dateien unter `dist/wasm/` als auch diese drei Dateien unter `dist/mlightcad-workers/` enthalten:
+### Sitzung, Block-Drawer und Bedienung
 
-- `libredwg-parser-worker.js`
-- `libredwg-web.wasm`
-- `mtext-renderer-worker.js`
+- `CadLoadProfile` und Preflight-Bericht bleiben beim Viewerwechsel erhalten; eine neue DWG setzt beide zurück
+- Suche, sichtbare/ausgeblendete Zähler, „Alle anzeigen“ und „Alle ausblenden“ im Block-Drawer funktionieren
+- benannte Blöcke, Systemblöcke und XRefs erscheinen in der korrekten Gruppe; Systemblöcke sind einklappbar
+- Block- und Layer-Drawer verwenden denselben `BottomSheet`, besitzen keinen Kreuz-Button und schließen über Außentipp beziehungsweise Escape
+- direkt erreichbare Modellbereichsblöcke schalten ohne vollständigen Neuimport
+- verschachtelte oder vorher weggefilterte Blöcke verlangen „Änderungen anwenden“ und lösen genau einen kontrollierten CAD-Neuaufbau aus
+- Kartenmittelpunkt, Zoom, GPS-Zustand, Deckkraft und Drawerzustand bleiben bei diesem Neuaufbau erhalten
+- der Objekt-Drawer zeigt den rekursiven Blockpfad und bietet Objekt-, Layer- und Block-Ausblendung
 
-Releaseprüfung 0.2.1 am 25. August 2026:
+### Recovery und Lebenszyklus
 
-- `npm test`: 18 Testdateien und 61 Tests bestanden
-- `npm run build`: TypeScript- und Vite-Produktionsbuild bestanden
-- alle vier Dateien unter `dist/wasm/` und alle drei Dateien unter `dist/mlightcad-workers/` vorhanden
-- Vite meldet einen Größenhinweis für den lazy geladenen MLightCAD-Chunk; dies ist eine Warnung, kein Buildfehler
-- der vorherige Stand 0.2.0 mit 14 Testdateien und 39 Tests bleibt durch dieselbe Suite abgedeckt
+- der Recovery-Marker enthält nur Dateiname, Dateigröße und Startzeit, niemals Dateibytes oder Geometrien
+- Erfolg und geordneter Abbruch löschen den Marker
+- ein zurückgebliebener Marker wird einmalig konsumiert und löst die vorbereitete Empfehlung aus
+- deaktiviertes beziehungsweise fehlschlagendes Browser-Storage verhindert einen Import nicht
+- Abbruch während der Workerphase beendet den Vorgang innerhalb von 500 ms und erzeugt kein verspätetes `ready`
+- fünf aufeinanderfolgende Importe beziehungsweise Viewerwechsel hinterlassen keinen zusätzlichen Worker, Canvas oder WebGL-Kontext
+- ein Viewerwechsel beginnt erst nach dem vollständigen Dispose des vorherigen CAD-Dokuments
+- der Worker sendet den kompakten Bericht vor dem großen Modell, wartet auf die Entscheidung und überträgt erst anschließend die gefilterte Datenbank
+- der versionierte LibreDWG-API-Bundle verweist auf die tatsächlich mit ausgelieferte Emscripten-Laufzeit; ein fehlendes Nebenasset wird im Test erkannt
+- der Parser-Timeout läuft nur während aktiver Workerarbeit, pausiert während der Nutzerentscheidung, wird danach neu gestartet und ignoriert verspätete Workerantworten
 
-Releaseprüfung 0.2.2 am 25. August 2026:
+### LibreDWG-WASM
 
-- `npm test`: 18 Testdateien und 63 Tests bestanden
-- `npm run build`: TypeScript- und Vite-Produktionsbuild bestanden
-- Browser-Produktionspreview: Nach Schließen und erneutem Öffnen bleiben `app.scrollTop = 0` und die Unterkanten von App, Karte, Modal-Overlay und Drawer identisch
-- Browser-Produktionspreview: Drawer `z-index: 100` liegt oberhalb des MLightCAD-Overlays `z-index: 4`; kein Drawer-Kopf enthält eine Kreuz-Schaltfläche
-- Browser-Produktionspreview: Satelliten-Card ist 26 Pixel hoch und der Kartenhintergrund wird schwarz berechnet
+- `patchLibreDwgInitialMemory` akzeptiert ausschließlich ein gültiges wasm32-Modul mit Memory-Section
+- der gepatchte Minimalwert beträgt 2.048 WASM-Seiten beziehungsweise 128 MiB
+- ein vorhandener Maximalwert und die Growth-Flags bleiben unverändert
+- `WebAssembly.validate` akzeptiert das erzeugte Modul
+- der Produktionsbuild enthält genau die gemeinsam verwendete gepatchte Datei unter `dist/mlightcad-workers/0.3.0/libredwg-web.wasm`; die ungenutzte Flyfish-WASM-Kopie wird nicht ausgeliefert
 
-Releaseprüfung 0.2.3 am 25. August 2026:
+### Geoportail-Zustandsautomat
 
-- `npm test`: 19 Testdateien und 78 Tests bestanden
-- `npm run build`: TypeScript- und Vite-Produktionsbuild bestanden
-- alle vier Dateien unter `dist/wasm/` und alle drei Dateien unter `dist/mlightcad-workers/` vorhanden
-- lokale Parserprüfung mit `2023- Bestandskanal_Junglinster.dwg`: 1.087 von 1.087 betroffenen `MULTILEADER`-Texten normalisiert; danach 0 verbleibende CJK-Ersatztexte
+- ein einzelner WMTS-Kachelfehler wechselt die Quelle nicht
+- drei aufeinanderfolgende WMTS-Fehler lösen genau einen Retry aus
+- acht Sekunden WMTS-Stillstand wechseln zu WMS `ortho_latest`
+- zehn Sekunden erfolgloses WMS setzen `unavailable`
+- Online-/Offline-Wechsel ergeben `offline` und einen sauberen WMTS-Neustart
+- Ereignisse einer alten Quellgeneration werden ignoriert
+- zwei erfolgreiche WMTS-Proben während funktionierendem WMS wechseln zurück; ein Fehlschlag setzt die Erfolgsserie zurück
+- beide Viewer lesen denselben Basemap-Zustand und bleiben bei Totalausfall auf schwarzem Hintergrund bedienbar
+- URL, Matrix-Set, Layernamen, WMS-Parameter und Attribution entsprechen dem offiziellen Open-Data-Dienst
 
-Releaseprüfung 0.2.4 am 26. August 2026:
+### Projektion und Kamerabrücke
 
-- `npm test`: 19 Testdateien und 78 Tests bestanden; davon 14 fokussierte MLeader-Encoding-Tests
-- `npm run build`: TypeScript- und Vite-Produktionsbuild nach der expliziten `ArrayBuffer`-Fixture bestanden
-- die Laufzeitlogik der MLeader-Korrektur bleibt unverändert; der Patch beseitigt ausschließlich die strengere Netlify-Typprüfung der Testfixture
+- bekannte LUREF-Punkte werden korrekt zwischen `EPSG:2169` und `EPSG:3857` transformiert
+- die MLightCAD-Kamerabrücke transformiert Mittelpunkt und lokale Meter-pro-Pixel-Probe ohne affine Näherung
+- GPS zentriert zuerst die CAD-Kamera, anschließend folgt OpenLayers ohne Animation
+- beim Pan, Pinch, Mausrad, Einpassen und tiefen Zoom bleibt die Abweichung zwischen CAD und Orthofoto bei einer bekannten Referenz unter zwei CSS-Pixeln
 
-## Manuell vor einem Produktiveinsatz
+### i18n und Regression
 
-- `/` und `/mlightcad` direkt über HTTPS öffnen; der SPA-Fallback muss auch den Deep Link liefern
-- `/mlightcad` ohne gewählte DWG öffnen und Pan, Mausrad sowie Touchzoom der OpenLayers-Karte prüfen
-- eine DWG unter einer Route wählen und während sowie nach dem Import zu beiden Viewern wechseln
-- prüfen, dass die lokale Datei beim Routenwechsel erhalten bleibt und nach einem Browser-Neuladen erneut gewählt werden muss
-- gültige, ungültige und über 10 MB große DWG sowie Ersetzen, Entfernen und Abbrechen testen
-- lokale, nur online verfügbare oder während des Lesens unzugängliche Dateien auf den lokalisierten Lesefehler prüfen
-- WMTS absichtlich blockieren und den sichtbaren WMS-Fallback in beiden Viewern verifizieren
-- verweigerte und erlaubte Standortberechtigung, pausierte Folge und Wiederaufnahme prüfen
-- nach einer GPS-Zentrierung und nach „Zeichnung einpassen“ kontrollieren, dass CAD und Orthofoto ohne sichtbaren Versatz gemeinsam stehen
-- über die bisherige OpenLayers-Auflösungsgrenze hinaus zoomen; CAD und Basiskarte müssen beide weiterzoomen
-- eine Zeichnung mit Mittelpunkt außerhalb der früheren festen LUREF-Ausdehnung laden und den unverfälschten Startausschnitt prüfen
-- DE/FR/EN und Umlaute auf schmalem iPhone- und Android-Viewport kontrollieren
-- wiederholte Viewer- und Dateiwechsel auf verwaiste Canvas-Elemente, weiterlaufende Worker und verlorene WebGL-Kontexte prüfen
-- dünne CAD-Geometrie antippen; Auswahl darf einmal auslösen, Kartenpan und Pinch dürfen keine Auswahl erzeugen
-- prüfen, dass MLightCAD in `PAN` startet, eine Touchbewegung den Kameramittelpunkt ändert und die eingebettete Kommandozeile nicht sichtbar oder bedienbar ist
-- MLightCAD auf Desktop mit Maus sowie auf Mobilgeräten mit Pan und Pinch bedienen; auf Mobilgeräten darf der Zoom nicht sprunghaft reagieren
-- Layer- und „DWG & Darstellung“-Drawer getrennt öffnen; Inhalt antippen, Backdrop antippen und den jeweils erwarteten Offen-/Geschlossen-Zustand prüfen
-- jeden Drawer mehrfach öffnen und schließen; `.app-shell.scrollTop` muss `0` bleiben und die Drawer-Unterkante muss der Viewport-Unterkante entsprechen
-- lange Layerliste scrollen; Drawer-Kopf, Griff und Drawer-Unterkante dürfen sich nicht verschieben
-- nach einer Auswahl den kompakten Objekt-Drawer sowie Objekt- und Layeraktionen prüfen
-- beide Routen nebeneinander auf dieselben drei modalen Drawer prüfen; Layer/CAD müssen oben und Standort/Einpassen unten über dem Site-Banner gruppiert sein
-- „Zeichnung einpassen“ und Deckkraftvorgaben auch im OpenLayers-Viewer prüfen
-- Deckkraft, Textschalter, Verborgen-Zähler und Wiederherstellung in beiden Viewern im CAD-Drawer prüfen
-- den gemeinsamen Ladespinner während beider Importe mit 18 Pixel Durchmesser kontrollieren
-- die Satelliten-Statuskarte in beiden Routen antippen; Orthofoto und WMS-Fallback müssen gemeinsam verschwinden beziehungsweise wieder erscheinen, die DWG muss sichtbar bleiben und der Zustand einen Viewerwechsel überstehen
-- bei aktivem Standort die eigenständige GPS-Genauigkeitskarte und den Genauigkeitskreis prüfen
-- kompakte `ML`-/`OL`-Taste neben DE/FR/EN, Version im Kopf und Banner rechts mit exaktem Text prüfen; nur der drehbare bestehende Viewer zeigt seine Nordausrichtung
-- die MLightCAD-Deckkraft bei sichtbarer und ausgeblendeter Basiskarte prüfen: unbelegte Pixel müssen vollständig transparent bleiben, nur CAD-Geometrie und -Füllungen dürfen ihre Deckkraft ändern
-- Texte in direkt gezeichneten und verschachtelten Blöcken gemeinsam aus- und einblenden
-- in einer alten `AC1015`-DWG lesbare `MULTILEADER`-Beschriftungen einschließlich Umlauten, Sonderzeichen und MText-Zeilenumbrüchen mit der CAD-Referenz vergleichen
-- Texte ausschalten und bestätigen, dass bei `LEADER`, `MLEADER` und `MULTILEADER` auch sämtliche zugehörigen Führungslinien und Pfeile verschwinden; beim Einschalten müssen nur ansonsten sichtbare Anmerkungen zurückkehren
-- einen sichtbaren MLightCAD-Hinweis öffnen und die Sprache wechseln; die Meldung muss ohne erneutes Auslösen live übersetzt werden
-- im Browser-Netzwerkprotokoll bestätigen, dass keine Anfrage den DWG-Dateiinhalt überträgt
-- Netlify-Produktionsbuild in mobilem Safari und Chrome abnehmen
+- alle neuen Preflight-, Block-, Recovery- und Basemap-Texte sind in Deutsch, Französisch und Englisch vorhanden
+- Umlaute, französische Apostrophe und englische Platzhalter werden korrekt gerendert
+- bestehende CRS-, HATCH-, Kurven-, Auswahl-, Layer-, Text-/Leader- und MLeader-Encoding-Tests bleiben grün
+- TypeScript-Build und Vite-Produktionsbuild laufen ohne Fehler
 
-## Erwartete reale DWG-Abnahme 0.2.3
+## Produktionsbuild prüfen
 
-Eine reale DWG-Fixture ist bewusst nicht im Repository enthalten und darf nicht an einen externen Dienst übertragen werden. Für jede lokal bereitgestellte 2D-DWG mit bekannten LUREF-Koordinaten werden folgende Punkte dokumentiert:
+Nach `npm run build` müssen mindestens vorhanden sein:
 
-1. Referenz: Dateikennung oder lokaler Hash, DWG-Erzeuger/-Version, Referenzansicht und bekannte LUREF-Kontrollpunkte festhalten.
-2. Bestehender Viewer: Datei unter `/` öffnen und Layer, darstellbare Objekte, Warnungen sowie Startausschnitt notieren.
-3. MLightCAD: ohne neue Dateiauswahl zu `/mlightcad` wechseln; erfolgreicher Import, Modellbereich, Layernamen und plausible Ausdehnung prüfen. Abweichende Objektzahlen werden erklärt, nicht automatisch als Fehler gewertet.
-4. Georeferenzierung: mehrere bekannte Kontrollpunkte bei eingepasster Ansicht und in mehreren Zoomstufen mit dem Geoportail-Orthofoto vergleichen. Sichtbare Verschiebung oder zoomabhängige Drift wird mit Meter- beziehungsweise Pixelabweichung protokolliert.
-5. Darstellung: repräsentative Linien, Polylinien, Bögen, Kreise, Blöcke und Texte gegen die CAD-Referenz prüfen. HATCH-Abweichungen werden ausdrücklich dem offenen [Upstream-Thema #230](https://github.com/mlightcad/cad-viewer/issues/230) zugeordnet, sofern sie diesem Fehlerbild entsprechen.
-6. Bedienung: Deckkraft bei 0, 60, 70 und 100 Prozent, einzelne und alle Layer, Auswahl, Objekt-/Layer-Ausblendung, Wiederherstellung und „Zeichnung einpassen“ prüfen.
-7. Text: `TEXT`, `MTEXT`, `ATTRIB` und `ATTDEF` direkt im Modellbereich und in verschachtelten Blöcken schalten. In alten `AC1015`-Dateien `MULTILEADER`-Beschriftungen gegen die Referenz lesen und `LEADER`, `MLEADER` sowie `MULTILEADER` einschließlich ihrer gesamten Führungslinien schalten. Proprietäre Textobjekte werden separat protokolliert.
-8. Lebenszyklus: laufenden Import abbrechen, Datei ersetzen, beide Routen mehrfach wechseln und anschließend prüfen, dass nur der aktuelle Canvas und Worker aktiv sind.
+- `dist/mlightcad-workers/0.3.0/libredwg-parser-worker.js`
+- `dist/mlightcad-workers/0.3.0/libredwg-web-api.js`
+- `dist/mlightcad-workers/0.3.0/libredwg-web.js`
+- `dist/mlightcad-workers/0.3.0/libredwg-web.wasm`
+- `dist/mlightcad-workers/0.3.0/mtext-renderer-worker.js`
 
-XRefs, proprietäre benutzerdefinierte Objekte und 3D-Inhalte sind keine positiven Abnahmekriterien für 0.2.3. Ihr Fehlen oder ihre abweichende Darstellung muss als bekannte Grenze festgehalten werden. Ein erfolgreicher automatisierter Testlauf allein gilt nicht als reale DWG-Abnahme.
+Das LibreDWG-WASM muss valide sein und 128 MiB Anfangsspeicher deklarieren. Browseranfragen beider Viewer müssen denselben Releasepfad verwenden und dürfen nicht auf unversionierte oder alte 0.2.x-URLs zurückfallen. Die MLightCAD-Route bleibt lazy geladen; ein Aufruf von `/` darf den großen MLightCAD-/Three.js-Chunk nicht vorab aktivieren.
 
-## Reale Referenz-DWG für 0.2.3
+## Manuelle mobile Abnahme
 
-`2023- Bestandskanal_Junglinster.dwg` ist der verbindliche lokale Stabilitäts- und Kodierungsfall für Version 0.2.3. Die alte `AC1015`-Datei ist 11,31 MiB groß und ergibt im MLightCAD-Dokument 66.816 Objekte auf 316 Layern. Sie wird nicht in Git aufgenommen und nicht an einen Server übertragen.
+### Adaptive Vorbereitung
 
-Beim vorherigen Produktionsstand erreichte der Import nach ungefähr einer Minute die Renderphase bei 100 Prozent, bevor die Oberfläche vollständig bereit wurde. Die 0.2.3-Abnahme muss deshalb weiterhin ausdrücklich bestätigen:
+1. Eine kleine DWG laden: Sie soll ohne unnötigen Dialog vollständig öffnen.
+2. Eine große, aber strukturell einfache DWG laden: Sie darf nicht allein wegen ihrer Dateigröße blockiert werden.
+3. Eine tatsächlich komplexe DWG laden: Vor Feature-/Szenenaufbau muss „DWG vorbereiten“ erscheinen.
+4. „Vollständig laden“ wählen: Die Aktion bleibt auf Desktop und Mobilgerät vorhanden und startet den ungefilterten Versuch.
+5. „Empfohlen laden“ wählen: Die Wirkungsschätzung muss sich plausibel verringern, fachliche benannte Blöcke, Texte und Hatches bleiben erhalten.
+6. „Auswahl anpassen“ öffnen: Layer- und Blockauswahl ändern, anwenden und das Ergebnis gegen eine CAD-Referenz vergleichen.
+7. Während des Imports abbrechen: Oberfläche und Karte müssen unmittelbar wieder bedienbar sein.
 
-- Der Tab stürzt weder auf Desktop noch auf einem unterstützten Mobilgerät ab.
-- Während Analyse und Rendern bleibt der Import abbrechbar; der 18-Pixel-Spinner vergrößert den Drawer nicht.
-- Nach `ready` sind alle 316 Layer bedienbar, ohne eine zweite vollständige Entitätenliste im Anwendungscode zu halten.
-- Die Zeichnung wird an ihrer absoluten LUREF-Lage dargestellt; ihr Mittelpunkt darf nicht an einer früheren festen Kartenausdehnung abgeschnitten werden.
-- Pan, Zoom, GPS-Zentrierung und Einpassen führen CAD und Orthofoto gemeinsam. Auch bei tiefem Zoom bleibt kein Renderer sichtbar zurück.
-- Basiskarte aus zeigt ausschließlich die CAD-Zeichnung auf transparentem Hintergrund. Die Deckkraft verändert nur sichtbare CAD-Objekte und Füllungen.
-- Textschalter, Layerausblendung, Objektausblendung und Wiederherstellung funktionieren auch bei diesem Dokument.
-- `MULTILEADER`-Beschriftungen erscheinen als lesbarer Windows-1252-Text statt als ostasiatische Ersatzzeichen; Zahlen, Umlaute, Sonderzeichen und MText-Formatierung stimmen mit der CAD-Referenz überein.
-- Bei ausgeschalteten Texten bleiben keine Führungslinien oder Pfeile von `LEADER`, `MLEADER` oder `MULTILEADER` sichtbar.
-- Nach Entfernen, Ersetzen und Viewerwechsel sind Worker, Dokumentreferenzen, Szene, Renderer und WebGL-Kontext freigegeben.
+### Lokale Junglinster-Referenz
 
-Lokale Parser-Abnahme 0.2.3:
+Die bekannte lokale Junglinster-DWG bleibt außerhalb von Git. Sie ist größer als 10 MiB und dient als Stabilitätsfall, nicht als öffentliches Testasset:
 
-- Die Originaldatei wurde direkt mit der lokal installierten LibreDWG-Fassung gelesen; sie wurde weder kopiert noch hochgeladen.
-- Das Parsermodell enthielt 1.087 `MULTILEADER`-Entitäten mit dem betroffenen Byte-Paar-Muster.
-- Die Kompatibilitätskorrektur normalisierte alle 1.087 Werte; anschließend enthielt keiner dieser Texte mehr CJK-Ersatzzeichen.
-- Stichproben ergaben wieder lesbare Kanaltexte einschließlich MText-Steuerfolgen und Windows-1252-Sonderzeichen wie `‰`.
+Lokal abgeschlossen wurde ein Durchlauf mit der 11,31-MB-Datei und 66.816 erkannten Objekten: Der neue Worker lud sie auf dem Desktop sowohl in `/mlightcad` als auch in `/`; es gab keine 10-MiB-Sperre. Dabei wurde zusätzlich die vollständige versionierte Worker-Abhängigkeitskette im Produktions-Preview geprüft. Ein auf 390 × 844 Pixel gesetzter Desktop-Browser ist dabei nur eine responsive UI-Prüfung und kein Ersatz für iOS Safari.
 
-Lokale Produktions-Preview-Abnahme 0.2.1 auf Desktop:
+- auf einem leistungsfähigen Desktop vollständig laden
+- auf einem echten iPhone zuerst das empfohlene Profil prüfen
+- bestätigen, dass kein 10-MiB-Limit erscheint und „Vollständig laden“ angeboten bleibt
+- Layer-, Block-, Text- und HATCH-Darstellung gegen die CAD-Referenz vergleichen
+- einen direkten Block sofort ausblenden
+- einen verschachtelten Block über „Änderungen anwenden“ entfernen und ausschließlich diesen Strukturzweig kontrollieren
+- zwischen `/` und `/mlightcad` wechseln und prüfen, dass dasselbe Profil erneut angewendet wird
+- Netzwerkprotokoll kontrollieren: DWG-Bytes verlassen das Gerät nicht
 
-- Die Datei erreichte ohne Tab-Absturz und ohne Browser-Konsolenfehler vollständig `ready`; gemeldet wurden 66.816 Objekte und 316 Layer.
-- Der Startmittelpunkt `LUREF 1176.41 / 44976.64` wurde trotz seiner Lage außerhalb der früheren festen Kartenausdehnung unverändert übernommen.
-- Eine MLightCAD-Ziehbewegung änderte den gemeinsamen Kartenmittelpunkt, ohne den Objekt-Drawer zu öffnen. „Zeichnung einpassen“ stellte den Startmittelpunkt anschließend wieder exakt her.
-- WebGL-Host und Canvas blieben transparent. Bei 70 Prozent hatte nur der Canvas `opacity: 0.7`; die Vorgaben Karte und CAD ergaben `0` beziehungsweise `1`.
-- Der Textschalter wechselte ohne Rendererfehler, der Layer-Drawer zeigte alle 316 Layer und ein Außentipp schloss ihn.
-- Die Satelliten-Card blendete die Basiskarte aus, während der CAD-Canvas sichtbar blieb. Der Zustand blieb beim kontrollierten Wechsel zu OpenLayers erhalten.
-- Der Viewerwechsel entfernte den MLightCAD-Renderhost; der bestehende Viewer zeigte während seiner Neuverarbeitung den gemeinsamen 18-Pixel-Spinner.
+Ein erfolgreicher Lauf auf einem einzelnen Desktop belegt keine iPhone-Kompatibilität. Die oben genannten iPhone-Schritte sind noch offen. iOS Safari kann den gesamten Tab bei Speicherdruck beenden; dieses Verhalten muss auf realer Hardware geprüft und als verbleibendes Risiko dokumentiert werden.
 
-## Reale DWG-Abnahme 0.2.0 – Teilstand
+### Geoportail und Offlinebetrieb
 
-Im Produktions-Preview bei 390 × 844 Pixel wurde `/mlightcad` mit der lokal verfügbaren `doheem.dwg` (185.375 Byte) geprüft:
+- WMTS absichtlich blockieren und Retry sowie automatischen WMS-Fallback beobachten
+- WMS ebenfalls blockieren und sicherstellen, dass CAD auf schwarzem Hintergrund bedienbar bleibt
+- bei aktivem WMS die WMTS-Erholung abwarten; erst nach zwei erfolgreichen Proben darf die App zurückwechseln
+- Browser offline/online schalten und Status, Layer, CAD, GPS und Kamera prüfen
+- Satellitenkarte bewusst aus- und einschalten; der Zustand muss einen Viewerwechsel überstehen
 
-- MLightCAD analysierte und renderte die Datei mit 47 Layern und 7 Objekten auf oberster Modellbereichsebene.
-- Die Überlagerung lag am geprüften Punkt `LUREF 81027.13 / 83979.27` über dem Geoportail-Orthofoto. Da nur ein Punkt protokolliert wurde, belegt dies noch keine vollständige Mehrpunkt- oder Zoomdrift-Abnahme.
-- Die Deckkraftvorgaben sowie das Aus- und Einblenden eines Layers funktionierten.
-- Eine Touchbewegung im `PAN`-Modus änderte den CAD-/Kartenmittelpunkt; die LUREF-Überlagerung blieb dabei gemeinsam geführt.
-- Ein kurzer Tap wählte ein `LWPOLYLINE`-Objekt aus. Der kompakte Objekt-Drawer zeigte Typ und Layer; der separate Layer-Drawer ließ sich unabhängig öffnen.
-- Das ausgewählte Objekt wurde ausgeblendet und anschließend über die Wiederherstellung im CAD-Drawer wieder sichtbar gemacht.
-- Der Wechsel MLightCAD → bestehender Viewer → MLightCAD behielt dieselbe lokale `File`-Referenz und verarbeitete sie in jeder Pipeline neu. Der bestehende Viewer meldete 237 Features und 13 gerenderte Layer; MLightCAD anschließend wieder 47 Layer und 7 oberste Szenenobjekte.
+### UI, Kamera und Speicher
 
-Verschachtelte Texte, HATCH-Referenztreue und die vollständige Mehrpunkt-/Zoomdriftprüfung waren nicht Bestandteil dieses Teilstands und bleiben vor einem Produktiveinsatz offen.
+- DE/FR/EN auf schmalem iPhone- und Android-Viewport prüfen
+- Block-, Layer-, CAD- und Objekt-Drawer wiederholt öffnen, außen schließen und lange Listen scrollen; kein Drawer darf die App verschieben
+- prüfen, dass alle Drawer oberhalb von OpenLayers, WebGL, Kartenbuttons und Site-Banner liegen
+- Pan, Pinch, Mausrad, GPS, Einpassen und tiefen Zoom in beiden Viewern testen
+- fünf Imports und fünf Viewerwechsel mit Browser-Speicherwerkzeugen beobachten; Worker, Canvas und WebGL-Kontexte müssen nach Dispose auf den Sollzustand zurückfallen
+- Standortberechtigung erlaubt und abgelehnt sowie pausierte Folge und Wiederaufnahme prüfen
 
-Weitere bekannte Testdateien waren auf diesem Rechner nicht inhaltlich verfügbar: `büro.dwg` und `181013-15-002021.dwg` lagen nur als OneDrive-Onlineplatzhalter vor (`NotReadableError`; Cloud-Dateianbieter nicht aktiv), der Pfad zu `251068-11-002021a.dwg` war nicht verfügbar. Diese Umgebungsfehler sind keine Aussage über die Parserkompatibilität. Keine dieser Dateien wurde hochgeladen oder in das Repository aufgenommen.
+## Nicht Teil der Abnahme
 
-## Reale DWG-Abnahme 0.1.1
+- Bearbeiten oder Neuschreiben einer DWG
+- Erzeugen einer optimierten DWG zum Download
+- Upload, Netlify Function, Datenbank oder persistente Dateispeicherung
+- positive Darstellungsgarantie für XRefs, Papierlayouts, proprietäre Custom Entities oder 3D-Inhalte
 
-Die folgenden lokal bereitgestellten Dateien wurden browserlokal mit dem Produktionsbuild erfolgreich verarbeitet:
-
-- `büro.dwg`: 179 Objekte, 13 Layer
-- `doheem.dwg`: 181 Objekte, 13 Layer
-- `251068-11-002021a.dwg`: 1.016 Objekte, 39 Layer
-
-Keine der DWG-Dateien wurde an einen externen Dienst übertragen oder in das Repository aufgenommen. Nicht unterstützte Inhalte wie Viewports, Multileader, externe Bilder und einzelne 3D-Z-Werte werden weiterhin als Hinweise gemeldet.
-
-## Reale DWG-Abnahme 0.1.2
-
-- `181013-15-002021.dwg`: 20.302 darstellbare Objekte, 86 Layer und 742 automatisch ausgeblendete räumliche Ausreißer
-- gegenüber dem Import ohne LibreDWG-HATCH-Rohpfade werden 1.186 zusätzliche Schraffurobjekte dargestellt
-- Startausschnitt liegt beim LUREF-Modell; Auswahl und Ausblenden eines Objekts beziehungsweise Layers wurden browserlokal geprüft
-
-Die Datei blieb ausschließlich im lokalen Browser-Arbeitsspeicher und wurde weder veröffentlicht noch in Git aufgenommen.
-
-## Mobile UI-Abnahme 0.1.3
-
-- Bottom-Drawer bei 390 × 844 Pixel geöffnet, geschlossen und wieder geöffnet
-- geschlossener Zustand ohne Seitenüberlauf; `site-info-banner`, Attribution und Wiederöffnungstaste überdecken sich nicht
-- geöffneter Drawer liegt wie vorgesehen über dem Banner
-- CAD-Textschalter mit `181013-15-002021.dwg` in beiden Zuständen geprüft
-- DWG-Import mit und ohne erweiterte HATCH-Rohdaten geprüft; inkompatible Rohdaten lösen automatisch den kompatiblen Zweitversuch aus
-
-## Mobile UI-Abnahme 0.1.4
-
-- `doheem.dwg` mit 237 Objekten und 13 Ebenen im Produktionsbuild verarbeitet
-- BF.lu-Logo, Geoportail-Link und fehlenden OpenLayers-Attributionsschalter geprüft
-- gemeinsamen animierten Bedien- und Ebenen-Drawer bei 390 × 844 Pixel geprüft
-- links ausklappendes CAD-Menü mit Text- und Wiederherstellungsaktion geprüft
-- Wiederherstellung von 230 automatisch ausgeblendeten Objekten und anschließende Zählung von 17 über eine Ebene ausgeblendeten Objekten geprüft
+Es erfolgt für 0.3.0 kein manueller Netlify-Deploy. Nach einem späteren GitHub-Push übernimmt ausschließlich der vorhandene Git-basierte Netlify-Build die Bereitstellung.

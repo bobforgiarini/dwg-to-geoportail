@@ -15,12 +15,20 @@ import {
   type AcDbProgressdEventArgs,
 } from '@mlightcad/data-model';
 import type { CadOverlayLayer, SelectedCadObject } from '../../types/models';
+import type { CadLoadProfile, CadOverlayBlock, DwgPreflightReport } from '../cad/preflightTypes';
+import { awaitCadRuntimeDisposal, registerCadRuntimeDisposal } from '../cad/runtimeDisposal';
+import { cadObjectIdFromKey, createCadObjectKey } from '../cad/objectKey';
 import { readCadCamera } from './cameraBridge';
 import { CancellableLibreDwgConverter } from './CancellableLibreDwgConverter';
 import { normalizeCadOpacity, opacityToCss } from './opacity';
-import { AdapterEvent, type MlightCadAdapterEvents } from './types';
+import {
+  AdapterEvent,
+  type MlightCadCamera,
+  type MlightCadAdapterEvents,
+  type MlightCadLoadOptions,
+} from './types';
 
-const WORKER_ROOT = '/mlightcad-workers';
+const WORKER_ROOT = '/mlightcad-workers/0.3.0';
 const DWG_WORKER_URL = `${WORKER_ROOT}/${LIBREDWG_PARSER_WORKER_FILE}`;
 const MTEXT_WORKER_URL = `${WORKER_ROOT}/${MTEXT_RENDERER_WORKER_FILE}`;
 const CAD_DATA_CDN = 'https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/';
@@ -70,6 +78,14 @@ interface TouchLayoutView {
   _cameraControls?: TouchCameraControls;
 }
 
+interface BlockReferenceEntity extends AcDbEntity {
+  blockName: string;
+  blockTableRecord?: {
+    name: string;
+    newIterator: () => Iterable<AcDbEntity>;
+  };
+}
+
 function bindCadEvent<T>(
   event: { addEventListener: (listener: (value: T) => void) => void; removeEventListener: (listener: (value: T) => void) => void },
   listener: (value: T) => void,
@@ -80,6 +96,31 @@ function bindCadEvent<T>(
 
 function isCadEntity(value: unknown): value is AcDbEntity {
   return Boolean(value && typeof value === 'object' && 'dxfTypeName' in value && 'layer' in value);
+}
+
+function isBlockReference(value: AcDbEntity): value is BlockReferenceEntity {
+  return value.dxfTypeName.toUpperCase() === 'INSERT'
+    && typeof (value as unknown as Partial<BlockReferenceEntity>).blockName === 'string';
+}
+
+function canonicalBlockName(value: string): string {
+  return value.trim().toLocaleLowerCase('en-US');
+}
+
+function sameCanonicalValues(left: string[], right: string[]): boolean {
+  const leftValues = new Set(left.map(canonicalBlockName));
+  const rightValues = new Set(right.map(canonicalBlockName));
+  return leftValues.size === rightValues.size
+    && [...leftValues].every((value) => rightValues.has(value));
+}
+
+export function shouldUseLowMemoryCadMode(fileSize: number, explicitMobile?: boolean): boolean {
+  if (fileSize > LARGE_DWG_BYTES || explicitMobile === true) return true;
+  if (typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches) return true;
+  return typeof navigator !== 'undefined'
+    && /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
 }
 
 function runCleanup(action: () => void): void {
@@ -112,6 +153,8 @@ export class MlightCadViewerAdapter {
     progress: new AdapterEvent<MlightCadAdapterEvents['progress']>(),
     camera: new AdapterEvent<MlightCadAdapterEvents['camera']>(),
     layers: new AdapterEvent<MlightCadAdapterEvents['layers']>(),
+    blocks: new AdapterEvent<MlightCadAdapterEvents['blocks']>(),
+    preflight: new AdapterEvent<MlightCadAdapterEvents['preflight']>(),
     selection: new AdapterEvent<MlightCadAdapterEvents['selection']>(),
     ready: new AdapterEvent<MlightCadAdapterEvents['ready']>(),
     error: new AdapterEvent<MlightCadAdapterEvents['error']>(),
@@ -122,6 +165,18 @@ export class MlightCadViewerAdapter {
   private converter: CancellableLibreDwgConverter | null = null;
   private readonly cleanupListeners: ListenerCleanup[] = [];
   private layers: CadOverlayLayer[] = [];
+  private blocks: CadOverlayBlock[] = [];
+  private preflight: DwgPreflightReport | null = null;
+  private appliedLoadProfile: CadLoadProfile = {
+    mode: 'full',
+    hiddenLayerIds: [],
+    hiddenBlockNames: [],
+    hiddenEntityCategories: [],
+  };
+  private readonly directBlockObjectIds = new Map<string, Set<string>>();
+  private readonly hiddenBlockObjectIds = new Set<string>();
+  private readonly objectBlockPaths = new Map<string, string[]>();
+  private readonly objectIdsByKey = new Map<string, string>();
   private readonly hiddenObjectIds = new Set<string>();
   private readonly textObjectIds = new Set<string>();
   private readonly textSceneObjects = new Map<string, Set<RenderedSceneNode>>();
@@ -146,11 +201,20 @@ export class MlightCadViewerAdapter {
     return this.layers.map((layer) => ({ ...layer }));
   }
 
-  async load(file: File): Promise<void> {
+  get currentBlocks(): CadOverlayBlock[] {
+    return this.blocks.map((block) => ({ ...block, referencedBlockNames: [...block.referencedBlockNames] }));
+  }
+
+  get preflightReport(): DwgPreflightReport | null {
+    return this.preflight;
+  }
+
+  async load(file: File, options: MlightCadLoadOptions = {}): Promise<void> {
     const generation = ++this.generation;
-    const lowMemory = file.size > LARGE_DWG_BYTES;
+    const lowMemory = shouldUseLowMemoryCadMode(file.size, options.device?.mobile);
     try {
       await disposalBarrier;
+      await awaitCadRuntimeDisposal();
       if (this.disposed || generation !== this.generation) return;
 
       this.events.progress.dispatch({ phase: 'workers', percentage: null });
@@ -166,6 +230,41 @@ export class MlightCadViewerAdapter {
         parserWorkerUrl: DWG_WORKER_URL,
         timeout: PARSER_TIMEOUT_MS,
         useWorker: true,
+      }).configurePreparation({
+        file: { name: file.name, size: file.size, lastModified: file.lastModified },
+        device: options.device,
+        maxBlockDepth: options.maxBlockDepth,
+        loadProfile: options.loadProfile,
+        onPreflight: (report) => {
+          this.preflight = report;
+          this.appliedLoadProfile = options.loadProfile ?? {
+            mode: 'full', hiddenLayerIds: [], hiddenBlockNames: [], hiddenEntityCategories: [],
+          };
+          const hiddenBlocks = new Set(this.appliedLoadProfile.hiddenBlockNames.map(canonicalBlockName));
+          this.blocks = report.blocks.map((block) => ({
+            ...block,
+            visible: !hiddenBlocks.has(canonicalBlockName(block.name)),
+          }));
+          this.events.preflight.dispatch(report);
+          this.events.blocks.dispatch(this.currentBlocks);
+        },
+        onPreparation: options.onPreparation
+          ? async (report) => {
+            const selection = await options.onPreparation!(report);
+            this.appliedLoadProfile = selection.decision === 'filtered'
+              ? selection.profile ?? report.recommendedProfile
+              : { mode: 'full', hiddenLayerIds: [], hiddenBlockNames: [], hiddenEntityCategories: [] };
+            const hiddenBlocks = new Set(this.appliedLoadProfile.hiddenBlockNames.map(canonicalBlockName));
+            this.blocks = report.blocks.map((block) => ({
+              ...block,
+              visible: !hiddenBlocks.has(canonicalBlockName(block.name)),
+            }));
+            this.events.blocks.dispatch(this.currentBlocks);
+            return selection;
+          }
+          : undefined,
+        forcePreparation: options.forcePreparation,
+        forceFull: options.forceFull,
       });
       this.converter = converter;
       AcDbDatabaseConverterManager.instance.register(AcDbFileType.DWG, converter);
@@ -251,7 +350,12 @@ export class MlightCadViewerAdapter {
       this.emitCamera();
       this.events.progress.dispatch({ phase: 'ready', percentage: 100 });
       const entityCount = this.layers.reduce((sum, layer) => sum + layer.featureCount, 0);
-      this.events.ready.dispatch({ layers: this.currentLayers, entityCount });
+      this.events.ready.dispatch({
+        layers: this.currentLayers,
+        blocks: this.currentBlocks,
+        entityCount,
+        preflight: this.preflight,
+      });
     } catch (error) {
       const cancelled = this.disposed || generation !== this.generation;
       await this.dispose();
@@ -278,6 +382,17 @@ export class MlightCadViewerAdapter {
     this.emitCamera();
   }
 
+  /** Restores center and CSS-pixel scale after a controlled CAD-only reload. */
+  setCamera(camera: MlightCadCamera): void {
+    if (!this.view || !Number.isFinite(camera.resolution) || camera.resolution <= 0) return;
+    const current = readCadCamera(this.view);
+    const currentZoom = this.view.internalCamera.zoom;
+    const zoom = currentZoom * (current.resolution / camera.resolution);
+    if (!Number.isFinite(zoom) || zoom <= 0) return;
+    this.view.flyTo({ x: camera.center[0], y: camera.center[1] }, zoom);
+    this.emitCamera();
+  }
+
   setOpacity(value: number): void {
     this.opacity = normalizeCadOpacity(value);
     this.container.style.removeProperty('opacity');
@@ -301,12 +416,83 @@ export class MlightCadViewerAdapter {
     this.events.layers.dispatch(this.currentLayers);
   }
 
+  /**
+   * Changes direct model-space INSERTs without rebuilding the CAD document.
+   * A block that is also reachable through another definition needs a filtered
+   * reload so every nested occurrence is removed consistently.
+   *
+   * @returns true when the caller must reload the CAD document.
+   */
+  setBlockVisible(blockName: string, visible: boolean): boolean {
+    const normalized = canonicalBlockName(blockName);
+    const block = this.blocks.find((candidate) => canonicalBlockName(candidate.name) === normalized
+      || canonicalBlockName(candidate.id) === normalized);
+    if (!block) return true;
+    const objectIds = this.directBlockObjectIds.get(normalized);
+    if (objectIds?.size) {
+      for (const objectId of objectIds) {
+        if (visible) this.hiddenBlockObjectIds.delete(objectId);
+        else this.hiddenBlockObjectIds.add(objectId);
+        this.applyObjectVisibility(objectId);
+        this.applyRenderedTextVisibility(objectId);
+      }
+    }
+    if (this.view) this.view.isDirty = true;
+    this.blocks = this.blocks.map((candidate) => candidate === block ? { ...candidate, visible } : candidate);
+    this.events.blocks.dispatch(this.currentBlocks);
+    return block.isNested || !objectIds?.size;
+  }
+
+  /**
+   * Applies changes that can safely be represented by the mounted scene and
+   * reports whether the raw DWG must be reparsed with the new profile.
+   */
+  applyLoadProfile(profile: CadLoadProfile): boolean {
+    const layerChanged = !sameCanonicalValues(
+      this.appliedLoadProfile.hiddenLayerIds,
+      profile.hiddenLayerIds,
+    );
+    const categoriesChanged = !sameCanonicalValues(
+      this.appliedLoadProfile.hiddenEntityCategories,
+      profile.hiddenEntityCategories,
+    );
+    let reloadRequired = layerChanged || categoriesChanged;
+    const nextHiddenBlocks = new Set(profile.hiddenBlockNames.map(canonicalBlockName));
+    for (const block of this.blocks) {
+      const visible = !nextHiddenBlocks.has(canonicalBlockName(block.name));
+      if (visible !== block.visible) reloadRequired = this.setBlockVisible(block.name, visible) || reloadRequired;
+    }
+    if (!reloadRequired) this.appliedLoadProfile = {
+      ...profile,
+      hiddenLayerIds: [...profile.hiddenLayerIds],
+      hiddenBlockNames: [...profile.hiddenBlockNames],
+      hiddenEntityCategories: [...profile.hiddenEntityCategories],
+    };
+    return reloadRequired;
+  }
+
   hideObject(objectId: string): void {
     this.hiddenObjectIds.add(objectId);
     this.applyObjectVisibility(objectId);
     this.applyRenderedTextVisibility(objectId);
     this.view?.selectionSet.clear();
     this.events.selection.dispatch(null);
+  }
+
+  hideObjectByKey(objectKey: string): boolean {
+    const exactObjectId = this.objectIdsByKey.get(objectKey);
+    const fallbackObjectId = cadObjectIdFromKey(objectKey);
+    const fallbackEntity = exactObjectId ? null : (
+      this.manager?.curDocument.database.tables.blockTable.getEntityById(fallbackObjectId)
+      ?? this.manager?.curDocument.database.getObjectById(fallbackObjectId)
+    );
+    const objectId = exactObjectId ?? (fallbackEntity ? fallbackObjectId : null);
+    if (!objectId) return false;
+    // MLightCAD stores one object for a block-definition entity even when the
+    // definition is inserted through several parent paths. Handle fallback is
+    // therefore intentionally definition-wide when an exact path is absent.
+    this.hideObject(objectId);
+    return true;
   }
 
   clearSelection(): void {
@@ -368,13 +554,20 @@ export class MlightCadViewerAdapter {
       runCleanup(() => this.container.replaceChildren());
       this.container.style.removeProperty('opacity');
       this.hiddenObjectIds.clear();
+      this.hiddenBlockObjectIds.clear();
+      this.directBlockObjectIds.clear();
+      this.objectBlockPaths.clear();
+      this.objectIdsByKey.clear();
       this.textObjectIds.clear();
       this.textSceneObjects.clear();
       this.layers = [];
+      this.blocks = [];
+      this.preflight = null;
     };
 
     this.disposePromise = disposeTask();
     disposalBarrier = this.disposePromise.catch(() => undefined);
+    registerCadRuntimeDisposal(this.disposePromise);
     return this.disposePromise;
   }
 
@@ -560,16 +753,45 @@ export class MlightCadViewerAdapter {
 
   private bindDocument(manager: AcApDocManager): void {
     const document = manager.curDocument;
-    const modelSpace = document.database.tables.blockTable.modelSpace;
+    const blockTable = document.database.tables.blockTable;
+    const modelSpace = blockTable.modelSpace;
     const counts = new Map<string, number>();
     this.textObjectIds.clear();
+    this.directBlockObjectIds.clear();
+    this.hiddenBlockObjectIds.clear();
+    this.objectBlockPaths.clear();
+    this.objectIdsByKey.clear();
+    const expandedDefinitions = new Set<string>();
+    const visitBlockPath = (entity: AcDbEntity, parentPath: string[], branch: Set<string>) => {
+      const path = isBlockReference(entity) ? [...parentPath, entity.blockName] : parentPath;
+      if (!this.objectBlockPaths.has(entity.objectId)) this.objectBlockPaths.set(entity.objectId, path);
+      this.objectIdsByKey.set(createCadObjectKey(entity.objectId, path), entity.objectId);
+      if (TEXT_CONTROLLED_ENTITY_TYPES.has(entity.dxfTypeName.toUpperCase())) {
+        this.textObjectIds.add(entity.objectId);
+      }
+      if (!isBlockReference(entity)) return;
+
+      if (parentPath.length === 0) {
+        const normalized = canonicalBlockName(entity.blockName);
+        const ids = this.directBlockObjectIds.get(normalized) ?? new Set<string>();
+        ids.add(entity.objectId);
+        this.directBlockObjectIds.set(normalized, ids);
+      }
+      const normalized = canonicalBlockName(entity.blockName);
+      if (branch.has(normalized)) return;
+      if (expandedDefinitions.has(normalized)) return;
+      const record = entity.blockTableRecord ?? blockTable.getAt(entity.blockName);
+      if (!record) return;
+      expandedDefinitions.add(normalized);
+      const nextBranch = new Set(branch);
+      nextBranch.add(normalized);
+      for (const child of record.newIterator()) visitBlockPath(child, path, nextBranch);
+    };
     // Iterate the database once without materializing a second, potentially
     // 60k+ entity array beside MLightCAD's own model and scene structures.
     for (const entity of modelSpace.newIterator()) {
       counts.set(entity.layer, (counts.get(entity.layer) ?? 0) + 1);
-      if (TEXT_CONTROLLED_ENTITY_TYPES.has(entity.dxfTypeName.toUpperCase())) {
-        this.textObjectIds.add(entity.objectId);
-      }
+      visitBlockPath(entity, [], new Set());
     }
     this.collectRenderedTextSceneObjects(manager.curView);
 
@@ -584,6 +806,7 @@ export class MlightCadViewerAdapter {
     const changed = () => this.events.layers.dispatch(this.currentLayers);
     this.cleanupListeners.push(bindCadEvent(document.layerStore.events.changed, changed));
     this.events.layers.dispatch(this.currentLayers);
+    this.events.blocks.dispatch(this.currentBlocks);
   }
 
   private collectRenderedTextSceneObjects(view: AcTrView2d): void {
@@ -619,20 +842,27 @@ export class MlightCadViewerAdapter {
     if (!isCadEntity(entity)) return null;
     return {
       featureId: objectId,
+      objectKey: createCadObjectKey(objectId, this.objectBlockPaths.get(objectId)
+        ?? (isBlockReference(entity) ? [entity.blockName] : [])),
       layerId: entity.layer,
       cadType: entity.dxfTypeName,
       label: '',
+      blockPath: this.objectBlockPaths.get(objectId)
+        ?? (isBlockReference(entity) ? [entity.blockName] : []),
     };
   }
 
   private applyObjectVisibility(objectId: string): void {
     const shouldShow = !this.hiddenObjectIds.has(objectId)
+      && !this.hiddenBlockObjectIds.has(objectId)
       && (this.textVisible || !this.textObjectIds.has(objectId));
     this.view?.setEntitySceneVisible(objectId, shouldShow);
   }
 
   private applyRenderedTextVisibility(objectId: string): void {
-    const visible = this.textVisible && !this.hiddenObjectIds.has(objectId);
+    const visible = this.textVisible
+      && !this.hiddenObjectIds.has(objectId)
+      && !this.hiddenBlockObjectIds.has(objectId);
     for (const node of this.textSceneObjects.get(objectId) ?? []) node.visible = visible;
   }
 

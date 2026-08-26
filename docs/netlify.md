@@ -1,70 +1,60 @@
-# Netlify-Konfiguration 0.2.4
+# Netlify-Konfiguration 0.3.0
 
-## Bereitstellungsstatus
+## Bereitstellung
 
-Für Version 0.2.4 wird kein manueller Netlify-Deploy ausgeführt. Das vorhandene Git-basierte Netlify-Projekt übernimmt Build und Veröffentlichung automatisch nach dem Push auf `main`.
+Für Version 0.3.0 wird kein manueller Netlify-Deploy ausgeführt. Das vorhandene Git-basierte Netlify-Projekt übernimmt Build und Veröffentlichung erst nach einem späteren Push auf `main`.
 
-Die Anwendung benötigt keine Netlify Function, kein Upload-Ziel, keine Dokumentdatenbank und keine Umgebungsvariable. DWG-Dateien werden ausschließlich vom Browser des Nutzers verarbeitet.
+Die Anwendung benötigt keine Netlify Function, kein Upload-Ziel, keine Dokumentdatenbank und keine Umgebungsvariable. DWG-Dateien werden ausschließlich im Browser des Nutzers verarbeitet.
 
-## Build und Publish-Verzeichnis
+## Build und Routing
 
 `netlify.toml` definiert:
 
 - Build: `npm run build`
-- Publish: `dist`
-- SPA-Fallback: alle unbekannten Serverpfade liefern `/index.html`
+- Publish-Verzeichnis: `dist`
+- SPA-Fallback: unbekannte Pfade liefern `/index.html`
 
-Der Fallback ist erforderlich, damit neben `/` auch ein direkter Aufruf von `/mlightcad` funktioniert. Bei einer Git-basierten Bereitstellung liest Netlify diese Werte automatisch. Für eine manuelle Bereitstellung muss zuerst lokal der Produktionsbuild erstellt und anschließend ausschließlich das vollständige Verzeichnis `dist/` veröffentlicht werden.
+Der SPA-Fallback ist für den direkten Aufruf von `/mlightcad` erforderlich. Die MLightCAD-Seite bleibt ein lazy geladener Chunk; der Einstieg unter `/` soll ihn nicht vorab laden.
 
 ## Statische Viewerdateien
 
-Die bestehende Pipeline erzeugt unter `dist/wasm/`:
-
-- `dwg-worker.js`
-- `libredwg-web.js`
-- `libredwg-web.wasm`
-- `dwfv-render.wasm`
-
-Die MLightCAD-Pipeline erzeugt getrennt unter `dist/mlightcad-workers/`:
+Der Build erzeugt die gemeinsame DWG-Laufzeit unter `dist/mlightcad-workers/0.3.0/`:
 
 - `libredwg-parser-worker.js`
+- `libredwg-web-api.js`
+- `libredwg-web.js`
 - `libredwg-web.wasm`
 - `mtext-renderer-worker.js`
 
-`netlify.toml` setzt für `*.wasm` in beiden Verzeichnissen den Content-Type `application/wasm`. Das Cache-Verhalten ist absichtlich unterschiedlich:
+`libredwg-web-api.js` und die zugehörige Emscripten-Laufzeit `libredwg-web.js` liegen bewusst nebeneinander im versionierten Verzeichnis; der Build schreibt den relativen Paketimport reproduzierbar auf diese flache Release-Struktur um. `libredwg-web.wasm` wird beim Vite-Build auf 128 MiB deklarierten Anfangsspeicher gepatcht. Die WASM-Response muss `Content-Type: application/wasm` liefern. Beide Viewer verwenden diese Laufzeit; die frühere Flyfish-WASM-Kopie unter `/wasm/` wird nicht mehr gebaut oder angefordert.
 
-- `/wasm/*`: `public, max-age=31536000, immutable`
-- `/mlightcad-workers/*`: `public, max-age=0, must-revalidate`
+## Versionierung und Cache
 
-Die absoluten Laufzeitpfade `/wasm/` und `/mlightcad-workers/` setzen voraus, dass die Anwendung am Ursprung der Netlify-Site veröffentlicht wird.
+Version 0.3.0 ändert den Inhalt des LibreDWG-WASM. Deshalb verwenden Build und Laufzeit ausschließlich den neuen URL-Baum:
 
-### Cache-Verhalten bei Updates
+- `/mlightcad-workers/0.3.0/*`
 
-Die MLightCAD-Dateien werden bei jeder Verwendung revalidiert. Ein neuer Deploy kann deshalb aktualisierte Inhalte unter denselben `/mlightcad-workers/`-URLs bereitstellen, ohne dass ein einjähriger Immutable-Browsercache die vorherige Fassung festhält.
-
-Die ältere `/wasm/`-Pipeline behält ihr langfristiges Immutable-Caching. Sollen deren unversionierte Dateien später inhaltlich geändert werden, müssen die Assetpfade beziehungsweise Dateinamen versioniert oder die Cache-Regeln vorab geändert werden.
-
-Die MLightCAD-Seite selbst ist ein lazy geladener JavaScript-Chunk. Erst ein Aufruf von `/mlightcad` lädt diesen Chunk und die darin referenzierten MLightCAD-/Three.js-Bibliotheken.
-
-Die `AC1015`-/Windows-1252-Kompatibilitätskorrektur und das gemeinsame Schalten von Text und Führungslinien liegen in diesem Anwendungs-Chunk. Version 0.2.4 fügt deshalb keine Route, Function, Umgebungsvariable oder weitere Worker-/WASM-Datei hinzu; die vorhandenen Cache- und Content-Type-Regeln bleiben gültig.
+`netlify.toml` darf diesen Verzeichnisbaum mit `public, max-age=31536000, immutable` ausliefern. Die Versionskomponente sorgt dafür, dass ein Browser mit einer früher gecachten 0.2.x-Datei den neuen 0.3.0-URL anfordert. Ein zukünftiger Release, der Worker oder WASM ändert, muss einen neuen Versionspfad erhalten; ein Überschreiben derselben immutable URL ist nicht zulässig.
 
 ## Externe Laufzeitanfragen
 
-- Geoportail liefert WMTS-/WMS-Kartenbilder.
-- MLightCAD verwendet die konfigurierte Quelle `https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/` für unterstützende CAD-/Schriftressourcen.
-- Die Anwendung besitzt keinen Endpunkt, der eine ausgewählte DWG empfängt. Die Datei wird weder an Netlify noch an diese externen Quellen übertragen.
+- Geoportail liefert WMTS- beziehungsweise WMS-Bilder vom offiziellen Open-Data-Endpunkt.
+- Während eines funktionierenden WMS-Fallbacks führt die App kontrollierte WMTS-Recovery-Proben aus.
+- MLightCAD lädt unterstützende CAD-/Schriftressourcen von `https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/`.
 
-Ein vollständig netzunabhängiger Betrieb ist mit der aktuellen externen MLightCAD-Ressourcenquelle nicht zugesichert. Die URL folgt außerdem dem Branch `main`; `package-lock.json` fixiert ihren Inhalt daher nicht. Für eine vollständig reproduzierbare Bereitstellung müssten diese Ressourcen separat versioniert und unter einer festen Basis-URL bereitgestellt werden.
+Keine dieser Anfragen enthält die ausgewählte DWG. Es existiert kein App-Endpunkt für DWG-Bytes.
 
-## Abnahme nach einer Bereitstellung
+Ein vollständig netzunabhängiger Betrieb ist wegen Karte und externer MLightCAD-Ressourcen nicht zugesichert. Fällt Geoportail aus, bleibt CAD auf schwarzem Hintergrund bedienbar. Die jsDelivr-URL folgt weiterhin dem Branch `main` und ist dadurch nicht über `package-lock.json` inhaltsfixiert.
 
-- Build-Log und alle Dateien unter `/wasm/` sowie `/mlightcad-workers/` prüfen.
-- `/`, `/mlightcad` und einen direkten Browser-Neuladevorgang auf `/mlightcad` testen.
-- In den Browser-Werkzeugen erfolgreiche Worker- und WASM-Antworten mit korrektem Content-Type prüfen.
-- für `/mlightcad-workers/*` `max-age=0, must-revalidate` und für `/wasm/*` den langfristigen Immutable-Header prüfen.
-- OpenLayers- und MLightCAD-Chunktrennung kontrollieren: der initiale Aufruf von `/` soll den MLightCAD-Viewer nicht aktivieren.
-- Geoportail-WMTS und den sichtbaren WMS-Fallback prüfen.
-- reale LUREF-DWG ausschließlich lokal in beiden Viewern abnehmen; Lage, Layer, Auswahl, Deckkraft und bekannte Einschränkungen dokumentieren.
-- mit einer lokalen alten `AC1015`-Referenzdatei lesbare `MULTILEADER`-Texte und das vollständige Ausblenden von `LEADER`-/`MULTILEADER`-Geometrie prüfen.
-- HTTPS-Standortfunktion in iOS Safari und Android Chrome testen.
-- öffentlich zugänglichen Link auf den exakt eingesetzten `AGPL-3.0-only`-Quellcode bereitstellen.
+## Abnahme nach Git-Bereitstellung
+
+- Build-Log auf erfolgreichen TypeScript-/Vite-Build prüfen.
+- `/` und `/mlightcad` direkt per HTTPS öffnen und neu laden.
+- alle Dateien unter `/mlightcad-workers/0.3.0/` mit korrektem Content-Type abrufen.
+- für das WASM 128 MiB Anfangsspeicher und gültiges WebAssembly bestätigen.
+- für den Releasepfad `public, max-age=31536000, immutable` prüfen und einen Browser mit einem alten 0.2.x-Cache ausdrücklich testen.
+- WMTS `ortho_2025`, Retry, WMS `ortho_latest`, Offlinezustand und Rückwechsel nach zwei erfolgreichen WMTS-Proben prüfen.
+- beide Viewer mit einer lokalen LUREF-DWG testen, ohne Dateiinhalte im Netzwerkprotokoll zu sehen.
+- Recovery-Marker kontrollieren: nur Name, Größe und Startzeit, keine Dateidaten.
+- adaptive Vorbereitung, Block-Drawer und Viewerwechsel auf echtem iOS Safari und Android Chrome abnehmen.
+- öffentlich erreichbaren Link auf den exakt bereitgestellten `AGPL-3.0-only`-Quellstand anbieten.

@@ -1,4 +1,4 @@
-import { Focus, Layers3, LocateFixed, SlidersHorizontal, Square } from 'lucide-react';
+import { Boxes, Focus, Layers3, LocateFixed, SlidersHorizontal, Square } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { LocationFollowMode } from '../types/models';
 
@@ -6,11 +6,14 @@ interface Props {
   locationMode: LocationFollowMode;
   fitDisabled: boolean;
   layerCount: number;
+  blockCount: number;
+  blocksOpen: boolean;
   cadControlsOpen: boolean;
   hiddenObjectCount: number;
   onLocation: () => void;
   onFitDrawing: () => void;
   onOpenLayers: () => void;
+  onOpenBlocks: () => void;
   onToggleCadControls: () => void;
 }
 
@@ -18,11 +21,14 @@ export function MapActionControls({
   locationMode,
   fitDisabled,
   layerCount,
+  blockCount,
+  blocksOpen,
   cadControlsOpen,
   hiddenObjectCount,
   onLocation,
   onFitDrawing,
   onOpenLayers,
+  onOpenBlocks,
   onToggleCadControls,
 }: Props) {
   const { t } = useTranslation();
@@ -42,6 +48,18 @@ export function MapActionControls({
         >
           <Layers3 size={22} aria-hidden="true" />
           {layerCount > 0 && <span className="map-action-count">{layerCount}</span>}
+        </button>
+        <button
+          type="button"
+          className={blocksOpen ? 'active' : ''}
+          onClick={onOpenBlocks}
+          disabled={blockCount === 0}
+          aria-expanded={blocksOpen}
+          aria-label={t('blocksTitle')}
+          title={t('blocksTitle')}
+        >
+          <Boxes size={21} aria-hidden="true" />
+          {blockCount > 0 && <span className="map-action-count">{blockCount}</span>}
         </button>
         <button
           type="button"

@@ -17,27 +17,45 @@ import Style from 'ol/style/Style';
 import type TileWMS from 'ol/source/TileWMS';
 import type WMTS from 'ol/source/WMTS';
 import 'ol/ol.css';
-import { createBasemapLayer } from '../lib/geoportail';
-import { syncCadCameraToMap } from '../lib/mlightcad/cameraBridge';
+import type { BasemapHealthReporter, BasemapHealthState } from '../lib/basemapHealth';
+import { lurefToMap, mapToLuref } from '../lib/crs';
+import { bindBasemapSourceHealth, createBasemapLayer } from '../lib/geoportail';
+import {
+  lurefResolutionToWebMercator,
+  projectCadCameraToMap,
+  syncCadCameraToMap,
+} from '../lib/mlightcad/cameraBridge';
 import type { MlightCadViewerAdapter } from '../lib/mlightcad/MlightCadViewerAdapter';
-import type { BasemapMode, LocationTrackingState } from '../types/models';
+import type { LocationTrackingState } from '../types/models';
 
 interface Props {
   adapter: MlightCadViewerAdapter | null;
-  basemapMode: BasemapMode;
+  basemapHealth: BasemapHealthState;
+  basemapHealthReporter: BasemapHealthReporter;
   basemapVisible: boolean;
+  basemapSuspended?: boolean;
   mlightControlsActive: boolean;
   location: LocationTrackingState;
   onCoordinate: (coordinate: [number, number]) => void;
   onManualMove: () => void;
-  onWmtsError: () => void;
 }
 
-export function MlightCadMap({ adapter, basemapMode, basemapVisible, mlightControlsActive, location, onCoordinate, onManualMove, onWmtsError }: Props) {
+const MOBILE_TILE_CACHE_SIZE = 32;
+
+export function isMemoryConstrainedMapRuntime(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  const coarsePointer = typeof window.matchMedia === 'function'
+    && window.matchMedia('(pointer: coarse)').matches;
+  const mobileUserAgent = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  return coarsePointer || mobileUserAgent;
+}
+
+export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, basemapVisible, basemapSuspended = false, mlightControlsActive, location, onCoordinate, onManualMove }: Props) {
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const baseRef = useRef<TileLayer<WMTS | TileWMS> | null>(null);
   const basemapVisibleRef = useRef(basemapVisible);
+  const memoryConstrained = useRef(isMemoryConstrainedMapRuntime());
   const onCoordinateRef = useRef(onCoordinate);
   const onManualMoveRef = useRef(onManualMove);
   onCoordinateRef.current = onCoordinate;
@@ -62,33 +80,34 @@ export function MlightCadMap({ adapter, basemapMode, basemapVisible, mlightContr
 
   useEffect(() => {
     if (!target.current) return;
-    const base = createBasemapLayer(basemapMode);
-    base.setVisible(basemapVisible);
-    baseRef.current = base;
-    const center = transform([6.13, 49.61], 'EPSG:4326', 'EPSG:2169');
+    const center = transform([6.13, 49.61], 'EPSG:4326', 'EPSG:3857');
     const interactions = defaultInteractions({
       altShiftDragRotate: false,
       pinchRotate: false,
     });
     const map = new Map({
       target: target.current,
+      pixelRatio: memoryConstrained.current ? 1 : (window.devicePixelRatio || 1),
       controls: defaultControls({ attribution: false, rotate: false, zoom: false }),
       interactions,
-      layers: [base, locationLayer],
+      layers: [locationLayer],
       view: new View({
         center,
         // Keep large/outlying CAD extents reachable. A zero minimum removes the
         // previous zoom-in clamp so OpenLayers can follow every CAD resolution.
         maxResolution: 1_000_000_000,
         minResolution: 0,
-        projection: 'EPSG:2169',
+        projection: 'EPSG:3857',
         resolution: 50,
         rotation: 0,
       }),
     });
     const updateCoordinate = () => {
       const currentCenter = map.getView().getCenter();
-      if (currentCenter) onCoordinateRef.current([currentCenter[0], currentCenter[1]]);
+      if (currentCenter) {
+        const luref = mapToLuref(currentCenter);
+        onCoordinateRef.current([luref[0], luref[1]]);
+      }
     };
     const handlePointerDrag = () => onManualMoveRef.current();
     const handleWheel = () => onManualMoveRef.current();
@@ -104,6 +123,7 @@ export function MlightCadMap({ adapter, basemapMode, basemapVisible, mlightContr
       map.getViewport().removeEventListener('wheel', handleWheel);
       map.setTarget(undefined);
       mapRef.current = null;
+      baseRef.current = null;
     };
   }, [locationLayer]);
 
@@ -116,12 +136,35 @@ export function MlightCadMap({ adapter, basemapMode, basemapVisible, mlightContr
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const replacement = createBasemapLayer(basemapMode);
+    if (basemapSuspended) {
+      const existing = baseRef.current;
+      if (existing) {
+        existing.getSource()?.clear();
+        map.removeLayer(existing);
+        baseRef.current = null;
+      }
+      return;
+    }
+    const replacement = createBasemapLayer(basemapHealth.mode, {
+      cacheSize: memoryConstrained.current ? MOBILE_TILE_CACHE_SIZE : undefined,
+    });
+    const source = replacement.getSource();
+    if (!source) return;
+    const unbindHealth = bindBasemapSourceHealth(
+      source,
+      basemapHealth.generation,
+      basemapHealthReporter,
+    );
     replacement.setVisible(basemapVisibleRef.current);
-    map.getLayers().setAt(0, replacement);
+    const previous = baseRef.current;
+    if (previous) {
+      previous.getSource()?.clear();
+      map.getLayers().setAt(0, replacement);
+    } else map.getLayers().insertAt(0, replacement);
     baseRef.current = replacement;
-    if (basemapMode === 'wmts') replacement.getSource()?.once('tileloaderror', onWmtsError);
-  }, [basemapMode, onWmtsError]);
+    basemapHealthReporter.sourceMounted(basemapHealth.generation);
+    return unbindHealth;
+  }, [basemapHealth.generation, basemapHealth.mode, basemapHealthReporter, basemapSuspended]);
 
   useEffect(() => {
     baseRef.current?.setVisible(basemapVisible);
@@ -134,29 +177,36 @@ export function MlightCadMap({ adapter, basemapMode, basemapVisible, mlightContr
       if (!map) return;
       const view = map.getView();
       if (!syncCadCameraToMap(view, { center, resolution })) return;
-      onCoordinate(center);
+      onCoordinateRef.current(center);
       map.renderSync();
     });
-  }, [adapter, onCoordinate]);
+  }, [adapter]);
 
   useEffect(() => {
     locationSource.clear();
     if (!location.position) return;
-    const center = transform(
+    const lurefCenter = transform(
       [location.position.coords.longitude, location.position.coords.latitude],
       'EPSG:4326',
       'EPSG:2169',
-    );
+    ) as [number, number];
+    const projectedCenter = lurefToMap(lurefCenter);
+    const center: [number, number] = [projectedCenter[0], projectedCenter[1]];
+    const accuracyRadius = lurefResolutionToWebMercator(
+      lurefCenter,
+      location.position.coords.accuracy,
+    ) ?? location.position.coords.accuracy;
     locationSource.addFeatures([
-      new Feature({ geometry: new Circle(center, location.position.coords.accuracy), kind: 'accuracy' }),
+      new Feature({ geometry: new Circle(center, accuracyRadius), kind: 'accuracy' }),
       new Feature({ geometry: new Point(center), kind: 'position' }),
     ]);
     if (location.follow === 'following' && !mlightControlsActive) {
       const view = mapRef.current?.getView();
-      const currentResolution = view?.getResolution() ?? 2;
+      const targetCamera = projectCadCameraToMap({ center: lurefCenter, resolution: 2 });
+      const currentResolution = view?.getResolution() ?? targetCamera?.resolution ?? 2;
       view?.animate({
         center,
-        resolution: Math.min(currentResolution, 2),
+        resolution: Math.min(currentResolution, targetCamera?.resolution ?? 2),
         duration: 350,
       });
     }
