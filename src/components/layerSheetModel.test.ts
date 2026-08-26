@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CadLoadProfile } from '../lib/cad/preflightTypes';
 import type { CadOverlayLayer } from '../types/models';
-import { createLayerSheetItems, createLayerSheetLabels, isLayerHidden, layerIdentityMatches } from './layerSheetModel';
+import { createLayerSheetItems, createLayerSheetLabels, isLayerHidden, layerIdentityMatches, mergeLoadedLayerSheetLayers } from './layerSheetModel';
 
 const profile: CadLoadProfile = {
   mode: 'filtered',
@@ -43,6 +43,16 @@ describe('layerSheetModel', () => {
     expect(layerIdentityMatches(layer, 'SURVEY')).toBe(true);
     expect(layerIdentityMatches(layer, '7')).toBe(true);
     expect(isLayerHidden(layer, ['survey'])).toBe(true);
+  });
+
+  it('merges renderer state and preflight counts by id or name', () => {
+    expect(mergeLoadedLayerSheetLayers([
+      { id: '7', name: '20 Planning', expandedEntityCount: 75 },
+      { id: 'SURVEY', name: 'Survey', expandedEntityCount: 9 },
+    ], layers, ['20 planning'])).toEqual([
+      { id: '7', name: '20 Planning', visible: false, featureCount: 75 },
+      { id: 'SURVEY', name: 'Survey', visible: true, featureCount: 11 },
+    ]);
   });
 
   it('creates every translated label through the provided translator', () => {

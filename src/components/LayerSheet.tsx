@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { Box, Eye, EyeOff, Gauge, RefreshCw, Search } from 'lucide-react';
 import { BottomSheet } from './BottomSheet';
 import styles from './BlockSheet.module.css';
+import { useSheetContentPresence } from './useSheetContentPresence';
 
 export type LayerSheetCost = 'low' | 'medium' | 'high';
 
@@ -46,6 +47,55 @@ interface Props {
   onApplyChanges?: () => void;
 }
 
+interface LayerRowProps extends LayerSheetItem {
+  labels: LayerSheetLabels;
+  onSetVisible: (id: string, visible: boolean) => void;
+}
+
+const LayerRow = memo(function LayerRow({
+  id,
+  name,
+  visible,
+  objectCount,
+  cost,
+  requiresReload,
+  labels,
+  onSetVisible,
+}: LayerRowProps) {
+  return (
+    <button
+      type="button"
+      className={styles.row}
+      data-visible={visible}
+      aria-pressed={visible}
+      aria-label={labels.toggleLayer(name, !visible)}
+      onClick={() => onSetVisible(id, !visible)}
+    >
+      <span className={styles.visibility} aria-hidden="true">
+        {visible ? <Eye size={18} /> : <EyeOff size={18} />}
+      </span>
+
+      <span className={styles.rowContent}>
+        <span className={styles.rowTitle} title={name}>{name}</span>
+        <span className={styles.metrics}>
+          <span><Box size={13} aria-hidden="true" />{labels.objectCount(objectCount)}</span>
+        </span>
+      </span>
+
+      <span className={styles.indicators}>
+        <span className={`${styles.cost} ${styles[cost]}`} title={labels.costLabel(labels.cost[cost])}>
+          <Gauge size={13} aria-hidden="true" />{labels.cost[cost]}
+        </span>
+        {requiresReload && (
+          <span className={styles.reload} title={labels.reloadRequired} aria-label={labels.reloadRequired}>
+            <RefreshCw size={14} aria-hidden="true" />
+          </span>
+        )}
+      </span>
+    </button>
+  );
+});
+
 function normaliseSearch(value: string) {
   return value.trim().toLocaleLowerCase();
 }
@@ -61,16 +111,23 @@ export function LayerSheet({
   onApplyChanges,
 }: Props) {
   const [query, setQuery] = useState('');
-  const visibleCount = layers.filter((layer) => layer.visible).length;
-  const hiddenCount = layers.length - visibleCount;
+  const onSetVisibleRef = useRef(onSetVisible);
+  onSetVisibleRef.current = onSetVisible;
+  const publishVisibility = useCallback((id: string, visible: boolean) => {
+    onSetVisibleRef.current(id, visible);
+  }, []);
+  const contentPresent = useSheetContentPresence(open);
+  const visibleCount = contentPresent ? layers.filter((layer) => layer.visible).length : 0;
+  const hiddenCount = contentPresent ? layers.length - visibleCount : 0;
   const search = normaliseSearch(query);
   const filteredLayers = useMemo(() => {
+    if (!contentPresent) return [];
     if (!search) return layers;
     return layers.filter((layer) => (
       layer.name.toLocaleLowerCase().includes(search)
       || layer.id.toLocaleLowerCase().includes(search)
     ));
-  }, [layers, search]);
+  }, [contentPresent, layers, search]);
 
   return (
     <BottomSheet
@@ -81,6 +138,7 @@ export function LayerSheet({
       closeLabel={labels.close}
       onClose={onClose}
     >
+      {contentPresent && <>
       <header className={`sheet-header ${styles.header}`}>
         <div>
           <h2>{labels.title}</h2>
@@ -126,37 +184,12 @@ export function LayerSheet({
         {filteredLayers.length > 0 && (
           <div className={styles.rows}>
             {filteredLayers.map((layer) => (
-              <button
-                type="button"
-                className={styles.row}
-                data-visible={layer.visible}
+              <LayerRow
                 key={layer.id}
-                aria-pressed={layer.visible}
-                aria-label={labels.toggleLayer(layer.name, !layer.visible)}
-                onClick={() => onSetVisible(layer.id, !layer.visible)}
-              >
-                <span className={styles.visibility} aria-hidden="true">
-                  {layer.visible ? <Eye size={18} /> : <EyeOff size={18} />}
-                </span>
-
-                <span className={styles.rowContent}>
-                  <span className={styles.rowTitle} title={layer.name}>{layer.name}</span>
-                  <span className={styles.metrics}>
-                    <span><Box size={13} aria-hidden="true" />{labels.objectCount(layer.objectCount)}</span>
-                  </span>
-                </span>
-
-                <span className={styles.indicators}>
-                  <span className={`${styles.cost} ${styles[layer.cost]}`} title={labels.costLabel(labels.cost[layer.cost])}>
-                    <Gauge size={13} aria-hidden="true" />{labels.cost[layer.cost]}
-                  </span>
-                  {layer.requiresReload && (
-                    <span className={styles.reload} title={labels.reloadRequired} aria-label={labels.reloadRequired}>
-                      <RefreshCw size={14} aria-hidden="true" />
-                    </span>
-                  )}
-                </span>
-              </button>
+                {...layer}
+                labels={labels}
+                onSetVisible={publishVisibility}
+              />
             ))}
           </div>
         )}
@@ -169,6 +202,7 @@ export function LayerSheet({
           </button>
         </footer>
       )}
+      </>}
     </BottomSheet>
   );
 }

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LayerSheet, type LayerSheetItem, type LayerSheetLabels } from './LayerSheet';
 
@@ -56,7 +56,29 @@ function renderSheet(overrides: Partial<React.ComponentProps<typeof LayerSheet>>
 }
 
 describe('LayerSheet', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  it('keeps the animated shell mounted without rendering closed layer rows', () => {
+    const { container } = renderSheet({ open: false });
+
+    expect(container.querySelector('.sheet-shell')).toBeInTheDocument();
+    expect(screen.queryByText('Planning contours')).not.toBeInTheDocument();
+    expect(screen.queryByText('Orthophoto frame')).not.toBeInTheDocument();
+  });
+
+  it('keeps rows through the closing animation and releases them afterwards', () => {
+    vi.useFakeTimers();
+    const { props, rerender } = renderSheet();
+
+    rerender(<LayerSheet {...props} open={false} />);
+    expect(screen.getByText('Planning contours')).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(screen.queryByText('Planning contours')).not.toBeInTheDocument();
+  });
 
   it('shows visibility counts and filters layers by name or id', () => {
     renderSheet();
@@ -88,6 +110,21 @@ describe('LayerSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Hide all' }));
     expect(onSetAllVisible).toHaveBeenNthCalledWith(1, true);
     expect(onSetAllVisible).toHaveBeenNthCalledWith(2, false);
+  });
+
+  it('rerenders only the changed layer row for large-drawing toggles', () => {
+    const objectCount = vi.fn((count: number) => `${count} objects`);
+    const stableLabels = { ...labels, objectCount };
+    const { props, rerender } = renderSheet({ labels: stableLabels });
+    expect(objectCount).toHaveBeenCalledTimes(2);
+
+    rerender(<LayerSheet
+      {...props}
+      labels={stableLabels}
+      layers={layers.map((layer) => layer.id === '20_PLANUNG' ? { ...layer, visible: false } : { ...layer })}
+    />);
+
+    expect(objectCount).toHaveBeenCalledTimes(3);
   });
 
   it('shows object count, performance cost and reload state', () => {

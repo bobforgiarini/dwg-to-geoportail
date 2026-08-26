@@ -43,17 +43,25 @@ vi.mock('ol/Map', () => ({
   default: vi.fn(function Map(options: unknown) {
     harness.mapOptions.push(options);
     const viewport = document.createElement('div');
+    const listeners = new globalThis.Map<string, Set<() => void>>();
     harness.viewports.push(viewport);
     return {
       getInteractions: () => ({ forEach: (callback: (interaction: typeof harness.interaction) => void) => callback(harness.interaction) }),
       getLayers: () => ({ insertAt: vi.fn(), setAt: vi.fn() }),
       getView: () => harness.view,
       getViewport: () => viewport,
-      on: vi.fn(),
+      on: vi.fn((event: string, listener: () => void) => {
+        const eventListeners = listeners.get(event) ?? new Set<() => void>();
+        eventListeners.add(listener);
+        listeners.set(event, eventListeners);
+      }),
       removeLayer: harness.removeLayer,
-      renderSync: harness.renderSync,
+      renderSync: () => {
+        harness.renderSync();
+        listeners.get('moveend')?.forEach((listener) => listener());
+      },
       setTarget: vi.fn(),
-      un: vi.fn(),
+      un: vi.fn((event: string, listener: () => void) => listeners.get(event)?.delete(listener)),
     };
   }),
 }));
@@ -101,7 +109,10 @@ describe('MlightCadMap interaction handover', () => {
     harness.view.getResolution.mockReturnValue(50);
   });
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
 
   it('enables OpenLayers until MLightCAD is ready and renders no north control', () => {
     const props = {
@@ -212,7 +223,8 @@ describe('MlightCadMap interaction handover', () => {
     });
   });
 
-  it('mirrors every CAD camera event synchronously like the 0.2.4 coupling', () => {
+  it('keeps every CAD camera event synchronous while publishing only the idle coordinate', () => {
+    vi.useFakeTimers();
     let cameraListener: ((camera: MlightCadCamera) => void) | null = null;
     const removeListener = vi.fn();
     const adapter = {
@@ -238,6 +250,7 @@ describe('MlightCadMap interaction handover', () => {
       onCoordinate={onCoordinate}
       onManualMove={vi.fn()}
     />);
+    const coordinateCallsBeforePan = onCoordinate.mock.calls.length;
 
     act(() => {
       cameraListener?.({ center: [10, 20], resolution: 4 });
@@ -248,6 +261,12 @@ describe('MlightCadMap interaction handover', () => {
     expect(harness.view.setCenter).toHaveBeenLastCalledWith([50, 60]);
     expect(harness.view.setResolution).toHaveBeenLastCalledWith(1);
     expect(harness.renderSync).toHaveBeenCalledTimes(3);
+    expect(onCoordinate).toHaveBeenCalledTimes(coordinateCallsBeforePan);
+
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(onCoordinate).toHaveBeenCalledTimes(coordinateCallsBeforePan + 1);
     expect(onCoordinate).toHaveBeenLastCalledWith([50, 60]);
 
     unmount();

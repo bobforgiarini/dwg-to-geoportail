@@ -1,6 +1,6 @@
 # DWG to Geoportail
 
-Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Seit Version 0.4.0 ist der direkt gekoppelte MLightCAD-/Three.js-Viewer die Standardansicht. Keine Datei wird allein aufgrund ihrer Größe blockiert.
+Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Seit Version 0.4.0 ist der direkt gekoppelte MLightCAD-/Three.js-Viewer die Standardansicht. Version 0.4.1 optimiert Kamera- und Drawer-Hotpaths für große Zeichnungen, ohne die bewährte Kartenkopplung zu verändern. Keine Datei wird allein aufgrund ihrer Größe blockiert.
 
 ## Viewer und Routen
 
@@ -27,6 +27,8 @@ Der Umschalter im Kopfbereich verwendet die Browser-History. Die lokal ausgewäh
 - MLightCAD als transparenter WebGL-Layer über einer in `EPSG:2169` betriebenen OpenLayers-Basiskarte; Mittelpunkt und lokale Auflösung werden ohne asynchrone Zwischenkopplung direkt aus der CAD-Kamera übernommen
 - hybride Kartensteuerung: Ohne fertig geladene DWG bedient OpenLayers Pan und Zoom; nach `ready` übernimmt MLightCAD die CAD- und Kartenbewegung
 - Synchronisierung von CAD-Mittelpunkt und Metern pro Bildschirmpixel mit der Geoportail-Kamera, einschließlich expliziter Übergabe nach Standortzentrierung und „Zeichnung einpassen“
+- die direkte Kamera-Bridge aus Version 0.2.4 bleibt unverändert synchron: CAD-Mittelpunkt, Auflösung und `renderSync()` erreichen OpenLayers in jeder Kamerameldung; ausschließlich die Koordinatenanzeige wird mit 100 ms nachlaufend aktualisiert
+- programmgesteuerte OpenLayers-`moveend`-Ereignisse aus dieser CAD-Kopplung lösen keinen zusätzlichen React-Seitenrender aus; ohne aktive MLightCAD-Steuerung werden manuelle Kartenbewegungen weiterhin gemeldet
 - MLightCAD-Bewegung ausdrücklich im `PAN`-Modus; Desktopsteuerung bleibt erhalten, der mobile Pinch-Zoom ist weniger empfindlich und kurze Taps wählen weiterhin über den mobilen Auswahl-Fallback aus
 - eingebettete MLightCAD-Kommandozeile ausgeblendet, damit sie keine Karten- oder Touchbedienung abfängt
 - CAD-Deckkraft in beiden Viewern von 0 bis 100 Prozent mit den Vorgaben Karte, Mix und CAD; im MLightCAD-Viewer betrifft sie ausschließlich die CAD-Zeichenfläche, deren unbelegte Pixel transparent bleiben
@@ -36,7 +38,9 @@ Der Umschalter im Kopfbereich verwendet die Browser-History. Die lokal ausgewäh
 - DWG-Layer einzeln oder gemeinsam schalten und als gemeinsames Ladeprofil zwischen beiden Viewern übernehmen
 - Layer-Drawer im selben kompakten Layout wie der Block-Drawer: Suche nach Name oder Kennung, sichtbare und ausgeblendete Zähler, Objektzahl und geschätzte Belastung je Layer
 - Neuladehinweis für Layer, die aus dem geladenen Modell gefiltert wurden; strukturelle Änderungen werden gesammelt über „Änderungen anwenden“ kontrolliert neu aufgebaut
+- Preflight- und Renderer-Layer werden für große Listen linear in `O(L)` zusammengeführt; memoisiert gerenderte Layerzeilen aktualisieren bei einer Umschaltung nur die tatsächlich geänderten Einträge
 - eigener Block-Drawer mit Suche, Zählern, benannten Blöcken, gruppierten Systemblöcken, XRefs und Belastungsschätzung
+- geschlossene Layer- und Block-Drawer halten ihren Inhalt nur für die 300-ms-Exit-Animation und entfernen ihn anschließend, sodass verborgene Listen keine Filter- und Renderarbeit verursachen
 - direkte Modellbereichsblöcke unmittelbar schalten; verschachtelte oder bereits weggefilterte Strukturen über „Änderungen anwenden“ kontrolliert neu laden
 - CAD-Objekte auswählen, rekursiven Blockpfad prüfen, Objekt, Layer oder Block ausblenden und verborgene Objekte wiederherstellen
 - selektive MLightCAD-Kompatibilitätskorrektur für als Zeichenpaare gepackte Windows-1252-`MULTILEADER`-Beschriftungen alter `AC1015`-Dateien; bereits korrekte Texte werden nicht verändert
@@ -73,9 +77,11 @@ npm run build
 npm run preview
 ```
 
+Für Version 0.4.1 liefen 31 gezielte Regressionstests erfolgreich. Die reale Junglinster-Prüfung mit 11,31 MB, 66.816 Objekten, 316 Layern und 1.097 Blöcken reduzierte eine Layer-Umschaltung von ungefähr 1 s auf ungefähr 0,28 s; ein MLightCAD-Pan mit 30 Schritten dauerte ungefähr 0,30 s und erzeugte keine Browserwarnungen.
+
 Der Build erzeugt die gemeinsame versionierte Laufzeit unter `dist/mlightcad-workers/0.3.0/`. Das ausgelieferte LibreDWG-WASM wird reproduzierbar auf 128 MiB Anfangsspeicher gepatcht und validiert; API, Emscripten-Laufzeit und WASM des gemeinsamen Workers werden als geprüfte relative Assetkette ausgeliefert. Der Versionspfad verhindert, dass ein langfristig gecachtes 0.2.x-WASM weiterverwendet wird. Die frühere, seit dem gemeinsamen Worker ungenutzte Flyfish-WASM-Kopie wird nicht mehr mit ausgeliefert. Eine reale DWG-Fixture ist nicht im Repository enthalten; die lokale Abnahme ist in [docs/testing.md](docs/testing.md) protokolliert.
 
-## Grenzen von Version 0.4.0
+## Grenzen von Version 0.4.1
 
 - Beide Viewer erwarten 2D-Modellbereichsdaten in absoluten LUREF-Meterkoordinaten; es gibt keine automatische Georeferenzierung.
 - XRefs, proprietäre benutzerdefinierte CAD-Objekte und 3D-Darstellung gehören nicht zum abgenommenen Funktionsumfang.
@@ -88,7 +94,7 @@ Der Build erzeugt die gemeinsame versionierte Laufzeit unter `dist/mlightcad-wor
 - Ein aus dem Preflight-Modell entfernter verschachtelter Block oder Layer muss aus der weiterhin lokal ausgewählten Originaldatei neu aufgebaut werden, bevor er wieder sichtbar ist.
 - MLightCAD lädt unterstützende CAD-/Schriftressourcen zur Laufzeit von der konfigurierten jsDelivr-Quelle; die DWG selbst wird nicht dorthin gesendet.
 
-Weitere Informationen: [Architektur](docs/architecture.md), [Netlify](docs/netlify.md), [Tests](docs/testing.md) und [Release 0.4.0](docs/releases/0.4.0.md).
+Weitere Informationen: [Architektur](docs/architecture.md), [Netlify](docs/netlify.md), [Tests](docs/testing.md) und [Release 0.4.1](docs/releases/0.4.1.md).
 
 ## Lizenz und Quellcode
 

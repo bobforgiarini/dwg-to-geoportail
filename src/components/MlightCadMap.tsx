@@ -36,6 +36,7 @@ interface Props {
 }
 
 const MOBILE_TILE_CACHE_SIZE = 32;
+const COORDINATE_UPDATE_DELAY_MS = 100;
 
 export function isMemoryConstrainedMapRuntime(): boolean {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
@@ -50,12 +51,14 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
   const mapRef = useRef<Map | null>(null);
   const baseRef = useRef<TileLayer<WMTS | TileWMS> | null>(null);
   const basemapVisibleRef = useRef(basemapVisible);
+  const mlightControlsActiveRef = useRef(mlightControlsActive);
   const memoryConstrained = useRef(isMemoryConstrainedMapRuntime());
   const onCoordinateRef = useRef(onCoordinate);
   const onManualMoveRef = useRef(onManualMove);
   onCoordinateRef.current = onCoordinate;
   onManualMoveRef.current = onManualMove;
   basemapVisibleRef.current = basemapVisible;
+  mlightControlsActiveRef.current = mlightControlsActive;
   const locationSource = useMemo(() => new VectorSource(), []);
   const locationLayer = useMemo(() => new VectorLayer({
     source: locationSource,
@@ -98,6 +101,10 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
       }),
     });
     const updateCoordinate = () => {
+      // Programmatic CAD camera updates can synchronously emit OpenLayers
+      // moveend. The trailing CAD callback below owns the status card while
+      // MLightCAD owns navigation, avoiding a full React render per frame.
+      if (mlightControlsActiveRef.current) return;
       const currentCenter = map.getView().getCenter();
       if (currentCenter) onCoordinateRef.current([currentCenter[0], currentCenter[1]]);
     };
@@ -164,12 +171,29 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
 
   useEffect(() => {
     if (!adapter) return;
-    return adapter.events.camera.addEventListener(({ center, resolution }) => {
+    let coordinateTimer: ReturnType<typeof setTimeout> | null = null;
+    let latestCoordinate: [number, number] | null = null;
+    const publishCoordinateWhenIdle = (center: [number, number]) => {
+      latestCoordinate = center;
+      if (coordinateTimer !== null) clearTimeout(coordinateTimer);
+      coordinateTimer = setTimeout(() => {
+        coordinateTimer = null;
+        if (latestCoordinate) onCoordinateRef.current(latestCoordinate);
+      }, COORDINATE_UPDATE_DELAY_MS);
+    };
+    const unbindCamera = adapter.events.camera.addEventListener(({ center, resolution }) => {
       const map = mapRef.current;
       if (!map || !syncCadCameraToMap(map.getView(), { center, resolution })) return;
-      onCoordinateRef.current(center);
+      // Keep the proven 0.2.4 CAD -> OpenLayers coupling synchronous. Only the
+      // status-card update is delayed so a pan gesture never rerenders the
+      // complete React UI (including closed CAD drawers) on every camera tick.
+      publishCoordinateWhenIdle(center);
       map.renderSync();
     });
+    return () => {
+      unbindCamera();
+      if (coordinateTimer !== null) clearTimeout(coordinateTimer);
+    };
   }, [adapter]);
 
   useEffect(() => {

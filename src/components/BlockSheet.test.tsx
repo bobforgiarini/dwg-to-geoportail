@@ -88,6 +88,14 @@ function renderSheet(overrides: Partial<React.ComponentProps<typeof BlockSheet>>
 describe('BlockSheet', () => {
   afterEach(cleanup);
 
+  it('keeps the animated shell mounted without rendering closed block rows', () => {
+    const { container } = renderSheet({ open: false });
+
+    expect(container.querySelector('.sheet-shell')).toBeInTheDocument();
+    expect(screen.queryByText('Building A')).not.toBeInTheDocument();
+    expect(screen.queryByText('Survey base')).not.toBeInTheDocument();
+  });
+
   it('groups block rows and keeps system blocks collapsed initially', () => {
     renderSheet();
 

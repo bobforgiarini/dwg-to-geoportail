@@ -19,6 +19,10 @@ interface LayerIdentity {
   name: string;
 }
 
+interface PreflightLayerIdentity extends LayerIdentity {
+  expandedEntityCount: number;
+}
+
 export function layerIdentityMatches(layer: LayerIdentity, value: string): boolean {
   const canonicalValue = canonicalLayerId(value);
   return canonicalLayerId(layer.id) === canonicalValue || canonicalLayerId(layer.name) === canonicalValue;
@@ -26,6 +30,35 @@ export function layerIdentityMatches(layer: LayerIdentity, value: string): boole
 
 export function isLayerHidden(layer: LayerIdentity, hiddenLayerIds: string[]): boolean {
   return hiddenLayerIds.some((value) => layerIdentityMatches(layer, value));
+}
+
+/** Merges preflight and renderer layers in linear time for large layer lists. */
+export function mergeLoadedLayerSheetLayers(
+  preflightLayers: PreflightLayerIdentity[] | undefined,
+  renderedLayers: CadOverlayLayer[],
+  hiddenLayerIds: string[],
+): CadOverlayLayer[] {
+  if (!preflightLayers) return renderedLayers;
+
+  const renderedByIdentity = new Map<string, CadOverlayLayer>();
+  for (const layer of renderedLayers) {
+    renderedByIdentity.set(canonicalLayerId(layer.id), layer);
+    renderedByIdentity.set(canonicalLayerId(layer.name), layer);
+  }
+  const hiddenIdentities = new Set(hiddenLayerIds.map(canonicalLayerId));
+
+  return preflightLayers.map((layer) => {
+    const rendered = renderedByIdentity.get(canonicalLayerId(layer.id))
+      ?? renderedByIdentity.get(canonicalLayerId(layer.name));
+    const hidden = hiddenIdentities.has(canonicalLayerId(layer.id))
+      || hiddenIdentities.has(canonicalLayerId(layer.name));
+    return {
+      id: layer.id,
+      name: layer.name,
+      visible: !hidden && (rendered?.visible ?? true),
+      featureCount: Math.max(rendered?.featureCount ?? 0, layer.expandedEntityCount),
+    };
+  });
 }
 
 export function createLayerSheetLabels(t: Translate): LayerSheetLabels {

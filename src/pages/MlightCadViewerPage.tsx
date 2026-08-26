@@ -9,7 +9,7 @@ import { BottomSheet } from '../components/BottomSheet';
 import { CadControlSheet } from '../components/CadControlSheet';
 import { DwgPreparationSheet } from '../components/DwgPreparationSheet';
 import { LayerSheet } from '../components/LayerSheet';
-import { createLayerSheetItems, createLayerSheetLabels, isLayerHidden, layerIdentityMatches } from '../components/layerSheetModel';
+import { createLayerSheetItems, createLayerSheetLabels, isLayerHidden, layerIdentityMatches, mergeLoadedLayerSheetLayers } from '../components/layerSheetModel';
 import { MapActionControls } from '../components/MapActionControls';
 import { MapStatusBadges } from '../components/MapStatusBadges';
 import { MlightCadCanvas } from '../components/MlightCadCanvas';
@@ -218,6 +218,7 @@ export default function MlightCadViewerPage() {
     displayedBlocks, activeProfile ?? session.loadProfile,
     preparationReport?.risk.deviceBudget ?? session.preflightReport?.risk.deviceBudget ?? 150_000,
   ), [activeProfile, displayedBlocks, preparationReport?.risk.deviceBudget, session.loadProfile, session.preflightReport?.risk.deviceBudget]);
+  const blockSheetLabels = useMemo(() => createBlockSheetLabels(t), [t]);
 
   const setBlockVisible = (id: string, visible: boolean) => {
     const block = displayedBlocks.find((candidate) => candidate.id === id); if (!block) return;
@@ -310,20 +311,32 @@ export default function MlightCadViewerPage() {
     if (location.state.follow === 'off') location.start(); else if (location.state.follow === 'paused') location.resume(); else location.stop();
   };
 
-  const layerSheetLayers = layerSheetMode === 'preparation'
+  const layerSheetLayers = useMemo(() => layerSheetMode === 'preparation'
     ? (preparationReport?.layers.map((layer) => ({ id: layer.id, name: layer.name, visible: !(pendingProfile?.hiddenLayerIds.includes(layer.id) ?? false), featureCount: layer.expandedEntityCount })) ?? [])
-    : (session.preflightReport?.layers.map((layer) => {
-        const rendered = layers.find((candidate) => layerIdentityMatches(candidate, layer.id) || layerIdentityMatches(candidate, layer.name));
-        const hidden = isLayerHidden(layer, session.loadProfile.hiddenLayerIds);
-        return { id: layer.id, name: layer.name, visible: !hidden && (rendered?.visible ?? true), featureCount: Math.max(rendered?.featureCount ?? 0, layer.expandedEntityCount) };
-      }) ?? layers);
-  const layerSheetItems = createLayerSheetItems(
+    : mergeLoadedLayerSheetLayers(session.preflightReport?.layers, layers, session.loadProfile.hiddenLayerIds), [
+        layerSheetMode,
+        layers,
+        pendingProfile?.hiddenLayerIds,
+        preparationReport?.layers,
+        session.loadProfile.hiddenLayerIds,
+        session.preflightReport?.layers,
+      ]);
+  const layerSheetItems = useMemo(() => createLayerSheetItems(
     layerSheetLayers,
     layerSheetMode === 'preparation' ? pendingProfile ?? session.loadProfile : session.loadProfile,
     preparationReport?.risk.deviceBudget ?? session.preflightReport?.risk.deviceBudget ?? 150_000,
     layerSheetMode !== 'preparation',
     layerReloadPending,
-  );
+  ), [
+    layerReloadPending,
+    layerSheetLayers,
+    layerSheetMode,
+    pendingProfile,
+    preparationReport?.risk.deviceBudget,
+    session.loadProfile,
+    session.preflightReport?.risk.deviceBudget,
+  ]);
+  const layerSheetLabels = useMemo(() => createLayerSheetLabels(t), [t]);
 
   const loadOptions: MlightCadLoadOptions = {
     device: browserPreflightDevice(), loadProfile: session.loadProfile.mode === 'filtered' ? session.loadProfile : undefined,
@@ -382,11 +395,11 @@ export default function MlightCadViewerPage() {
         onCancel={() => finishPreparation({ decision: 'cancel' })}
         onTryFull={() => { preparationResolver.current = null; setForceFullAttempt(true); setDrawerState(null); session.reloadFile(); }}
         onDesktopCheck={() => { setMessageKey('preparation.desktopAdvice'); setDrawerState('controls'); }} />
-      <BlockSheet open={drawerState === 'blocks'} blocks={blockItems} labels={createBlockSheetLabels(t)}
+      <BlockSheet open={drawerState === 'blocks'} blocks={blockItems} labels={blockSheetLabels}
         onClose={() => { setDrawerState(blockReturnToPreparation ? 'prepare' : null); setBlockReturnToPreparation(false); }}
         onSetVisible={setBlockVisible} onSetAllVisible={setAllBlocks} applyPending={blockReloadPending}
         onApplyChanges={blockReturnToPreparation ? undefined : applyBlockChanges} />
-      <LayerSheet open={layerSheetMode !== null} layers={layerSheetItems} labels={createLayerSheetLabels(t)}
+      <LayerSheet open={layerSheetMode !== null} layers={layerSheetItems} labels={layerSheetLabels}
         onClose={() => { const back = layerSheetMode === 'preparation'; setLayerSheetMode(null); if (back) setDrawerState('prepare'); }}
         onSetVisible={setLayerVisible} onSetAllVisible={setAllLayers} applyPending={layerReloadPending}
         onApplyChanges={layerSheetMode === 'loaded' ? () => {

@@ -2,6 +2,24 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.4.1] – 2026-08-26
+
+### Behoben
+
+- MLightCAD-Bewegungen lösen nicht mehr für jede Kamerameldung einen vollständigen React-Seitenrender aus: Die direkte Kamerabrücke aus Version `0.2.4` bleibt unverändert synchron, nur die Koordinatenanzeige übernimmt den letzten Stand nach 100 ms ohne weitere Kamerameldung
+- ein durch die CAD-Kamerakopplung programmgesteuert ausgelöstes OpenLayers-`moveend` veröffentlicht keine zusätzliche Koordinate mehr an die Seite; manuelle OpenLayers-Bewegungen ohne aktive MLightCAD-Steuerung bleiben davon unberührt
+
+### Optimiert
+
+- Inhalte der Layer- und Block-Drawer bleiben während der 300-ms-Schließanimation gemountet und werden unmittelbar danach entfernt; geschlossene Drawer berechnen und rendern damit keine teuren Listen mehr
+- Preflight- und Renderer-Layer werden über vorbereitete Identitätsindizes in `O(L)` statt über wiederholte Suchen in `O(L²)` zusammengeführt
+- Layerzeilen sind memoisiert; stabile Daten, Beschriftungen und Sichtbarkeits-Callbacks verhindern, dass eine einzelne Umschaltung alle unveränderten Zeilen neu rendert
+
+### Prüfung
+
+- 31 gezielte Regressionstests für Kamerakopplung, Koordinatenaktualisierung, Drawer-Lebenszyklus, Layer-Zusammenführung und Zeilen-Memoisierung erfolgreich ausgeführt
+- reale Junglinster-DWG mit 11,31 MB, 66.816 Objekten, 316 Layern und 1.097 Blöcken im Browser geprüft: Layer-Umschaltung von ungefähr 1 s auf ungefähr 0,28 s reduziert, MLightCAD-Pan mit 30 Schritten in ungefähr 0,30 s, keine Browserwarnungen
+
 ## [0.4.0] – 2026-08-26
 
 ### Hinzugefügt

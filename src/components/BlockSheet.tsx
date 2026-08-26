@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { BottomSheet } from './BottomSheet';
 import styles from './BlockSheet.module.css';
+import { useSheetContentPresence } from './useSheetContentPresence';
 
 export type BlockSheetGroup = 'named' | 'system' | 'xref';
 export type BlockSheetCost = 'low' | 'medium' | 'high';
@@ -87,22 +88,24 @@ function normaliseSearch(value: string) {
 export function BlockSheet({ open, blocks, labels, onClose, onSetVisible, onSetAllVisible, applyPending = false, onApplyChanges }: Props) {
   const baseId = useId();
   const [query, setQuery] = useState('');
+  const contentPresent = useSheetContentPresence(open);
   const [expanded, setExpanded] = useState<Record<BlockSheetGroup, boolean>>({
     named: true,
     system: false,
     xref: true,
   });
 
-  const visibleCount = blocks.filter((block) => block.visible).length;
-  const hiddenCount = blocks.length - visibleCount;
+  const visibleCount = contentPresent ? blocks.filter((block) => block.visible).length : 0;
+  const hiddenCount = contentPresent ? blocks.length - visibleCount : 0;
   const search = normaliseSearch(query);
   const filteredBlocks = useMemo(() => {
+    if (!contentPresent) return [];
     if (!search) return blocks;
     return blocks.filter((block) => (
       block.name.toLocaleLowerCase().includes(search)
       || block.mainLayer?.toLocaleLowerCase().includes(search)
     ));
-  }, [blocks, search]);
+  }, [blocks, contentPresent, search]);
 
   const groupDefinitions: GroupDefinition[] = [
     { id: 'named', icon: Box, label: labels.namedGroup },
@@ -110,11 +113,11 @@ export function BlockSheet({ open, blocks, labels, onClose, onSetVisible, onSetA
     { id: 'xref', icon: ExternalLink, label: labels.xrefGroup },
   ];
 
-  const groups = GROUP_ORDER.map((groupId) => ({
+  const groups = contentPresent ? GROUP_ORDER.map((groupId) => ({
     definition: groupDefinitions.find(({ id }) => id === groupId)!,
     blocks: filteredBlocks.filter((block) => block.group === groupId),
     totalBlocks: blocks.filter((block) => block.group === groupId),
-  })).filter(({ totalBlocks }) => totalBlocks.length > 0);
+  })).filter(({ totalBlocks }) => totalBlocks.length > 0) : [];
 
   return (
     <BottomSheet
@@ -125,6 +128,7 @@ export function BlockSheet({ open, blocks, labels, onClose, onSetVisible, onSetA
       closeLabel={labels.close}
       onClose={onClose}
     >
+      {contentPresent && <>
       <header className={`sheet-header ${styles.header}`}>
         <div>
           <h2>{labels.title}</h2>
@@ -240,6 +244,7 @@ export function BlockSheet({ open, blocks, labels, onClose, onSetVisible, onSetA
           </button>
         </footer>
       )}
+      </>}
     </BottomSheet>
   );
 }

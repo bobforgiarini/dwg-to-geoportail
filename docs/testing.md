@@ -1,10 +1,10 @@
-# Test- und Abnahmeplan 0.4.0
+# Test- und Abnahmeplan 0.4.1
 
 ## Grundsatz
 
 Automatisierte Tests prüfen Datenstrukturen, Filterung, Zustandsautomaten und Lebenszyklus. Sie ersetzen weder den visuellen Vergleich mit einer bekannten LUREF-DWG noch einen echten Speichertest in iOS Safari. Private DWG-Dateien bleiben außerhalb des Repositorys und werden nicht an einen externen Dienst übertragen.
 
-Finaler automatisierter Stand für Version 0.4.0: **36 Testdateien und 171 Tests erfolgreich**. Der TypeScript-/Vite-Produktionsbuild ist ebenfalls erfolgreich. Die Produktionsvorschau wurde unter `/` und `/openlayers` ohne Browserfehler geprüft; der MLightCAD-Drawer wurde zusätzlich bei 390 × 844 Pixel kontrolliert. Die Prüfungen mit realen DWGs auf echter iPhone-Hardware bleiben unten ausdrücklich als manuelle Abnahme markiert.
+Gezielter Regressionsstand für Version 0.4.1: **31 Tests erfolgreich**. Sie decken den geänderten Kamera-, Drawer- und Layerlisten-Hotpath ab; der TypeScript-/Vite-Produktionsbuild ist ebenfalls erfolgreich. Diese Zahl ist ausdrücklich keine neu erfundene Gesamtzahl der vollständigen Suite. Die reale Junglinster-Prüfung ist unten mit ihren Messwerten dokumentiert. Prüfungen auf echter iPhone-Hardware bleiben weiterhin als manuelle Abnahme markiert.
 
 ## Automatisierte Prüfung
 
@@ -52,7 +52,7 @@ Zusätzlich wird geprüft:
 - `/` löst MLightCAD als Standard-Viewer auf; `/openlayers` öffnet ausschließlich die OpenLayers-Legacy-Ansicht
 - der Viewer-Umschalter schreibt die jeweils kanonische Route in die Browser-History und bewahrt dabei die lokale Dateisitzung
 - die bisherige Route `/mlightcad` bleibt ein kompatibler MLightCAD-Einstieg; unbekannte SPA-Pfade fallen auf den Standard-Viewer zurück
-- die Version im App-Kopf entspricht `package.json` und zeigt für diesen Release `0.4.0`
+- die Version im App-Kopf entspricht `package.json` und zeigt für diesen Release `0.4.1`
 
 ### Layer- und Block-Drawer
 
@@ -68,6 +68,9 @@ Zusätzlich wird geprüft:
 - verschachtelte oder vorher weggefilterte Blöcke verlangen „Änderungen anwenden“ und lösen genau einen kontrollierten CAD-Neuaufbau aus
 - Kartenmittelpunkt, Zoom, GPS-Zustand, Deckkraft und Drawerzustand bleiben bei diesem Neuaufbau erhalten
 - der Objekt-Drawer zeigt den rekursiven Blockpfad und bietet Objekt-, Layer- und Block-Ausblendung
+- ein bereits geschlossener Layer- oder Block-Drawer rendert keine Inhaltsliste; beim Schließen bleiben die Inhalte genau für die 300-ms-Exit-Animation erhalten und werden danach entfernt
+- Preflight- und Renderer-Layer werden trotz unterschiedlicher ID-/Namensschreibweise korrekt verbunden; Sichtbarkeit und jeweils höhere Objektzahl bleiben erhalten
+- beim Umschalten eines einzelnen Layers wird von den memoisierten Layerzeilen nur der geänderte Eintrag erneut gerendert
 
 ### Recovery und Lebenszyklus
 
@@ -108,6 +111,9 @@ Zusätzlich wird geprüft:
 - die MLightCAD-OpenLayers-View unter `/` arbeitet wie in 0.2.4 direkt in `EPSG:2169`
 - die Kamerabrücke übernimmt LUREF-Mittelpunkt und Meter-pro-Pixel-Auflösung unverändert
 - mehrere MLightCAD-Kamerameldungen werden jeweils unmittelbar und synchron auf OpenLayers übertragen; kein CAD-Frame darf einer älteren Kartenkamera vorauslaufen
+- die 0.2.4-Kamerabrücke bleibt auch unter Last unverändert: jede CAD-Meldung setzt Mittelpunkt und Auflösung und ruft `renderSync()` im selben Zyklus auf
+- ausschließlich die Koordinatenanzeige arbeitet 100 ms nachlaufend; während einer Ereignisfolge wird kein Zwischenstand an React veröffentlicht und nach Ablauf erhält sie genau den letzten Mittelpunkt
+- ein durch `renderSync()` programmgesteuert ausgelöstes OpenLayers-`moveend` ruft bei aktiver MLightCAD-Steuerung keinen Seiten-Callback auf; eine manuelle OpenLayers-Bewegung ohne aktive CAD-Steuerung bleibt meldewirksam
 - wiederholte erfolgreiche Kachelabschlüsse im bereits erreichten Zustand `ready` benachrichtigen React nicht erneut
 - GPS zentriert zuerst die CAD-Kamera, anschließend folgt OpenLayers ohne Animation
 - beim Pan, Pinch, Mausrad, Einpassen und tiefen Zoom bleibt die Abweichung zwischen CAD und Orthofoto bei einer bekannten Referenz unter zwei CSS-Pixeln
@@ -158,9 +164,19 @@ Das LibreDWG-WASM muss valide sein und 128 MiB Anfangsspeicher deklarieren. Brow
 
 ### Lokale Junglinster-Referenz
 
-Die bekannte lokale Junglinster-DWG bleibt außerhalb von Git. Sie ist größer als 10 MiB und dient als Stabilitätsfall, nicht als öffentliches Testasset:
+Die bekannte lokale Junglinster-DWG bleibt außerhalb von Git. Sie dient als reale Stabilitäts- und Performance-Referenz, nicht als öffentliches Testasset. Der lokale Browserlauf für Version 0.4.1 ergab:
 
-Der dokumentierte 0.3.x-Basislauf mit der 11,31-MB-Datei und 66.816 erkannten Objekten ersetzt keine neue 0.4.0-Abnahme. Der vollständige Durchlauf des zusammengeführten 0.4.0-Stands unter den neuen kanonischen Routen ist **ausstehend**. Ein auf 390 × 844 Pixel gesetzter Desktop-Browser bleibt nur eine responsive UI-Prüfung und kein Ersatz für iOS Safari.
+| Kennzahl | Ergebnis |
+| --- | --- |
+| Dateigröße | 11,31 MB |
+| erkannte Objekte | 66.816 |
+| Layer | 316 |
+| Blöcke | 1.097 |
+| Layer-Umschaltung | vor dem Fix ungefähr 1 s, danach ungefähr 0,28 s |
+| MLightCAD-Pan | 30 Schritte in ungefähr 0,30 s |
+| Browserwarnungen | keine |
+
+Dieser Lauf bestätigt den Desktop-Browser-Hotpath, ersetzt aber keine Prüfung auf echter iPhone-Hardware. Ein auf einen schmalen mobilen Viewport gesetzter Desktop-Browser bleibt ebenfalls nur eine responsive UI-Prüfung und kein Ersatz für iOS Safari.
 
 - auf einem leistungsfähigen Desktop vollständig laden
 - auf einem echten iPhone zuerst das empfohlene Profil prüfen
@@ -187,11 +203,13 @@ Ein erfolgreicher Lauf auf einem einzelnen Desktop belegt keine iPhone-Kompatibi
 - Block-, Layer-, CAD- und Objekt-Drawer wiederholt öffnen, außen schließen und lange Listen scrollen; kein Drawer darf die App verschieben
 - Layer- und Block-Drawer nebeneinander vergleichen: Suchfeld, Zähler, Aktionsleiste, Zeilenabstände, Icons, Belastungs-Badges und Touchziele müssen übereinstimmen
 - Layersuche, Objektzahlen und Belastungs-Badges mit einer Zeichnung mit vielen Layern prüfen; einen vorab gefilterten Layer auswählen und Neuladehinweis sowie „Änderungen anwenden“ kontrollieren
+- beim Schließen der Layer- und Block-Drawer kontrollieren, dass die 300-ms-Animation vollständig bleibt und die langen Listen danach aus dem DOM entfernt sind
 - prüfen, dass alle Drawer oberhalb von OpenLayers, WebGL, Kartenbuttons und Site-Banner liegen
 - im MLightCAD-Drawer nacheinander `Auto`, `Scharf` und `Speichersparend` wählen; CAD-Linienschärfe, Bedienbarkeit und unveränderte Kartenlage bei jedem Wechsel vergleichen
 - auf einem iPhone mit DPR 3 kontrollieren, dass der CAD-Canvas in `Auto` höchstens 2×, in `Scharf` höchstens 2,5× und in `Speichersparend` genau 1× verwendet; die mobile OpenLayers-Basiskarte muss in allen drei Fällen bei DPR 1 bleiben
 - eine Zeichnung mit hoher Preflight-Risikostufe in `Auto` laden und den Rückgang auf 1× sowie die gegenüber `Scharf` geringere WebGL-Speicherbelegung beobachten
 - Pan, Pinch, Mausrad, GPS, Einpassen und tiefen Zoom in beiden Viewern testen
+- während eines MLightCAD-Pans prüfen, dass CAD und Orthofoto in jedem Schritt synchron bleiben, die Koordinatenanzeige aber erst 100 ms nach der letzten Kamerameldung den Endstand übernimmt
 - fünf Imports und fünf Viewerwechsel mit Browser-Speicherwerkzeugen beobachten; Worker, Canvas und WebGL-Kontexte müssen nach Dispose auf den Sollzustand zurückfallen
 - Standortberechtigung erlaubt und abgelehnt sowie pausierte Folge und Wiederaufnahme prüfen
 
@@ -202,4 +220,4 @@ Ein erfolgreicher Lauf auf einem einzelnen Desktop belegt keine iPhone-Kompatibi
 - Upload, Netlify Function, Datenbank oder persistente Dateispeicherung
 - positive Darstellungsgarantie für XRefs, Papierlayouts, proprietäre Custom Entities oder 3D-Inhalte
 
-Nach einem GitHub-Push übernimmt das vorhandene Git-basierte Netlify-Projekt Build und Bereitstellung von Version 0.4.0. Die dortigen Ergebnisse und die manuelle Routenabnahme sind bis dahin ausstehend.
+Nach einem GitHub-Push übernimmt das vorhandene Git-basierte Netlify-Projekt Build und Bereitstellung von Version 0.4.1. Die dortigen Ergebnisse und die manuelle Routenabnahme sind bis dahin ausstehend.

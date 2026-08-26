@@ -1,4 +1,4 @@
-# Architektur 0.4.0
+# Architektur 0.4.1
 
 ## Überblick
 
@@ -76,7 +76,7 @@ Benannte fachliche Blöcke, Texte und Hatches werden nicht ungefragt entfernt. D
 - zyklische Blockgraphen werden mit Besuchspfad und Tiefenlimit beendet.
 - Position, Rotation, Skalierung und Attribute verbleibender INSERTs bleiben unverändert.
 
-Das Original wird niemals verändert. Version 0.4.0 besitzt keinen CAD-Editor und schreibt keine neue oder „optimierte“ DWG-Datei.
+Das Original wird niemals verändert. Version 0.4.1 besitzt keinen CAD-Editor und schreibt keine neue oder „optimierte“ DWG-Datei.
 
 ## Layer-, Block-Drawer und Sichtbarkeitsmodell
 
@@ -106,6 +106,14 @@ Ein direkt im Modellbereich eingesetzter Block kann nach dem Laden unmittelbar i
 
 OpenLayers-Features tragen ihren rekursiven `blockPath`. Der Objekt-Drawer zeigt diesen Pfad und kann Objekt, wirksamen Layer oder Block ausblenden. Layer-, Block-, Text- und Objektzustände werden sitzungsweit geteilt, auch wenn die konkrete Entitäts-ID beider Parser nicht zwingend identisch ist.
 
+### Drawer-Lebenszyklus und Layer-Hotpath
+
+Layer- und Block-Drawer verwenden denselben verzögerten Inhaltslebenszyklus. Beim Öffnen ist der Inhalt unmittelbar vorhanden. Beim Schließen bleiben Zeilen und Bedienelemente für die 300-ms-Exit-Animation gemountet; erst danach werden sie entfernt. Ein erneutes Öffnen innerhalb dieses Zeitfensters verwirft die ausstehende Entfernung. Damit bleibt die Schließanimation vollständig, während dauerhaft geschlossene Drawer weder Zähler und Filter noch lange Zeilenlisten berechnen oder rendern.
+
+Für den geladenen Layer-Drawer werden Preflight- und Renderer-Daten nicht mehr durch eine lineare Suche pro Preflight-Layer verbunden. Kanonische Layer-ID und Layername werden einmal in einer `Map`, verborgene Identitäten einmal in einem `Set` indiziert. Danach wird jede Layerliste nur noch linear durchlaufen. Die Zusammenführung sinkt damit für `L` Layer von `O(L²)` auf `O(L)`; unterschiedliche ID-/Namensdarstellungen und die höhere Objektzahl aus Preflight oder Renderer bleiben erhalten.
+
+Die abgeleitete Layerliste, die daraus erzeugten Drawer-Einträge und die übersetzten Beschriftungen sind memoisiert. Jede Layerzeile ist als eigene React-Komponente memoisiert und erhält einen stabilen Sichtbarkeits-Callback. Eine einzelne Layer-Umschaltung rendert dadurch nur die geänderte Zeile neu und nicht alle unveränderten Zeilen einer großen Zeichnung.
+
 ## Bestehende OpenLayers-Pipeline
 
 Der Legacy-Pfad übernimmt die bereits im gemeinsamen Module-Worker gefilterte `DwgDatabase`, normalisiert sie mit `normalizeDwgDatabase` und übergibt sie anschließend an `convertCadDocument`. Die Konvertierung löst INSERTs rekursiv auf, transformiert LUREF-Geometrien von `EPSG:2169` nach `EPSG:3857` und erzeugt stabile OpenLayers-Feature-Metadaten einschließlich `layerId`, CAD-Typ und `blockPath`.
@@ -117,6 +125,10 @@ Unterstützt werden unter anderem Linien, Polylinien mit Bulge-Bögen, Kreise, B
 `MlightCadCanvas` erzeugt für die aktuelle Dateirevision einen `MlightCadViewerAdapter`. Der Adapter prüft die statischen Worker, liest die Datei mit genau einem abbrechbaren Parser-Worker, wendet Preflight und Ladeprofil an und öffnet anschließend ausschließlich den 2D-Modellbereich. Three.js rendert auf einem Canvas mit `clearAlpha = 0`; CAD-Deckkraft verändert nur CAD-Pixel und dunkelt die Karte nicht ab.
 
 MLightCAD und die OpenLayers-Karte darunter arbeiten beide in den absoluten LUREF-WCS-Koordinaten `EPSG:2169`. Wie im flüssigen Stand 0.2.4 überträgt die Kamerabrücke Mittelpunkt und Meter-pro-CSS-Pixel-Auflösung ohne Projektion oder asynchrone Zwischenstufe direkt auf die Kartenansicht. Jede MLightCAD-Kamerameldung wird im selben Bewegungszyklus mit `renderSync()` dargestellt. Dadurch bleiben CAD-Canvas und Orthofoto auch bei schnellem Pan und Zoom bildgleich gekoppelt. Die Geoportail-Quelle selbst bleibt in `EPSG:3857`; OpenLayers übernimmt deren Kachelreprojektion in die LUREF-View.
+
+Version 0.4.1 verändert diesen Kamera-Vertrag aus 0.2.4 ausdrücklich nicht: CAD-Mittelpunkt, Auflösung und OpenLayers-Darstellung bleiben für jede Kamerameldung synchron. Entkoppelt ist nur die React-Koordinatenanzeige. Sie ersetzt bei weiteren Kamerameldungen ihren ausstehenden Timer und veröffentlicht den letzten Mittelpunkt 100 ms nachlaufend. Eine Pan-Geste aktualisiert somit weiterhin die Karte in jedem Schritt, rendert aber nicht in jedem Schritt den vollständigen React-Seitenbaum.
+
+Das synchrone `renderSync()` kann programmgesteuert ein OpenLayers-`moveend` auslösen. Solange MLightCAD die Navigation steuert, beendet der OpenLayers-Listener dieses Ereignis deshalb vor dem Seiten-Callback; die nachlaufende CAD-Koordinate ist in diesem Zustand die einzige Koordinatenmeldung an die React-Seite. Ohne aktives MLightCAD-Dokument bleibt der Listener unverändert zuständig für manuelle OpenLayers-Bewegungen.
 
 GPS wird zuerst nach LUREF transformiert. Marker, Genauigkeitskreis und eine autoritative CAD-Zentrierung verwenden anschließend dieselben Meterkoordinaten wie Zeichnung und Karte.
 
