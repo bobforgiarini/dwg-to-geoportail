@@ -1,10 +1,10 @@
-# Test- und Abnahmeplan 0.3.0
+# Test- und Abnahmeplan 0.3.1
 
 ## Grundsatz
 
 Automatisierte Tests prüfen Datenstrukturen, Filterung, Zustandsautomaten und Lebenszyklus. Sie ersetzen weder den visuellen Vergleich mit einer bekannten LUREF-DWG noch einen echten Speichertest in iOS Safari. Private DWG-Dateien bleiben außerhalb des Repositorys und werden nicht an einen externen Dienst übertragen.
 
-Finaler lokaler Stand vom 26. August 2026: **31 Testdateien mit 144 Tests bestanden**, TypeScript- und Vite-Produktionsbuild bestanden. Die weiterhin ausstehenden Prüfungen auf echter iPhone-Hardware sind unten ausdrücklich als manuelle Abnahme markiert.
+Finaler lokaler Stand vom 26. August 2026: **31 Testdateien mit 146 Tests bestanden**, TypeScript- und Vite-Produktionsbuild bestanden. Die weiterhin ausstehenden Prüfungen auf echter iPhone-Hardware sind unten ausdrücklich als manuelle Abnahme markiert.
 
 ## Automatisierte Prüfung
 
@@ -94,6 +94,8 @@ Zusätzlich wird geprüft:
 
 - bekannte LUREF-Punkte werden korrekt zwischen `EPSG:2169` und `EPSG:3857` transformiert
 - die MLightCAD-Kamerabrücke transformiert Mittelpunkt und lokale Meter-pro-Pixel-Probe ohne affine Näherung
+- mehrere MLightCAD-Kamerameldungen innerhalb eines Bildschirmframes ergeben genau eine OpenLayers-Aktualisierung mit dem neuesten Stand und keine synchrone Kartendarstellung
+- wiederholte erfolgreiche Kachelabschlüsse im bereits erreichten Zustand `ready` benachrichtigen React nicht erneut
 - GPS zentriert zuerst die CAD-Kamera, anschließend folgt OpenLayers ohne Animation
 - beim Pan, Pinch, Mausrad, Einpassen und tiefen Zoom bleibt die Abweichung zwischen CAD und Orthofoto bei einer bekannten Referenz unter zwei CSS-Pixeln
 

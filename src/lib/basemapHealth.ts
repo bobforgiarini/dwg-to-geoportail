@@ -313,6 +313,9 @@ export class BasemapHealthController {
   }
 
   private update(patch: Partial<BasemapHealthState>): void {
+    const changed = (Object.keys(patch) as Array<keyof BasemapHealthState>)
+      .some((key) => patch[key] !== this.state[key]);
+    if (!changed) return;
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
   }

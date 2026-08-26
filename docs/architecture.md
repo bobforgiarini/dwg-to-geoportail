@@ -1,4 +1,4 @@
-# Architektur 0.3.0
+# Architektur 0.3.1
 
 ## Überblick
 
@@ -107,6 +107,8 @@ Unterstützt werden unter anderem Linien, Polylinien mit Bulge-Bögen, Kreise, B
 
 MLightCAD arbeitet in den absoluten LUREF-WCS-Koordinaten der DWG. Die OpenLayers-Karte darunter läuft in `EPSG:3857`. Die Kamerabrücke transformiert den CAD-Mittelpunkt sowie eine benachbarte LUREF-Probe nach Web Mercator und leitet daraus die lokale Kartenauflösung ab. GPS zentriert zuerst die autoritative CAD-Kamera; OpenLayers folgt ohne Animation.
 
+MLightCAD kann während eines Maus- oder Touchzugs mehrere Kamerameldungen innerhalb desselben Bildschirmframes liefern. Die Brücke hält deshalb nur den neuesten Stand und koppelt OpenLayers einmal per `requestAnimationFrame`. Mittelpunkt und Auflösung lösen dort die normale asynchrone Darstellung aus; ein synchrones `renderSync()` innerhalb der MLightCAD-Animationsschleife wird bewusst vermieden. Die sichtbare LUREF-Koordinatenanzeige wird getrennt davon auf zehn Aktualisierungen pro Sekunde begrenzt.
+
 Ohne bereites CAD-Dokument bedient OpenLayers die Karte. Nach `ready` übernimmt MLightCAD Pan und Zoom. Die MLightCAD-Ansicht bleibt nordfixiert; der drehbare Legacy-Viewer behält seinen Nordpfeil.
 
 ## LibreDWG-Speicher und Lebenszyklus
@@ -120,6 +122,8 @@ Bei Mobilgeräten werden Karten- und CAD-Pixelratio reduziert und der Kartenkach
 ## Geoportail-Ausfallsicherheit
 
 Beide Viewer teilen einen `BasemapHealthController` mit den Zuständen `loading`, `ready`, `retrying`, `offline` und `unavailable`. WMTS `ortho_2025` über `GLOBAL_WEBMERCATOR_4_V3` bleibt bevorzugt; WMS `ortho_latest` verwendet denselben offiziellen Open-Data-Endpunkt `https://wmts1.geoportail.lu/opendata/service`.
+
+Der Controller veröffentlicht nur tatsächliche Zustandsänderungen. Weitere erfolgreiche Kacheln im bereits erreichten Zustand `ready` lösen daher keine erneute React-Aktualisierung aus.
 
 Der Wechsel folgt einer kontrollierten Zustandsmaschine:
 

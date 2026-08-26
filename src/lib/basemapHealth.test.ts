@@ -72,6 +72,24 @@ describe('BasemapHealthController', () => {
     controller.dispose();
   });
 
+  it('does not notify React again for every tile after the source is already ready', () => {
+    const controller = new BasemapHealthController();
+    const listener = vi.fn();
+    controller.subscribe(listener);
+    controller.sourceMounted(0);
+    controller.tileLoadStart(0);
+    controller.tileLoadEnd(0);
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    controller.tileLoadStart(0);
+    controller.tileLoadEnd(0);
+    controller.tileLoadStart(0);
+    controller.tileLoadEnd(0);
+
+    expect(listener).toHaveBeenCalledTimes(2);
+    controller.dispose();
+  });
+
   it('tries WMS only once when the fallback source repeatedly fails', () => {
     const controller = new BasemapHealthController();
     controller.sourceMounted(0);

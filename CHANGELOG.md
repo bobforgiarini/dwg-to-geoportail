@@ -2,6 +2,20 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.3.1] – 2026-08-26
+
+### Behoben
+
+- MLightCAD-Kamerameldungen werden beim Verschieben und Zoomen auf höchstens eine Kartenkopplung pro Browserframe zusammengefasst. Zwischenstände einer schnellen Maus- oder Touchbewegung werden verworfen, der neueste Kamerastand bleibt maßgeblich.
+- die erzwungene synchrone OpenLayers-Darstellung aus der MLightCAD-Bewegungsschleife entfernt; OpenLayers plant die bereits durch Mittelpunkt und Auflösung ausgelöste Darstellung nun selbst, ohne die Three.js-Animation zu blockieren
+- die LUREF-Koordinatenanzeige auf höchstens zehn Aktualisierungen pro Sekunde begrenzt, damit eine Bewegung nicht den gesamten React-Seitenbaum für jedes Pointerereignis neu berechnet
+- identische Geoportail-Statusmeldungen werden nicht mehr für jede fertig geladene Kachel erneut an React verteilt
+
+### Prüfung
+
+- Git-Vergleich mit dem zuvor flüssigen Stand `0.2.4` durchgeführt: MLightCAD-Navigation und Renderer blieben gleich; neu in `0.3.0` waren die Web-Mercator-Transformation je Kamerameldung sowie die kachelweisen Basemap-Statusmeldungen
+- 31 Testdateien mit 146 Tests sowie den vollständigen TypeScript-/Vite-Produktionsbuild erfolgreich ausgeführt
+
 ## [0.3.0] – 2026-08-26
 
 ### Hinzugefügt

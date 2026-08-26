@@ -1,5 +1,7 @@
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MlightCadViewerAdapter } from '../lib/mlightcad/MlightCadViewerAdapter';
+import type { MlightCadCamera } from '../lib/mlightcad/types';
 import type { LocationTrackingState } from '../types/models';
 import { MlightCadMap } from './MlightCadMap';
 
@@ -208,6 +210,64 @@ describe('MlightCadMap interaction handover', () => {
       resolution: 2,
       duration: 350,
     });
+  });
+
+  it('coalesces rapid CAD camera events into one asynchronous map update', () => {
+    let cameraListener: ((camera: MlightCadCamera) => void) | null = null;
+    const removeListener = vi.fn();
+    const adapter = {
+      events: {
+        camera: {
+          addEventListener: vi.fn((listener: (camera: MlightCadCamera) => void) => {
+            cameraListener = listener;
+            return removeListener;
+          }),
+        },
+      },
+    } as unknown as MlightCadViewerAdapter;
+    let frame: FrameRequestCallback | null = null;
+    const requestFrame = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frame = callback;
+      return 42;
+    });
+    const cancelFrame = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined);
+    const onCoordinate = vi.fn();
+    try {
+      const { unmount } = render(<MlightCadMap
+        adapter={adapter}
+        basemapHealth={{ mode: 'wmts', status: 'ready', generation: 0, transitionReason: 'tile-loaded' }}
+        basemapHealthReporter={{
+          sourceMounted: vi.fn(), tileLoadStart: vi.fn(), tileLoadEnd: vi.fn(), tileLoadError: vi.fn(),
+        }}
+        basemapVisible
+        mlightControlsActive
+        location={idleLocation}
+        onCoordinate={onCoordinate}
+        onManualMove={vi.fn()}
+      />);
+
+      act(() => {
+        cameraListener?.({ center: [10, 20], resolution: 4 });
+        cameraListener?.({ center: [30, 40], resolution: 2 });
+        cameraListener?.({ center: [50, 60], resolution: 1 });
+      });
+      expect(requestFrame).toHaveBeenCalledOnce();
+      expect(harness.view.setCenter).not.toHaveBeenCalled();
+
+      act(() => { frame?.(16); });
+      expect(harness.view.setCenter).toHaveBeenCalledOnce();
+      expect(harness.view.setCenter).toHaveBeenCalledWith([50, 60]);
+      expect(harness.view.setResolution).toHaveBeenCalledWith(1);
+      expect(harness.renderSync).not.toHaveBeenCalled();
+      expect(onCoordinate).toHaveBeenCalledWith([50, 60]);
+
+      unmount();
+      expect(removeListener).toHaveBeenCalledOnce();
+      expect(cancelFrame).not.toHaveBeenCalled();
+    } finally {
+      requestFrame.mockRestore();
+      cancelFrame.mockRestore();
+    }
   });
 
   it('limits map pixel ratio and tile cache on coarse-pointer devices', () => {

@@ -41,6 +41,7 @@ interface Props {
 }
 
 const MOBILE_TILE_CACHE_SIZE = 32;
+const COORDINATE_UPDATE_INTERVAL_MS = 100;
 
 export function isMemoryConstrainedMapRuntime(): boolean {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
@@ -172,14 +173,46 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
 
   useEffect(() => {
     if (!adapter) return;
-    return adapter.events.camera.addEventListener(({ center, resolution }) => {
+    let pendingCamera: { center: [number, number]; resolution: number } | null = null;
+    let pendingCoordinate: [number, number] | null = null;
+    let animationFrame: number | null = null;
+    let coordinateTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastCoordinateUpdate = Number.NEGATIVE_INFINITY;
+
+    const publishCoordinate = () => {
+      coordinateTimer = null;
+      if (!pendingCoordinate) return;
+      const coordinate = pendingCoordinate;
+      pendingCoordinate = null;
+      lastCoordinateUpdate = performance.now();
+      onCoordinateRef.current(coordinate);
+    };
+    const scheduleCoordinate = (coordinate: [number, number]) => {
+      pendingCoordinate = coordinate;
+      const remaining = COORDINATE_UPDATE_INTERVAL_MS - (performance.now() - lastCoordinateUpdate);
+      if (remaining <= 0) publishCoordinate();
+      else if (coordinateTimer == null) coordinateTimer = setTimeout(publishCoordinate, remaining);
+    };
+    const flushCamera = () => {
+      animationFrame = null;
+      const camera = pendingCamera;
+      pendingCamera = null;
       const map = mapRef.current;
-      if (!map) return;
-      const view = map.getView();
-      if (!syncCadCameraToMap(view, { center, resolution })) return;
-      onCoordinateRef.current(center);
-      map.renderSync();
+      if (!camera || !map || !syncCadCameraToMap(map.getView(), camera)) return;
+      // View changes already schedule OpenLayers' next render. Calling
+      // renderSync here blocks MLightCAD's own animation loop and made a
+      // desktop drag pay for every intermediate camera event.
+      scheduleCoordinate(camera.center);
+    };
+    const removeListener = adapter.events.camera.addEventListener((camera) => {
+      pendingCamera = camera;
+      if (animationFrame == null) animationFrame = requestAnimationFrame(flushCamera);
     });
+    return () => {
+      removeListener();
+      if (animationFrame != null) cancelAnimationFrame(animationFrame);
+      if (coordinateTimer != null) clearTimeout(coordinateTimer);
+    };
   }, [adapter]);
 
   useEffect(() => {
