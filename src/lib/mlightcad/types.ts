@@ -6,6 +6,7 @@ import type {
   DwgPreflightOptions,
   DwgPreflightReport,
 } from '../cad/preflightTypes';
+import type { CadDwgSource } from '../cad/xrefBundle';
 
 export interface MlightCadCamera {
   center: [number, number];
@@ -29,6 +30,8 @@ export interface MlightCadReady {
 export interface MlightCadPreparationResult {
   decision: CadLoadDecision;
   profile?: CadLoadProfile;
+  annotationScaleId?: string | null;
+  spatialFilterEnabled?: boolean;
 }
 
 export interface MlightCadLoadOptions {
@@ -38,6 +41,11 @@ export interface MlightCadLoadOptions {
   onPreparation?: (report: DwgPreflightReport) => Promise<MlightCadPreparationResult>;
   forcePreparation?: boolean;
   forceFull?: boolean;
+  xrefFiles?: readonly File[];
+  xrefSources?: CadDwgSource[];
+  preferredXrefFileIds?: Readonly<Record<string, string>>;
+  annotationScaleId?: string | null;
+  spatialFilterEnabled?: boolean;
 }
 
 export interface MlightCadAdapterEvents {

@@ -1,6 +1,6 @@
 # Drittanbieterhinweise
 
-Version 0.3.0 verwendet Open-Source-Bibliotheken aus `package-lock.json`. Die jeweiligen Pakete behalten ihre eigenen Lizenzbedingungen; die vollständigen installierten Fassungen sind für reproduzierbare Builds über `package-lock.json` festgelegt.
+Version 0.5.0 verwendet Open-Source-Bibliotheken aus `package-lock.json`. Die jeweiligen Pakete behalten ihre eigenen Lizenzbedingungen; die vollständigen installierten Fassungen sind für reproduzierbare Builds über `package-lock.json` festgelegt.
 
 ## Anwendungslizenz
 
@@ -19,7 +19,7 @@ DWG to Geoportail wird insgesamt unter `AGPL-3.0-only` verteilt; der vollständi
 
 - Projekt: <https://github.com/flyfish-dev/cad-viewer>
 - Lizenz: GNU Affero General Public License v3.0 only (`AGPL-3.0-only`)
-- Stellt weiterhin die Legacy-Normalisierung und 2D-Konvertierung bereit; die native DWG-Analyse läuft in Version 0.3.0 über den unten dokumentierten gemeinsamen LibreDWG-Worker.
+- Stellt weiterhin die Legacy-Normalisierung und 2D-Konvertierung bereit; die native DWG-Analyse läuft seit Version 0.3.0 über den unten dokumentierten gemeinsamen LibreDWG-Worker.
 - Lizenz- und NOTICE-Texte der installierten Version befinden sich im npm-Paket unter `node_modules/@flyfish-dev/cad-viewer/`.
 
 ## MLightCAD-Kern
@@ -43,7 +43,7 @@ Projektquellen: <https://github.com/mlightcad/cad-viewer> und <https://github.co
 
 Die MIT-Lizenz des MLightCAD-Kerns ändert nicht die GPL-Bedingungen des für DWG aktivierten LibreDWG-Konverters. Die Anwendung bleibt als Gesamtprojekt unter `AGPL-3.0-only`; GPL-Komponenten behalten ihre jeweiligen Hinweise und Bedingungen.
 
-Version 0.3.0 ändert keine Paketversion des MLightCAD-/LibreDWG-Pfads. Der Produktionsbuild transformiert jedoch die Memory-Section der ausgelieferten `libredwg-web.wasm`-Datei reproduzierbar: Der deklarierte Initialspeicher wird auf 2.048 WASM-Seiten beziehungsweise 128 MiB begrenzt, während vorhandenes Maximum und Memory-Growth-Flags unverändert bleiben. Der anwendungseigene Transformationscode steht unter derselben `AGPL-3.0-only`-Lizenz wie die Anwendung; die transformierte LibreDWG-Binärdatei bleibt unter den GPL-Bedingungen ihres Ursprungspakets.
+Version 0.5.0 ändert keine Paketversion des MLightCAD-/LibreDWG-Pfads. Der Produktionsbuild transformiert weiterhin die Memory-Section der ausgelieferten `libredwg-web.wasm`-Datei reproduzierbar: Der deklarierte Initialspeicher wird auf 2.048 WASM-Seiten beziehungsweise 128 MiB begrenzt, während vorhandenes Maximum und Memory-Growth-Flags unverändert bleiben. Der anwendungseigene Transformationscode steht unter derselben `AGPL-3.0-only`-Lizenz wie die Anwendung; die transformierte LibreDWG-Binärdatei bleibt unter den GPL-Bedingungen ihres Ursprungspakets.
 
 Diese Buildtransformation ist kein unabhängiger Ersatz-Parser und keine Änderung der LibreDWG-Lizenz. Sie wird mit einem Validierungstest abgesichert. Die bestehende Kompatibilitätskorrektur für fehlerhaft gepackte Windows-1252-`MULTILEADER`-Texte verarbeitet weiterhin ausschließlich das lokal zurückgegebene Parserergebnis im Anwendungscode.
 
@@ -52,6 +52,17 @@ Diese Buildtransformation ist kein unabhängiger Ersatz-Parser und keine Änderu
 - Dienstübersicht: <https://data.public.lu/en/datasets/bd-l-ortho-webservices-wms-et-wmts/>
 - Offizieller Open-Data-Endpunkt für WMTS `ortho_2025` und WMS `ortho_latest`: `https://wmts1.geoportail.lu/opendata/service`
 - Die Oberfläche zeigt den Geoportail-Diensthinweis und Link im Site-Banner.
+
+## ACT-Landesgrenze Luxemburg
+
+- Datensatz: **Limites administratives du Grand-Duché de Luxembourg**
+- Herausgeber: Administration du cadastre et de la topographie (ACT)
+- Quelle: <https://data.public.lu/en/datasets/limites-administratives-du-grand-duche-de-luxembourg/>
+- stabiles Ressourcen-Permalink: <https://data.public.lu/en/datasets/r/39af91a6-9ce4-4c18-8271-313b3ad7c7f5>
+- Lizenz: CC0 1.0
+- Quell-SHA-256: `86f02293e9e41d5874611a37fbd153e86a5e7b170e19a71fcfd7f3caefaad5b0`
+
+Das Projekt liefert nicht die vollständige Quelldatei aus. `src/lib/cad/data/luxembourgBoundary.epsg2169.json` enthält die nationale Geometrie, transformiert nach `EPSG:2169` und mit fünf Metern Toleranz vereinfacht, einschließlich Herkunfts- und Buildmetadaten. Die Erzeugung ist in `docs/luxembourg-boundary-filter.md` dokumentiert. Der konfigurierte Laufzeit-Prüfbereich umfasst zusätzlich exakt 1.000 Meter; daraus entsteht keine neue Einschränkung der CC0-Lizenz.
 
 ## Externe MLightCAD-Ressourcen
 

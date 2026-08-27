@@ -4,12 +4,15 @@ import type {
   CadEntityCategory,
   CadLoadProfile,
   CadOverlayBlock,
+  DwgProfileEffect,
+  DwgProfileEffectReason,
   DwgPreflightEntityCounts,
   DwgPreflightOptions,
   DwgPreflightReport,
   DwgPreflightWarning,
   DwgRiskReason,
 } from './preflightTypes';
+import { filterCadDocument } from './filterCadDocument';
 
 const DEFAULT_MAX_BLOCK_DEPTH = 64;
 const MAX_ESTIMATE = 1_000_000_000_000;
@@ -306,7 +309,153 @@ function documentVersion(document: CadDocument): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-export function analyzeCadDocument(document: CadDocument, options: DwgPreflightOptions = {}): DwgPreflightReport {
+function categoryCount(category: CadEntityCategory, counts: DwgPreflightEntityCounts): number {
+  switch (category) {
+    case 'paper-space': return counts.paperSpaceEntities;
+    case 'xref': return counts.xrefs;
+    case 'image': return counts.images;
+    case 'ole': return counts.oleObjects;
+    case 'proxy': return counts.proxyObjects;
+    case '3d': return counts.threeDimensional;
+    case 'text': return counts.texts;
+    case 'leader': return saturatingAdd(counts.leaders, counts.mleaders);
+    case 'hatch': return counts.hatches;
+  }
+}
+
+function categoryReason(category: CadEntityCategory): DwgProfileEffectReason {
+  switch (category) {
+    case 'paper-space': return 'paper-space';
+    case 'image': return 'unsupported-image';
+    case 'ole': return 'unsupported-ole';
+    case 'proxy': return 'unsupported-proxy';
+    case '3d': return 'unsupported-3d';
+    case 'xref': return 'unresolved-xref';
+    default: return 'user-selection';
+  }
+}
+
+function categoryCost(category: CadEntityCategory, count: number): number {
+  const weight: Record<CadEntityCategory, number> = {
+    'paper-space': 1,
+    xref: 1,
+    image: 13,
+    ole: 13,
+    proxy: 5,
+    '3d': 17,
+    text: 3,
+    leader: 4,
+    hatch: 9,
+  };
+  return saturatingMultiply(count, weight[category]);
+}
+
+function profileEffects(
+  layers: DwgPreflightReport['layers'],
+  blocks: CadOverlayBlock[],
+  counts: DwgPreflightEntityCounts,
+  profile: CadLoadProfile,
+  options: DwgPreflightOptions,
+): DwgProfileEffect[] {
+  const effects: DwgProfileEffect[] = [];
+  const hiddenLayerIds = new Set(profile.hiddenLayerIds.map(canonical));
+  for (const layer of layers) {
+    if (!hiddenLayerIds.has(canonical(layer.id)) && !hiddenLayerIds.has(canonical(layer.name))) continue;
+    const reason: DwgProfileEffectReason = !layer.visible
+      ? 'layer-off'
+      : layer.frozen
+        ? 'layer-frozen'
+        : 'layer-no-plot';
+    effects.push({
+      id: `layer:${layer.id}`,
+      kind: 'layer',
+      policy: 'recommended',
+      reason,
+      label: layer.name,
+      affectedEntityCount: layer.expandedEntityCount,
+      estimatedCost: layer.expandedEntityCount,
+      selected: true,
+    });
+  }
+
+  const hiddenBlocks = new Set(profile.hiddenBlockNames.map(canonical));
+  for (const block of blocks) {
+    if (!hiddenBlocks.has(canonical(block.id)) && !hiddenBlocks.has(canonical(block.name))) continue;
+    effects.push({
+      id: `block:${block.id}`,
+      kind: block.kind === 'xref' ? 'xref' : 'block',
+      policy: 'recommended',
+      reason: block.kind === 'xref' ? 'unresolved-xref' : 'user-selection',
+      label: block.name,
+      affectedEntityCount: block.expandedEntityCount,
+      estimatedCost: block.estimatedCost,
+      selected: true,
+    });
+  }
+
+  for (const category of profile.hiddenEntityCategories) {
+    const affectedEntityCount = categoryCount(category, counts);
+    if (!affectedEntityCount) continue;
+    effects.push({
+      id: `category:${category}`,
+      kind: 'category',
+      policy: category === 'paper-space' ? 'required' : 'recommended',
+      reason: categoryReason(category),
+      label: category,
+      affectedEntityCount,
+      estimatedCost: categoryCost(category, affectedEntityCount),
+      selected: true,
+    });
+  }
+  const spatial = options.spatialFilter;
+  if (spatial?.removedRootEntityCount) {
+    effects.push({
+      id: 'boundary:luxembourg-1000m',
+      kind: 'boundary',
+      policy: 'recommended',
+      reason: 'outside-luxembourg-buffer',
+      label: 'Luxembourg + 1 km',
+      affectedEntityCount: spatial.removedRootEntityCount,
+      estimatedCost: spatial.removedRootEntityCount,
+      selected: spatial.enabled,
+    });
+  }
+  return effects;
+}
+
+function metadataWarnings(options: DwgPreflightOptions): DwgPreflightWarning[] {
+  const warnings: DwgPreflightWarning[] = [];
+  const annotation = options.annotationScale;
+  if (annotation?.contextObjectCount && !annotation.availableScales.length) {
+    warnings.push({ code: 'annotation-scale-unresolved' });
+  } else if (annotation?.failOpen) {
+    warnings.push({
+      code: 'annotation-context-invalid',
+      detail: 'Ambiguous native annotation contexts were retained.',
+    });
+  }
+  for (const reference of options.externalReferences ?? []) {
+    if (reference.status === 'missing') warnings.push({
+      code: 'xref-missing', blockName: reference.name, path: reference.path,
+    });
+    if (reference.status === 'ambiguous') warnings.push({
+      code: 'xref-ambiguous', blockName: reference.name, path: reference.path,
+    });
+    if (reference.status === 'cycle') warnings.push({
+      code: 'xref-cycle', blockName: reference.name, path: reference.path,
+    });
+    if (reference.status === 'invalid') warnings.push({
+      code: 'xref-invalid', blockName: reference.name, path: reference.path,
+    });
+  }
+  return warnings;
+}
+
+function analyzeCadDocumentInternal(
+  document: CadDocument,
+  options: DwgPreflightOptions,
+  includeImpact: boolean,
+): DwgPreflightReport {
   const registry = blockRegistry(document);
   const layerLookup = layerRegistry(document);
   const maxDepth = Math.max(1, options.maxBlockDepth ?? DEFAULT_MAX_BLOCK_DEPTH);
@@ -484,8 +633,10 @@ export function analyzeCadDocument(document: CadDocument, options: DwgPreflightO
   if (shouldPrepare && layers.length > 500) reasons.push('layer-count');
   if ((options.device?.memoryGiB ?? Infinity) <= 2 && estimatedRenderCost > budget * 0.75) reasons.push('limited-device-memory');
 
-  return {
-    schemaVersion: 1,
+  const effects = profileEffects(layers, blocks, counts, recommendedProfile, options);
+  const allWarnings = deduplicateWarnings([...warnings, ...metadataWarnings(options)]);
+  const report: DwgPreflightReport = {
+    schemaVersion: 2,
     file: {
       name: options.file?.name ?? document.sourceName ?? null,
       size: options.file?.size ?? null,
@@ -507,6 +658,46 @@ export function analyzeCadDocument(document: CadDocument, options: DwgPreflightO
       reasons,
     },
     recommendedProfile,
-    warnings: deduplicateWarnings(warnings),
+    warnings: allWarnings,
+    effects,
+    annotationScale: options.annotationScale,
+    externalReferences: options.externalReferences,
+    spatialFilter: options.spatialFilter,
   };
+
+  if (includeImpact) {
+    let recommendedEntityCount = saturatingAdd(counts.modelEntities, counts.paperSpaceEntities);
+    let recommendedCost = estimatedRenderCost;
+    if (recommendedProfile.mode === 'filtered') {
+      const filtered = filterCadDocument(document, recommendedProfile).document;
+      const filteredReport = analyzeCadDocumentInternal(filtered, {
+        ...options,
+        annotationScale: undefined,
+        externalReferences: undefined,
+      }, false);
+      recommendedEntityCount = saturatingAdd(
+        filteredReport.entityCounts.modelEntities,
+        filteredReport.entityCounts.paperSpaceEntities,
+      );
+      recommendedCost = filteredReport.risk.estimatedRenderCost;
+    }
+    const appliedSpatialRemoval = options.spatialFilter?.enabled
+      ? options.spatialFilter.removedRootEntityCount
+      : 0;
+    report.impact = {
+      before: {
+        entityCount: saturatingAdd(
+          saturatingAdd(counts.modelEntities, counts.paperSpaceEntities),
+          appliedSpatialRemoval,
+        ),
+        estimatedCost: saturatingAdd(estimatedRenderCost, appliedSpatialRemoval),
+      },
+      recommended: { entityCount: recommendedEntityCount, estimatedCost: recommendedCost },
+    };
+  }
+  return report;
+}
+
+export function analyzeCadDocument(document: CadDocument, options: DwgPreflightOptions = {}): DwgPreflightReport {
+  return analyzeCadDocumentInternal(document, options, true);
 }

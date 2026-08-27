@@ -4,12 +4,14 @@ import type { MlightCadCamera, MlightCadLoadOptions, MlightCadProgress, MlightCa
 import type { CadOverlayBlock, DwgPreflightReport } from '../lib/cad/preflightTypes';
 import type { CadOverlayLayer, SelectedCadObject } from '../types/models';
 import type { CadRenderQualityMode } from '../lib/mlightcad/renderQuality';
+import type { CadAppearanceSettings } from '../lib/cad/appearance';
 
 interface Props {
   file: File | null;
   fileRevision: number;
   opacity: number;
   renderQuality: CadRenderQualityMode;
+  appearance: CadAppearanceSettings;
   loadOptions: MlightCadLoadOptions;
   onAdapterChange: (adapter: MlightCadViewerAdapter | null) => void;
   onError: (error: unknown) => void;
@@ -37,6 +39,10 @@ export function MlightCadCanvas(props: Props) {
   }, [props.renderQuality]);
 
   useEffect(() => {
+    adapter.current?.setAppearance(props.appearance);
+  }, [props.appearance]);
+
+  useEffect(() => {
     if (!container.current || !props.file) {
       callbacks.current.onAdapterChange(null);
       return;
@@ -47,6 +53,7 @@ export function MlightCadCanvas(props: Props) {
     adapter.current = nextAdapter;
     nextAdapter.setOpacity(callbacks.current.opacity);
     nextAdapter.setRenderQuality(callbacks.current.renderQuality);
+    nextAdapter.setAppearance(callbacks.current.appearance);
     callbacks.current.onAdapterChange(nextAdapter);
 
     const reportError = (error: unknown) => {

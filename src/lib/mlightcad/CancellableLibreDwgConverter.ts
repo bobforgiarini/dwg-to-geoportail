@@ -6,6 +6,7 @@ import {
 import type { CadLoadProfile, DwgPreflightOptions, DwgPreflightReport } from '../cad/preflightTypes';
 import { MlightDwgPreparationWorkerClient } from './MlightDwgPreparationWorkerClient';
 import type { MlightCadPreparationResult } from './types';
+import type { CadDwgSource } from '../cad/xrefBundle';
 
 const MLIGHTCAD_WASM_BASE_URL = '/mlightcad-workers/0.3.0';
 
@@ -18,6 +19,10 @@ export interface CancellableLibreDwgPreparation {
   onPreparation?: (report: DwgPreflightReport) => Promise<MlightCadPreparationResult>;
   forcePreparation?: boolean;
   forceFull?: boolean;
+  xrefSources?: CadDwgSource[];
+  preferredXrefFileIds?: Readonly<Record<string, string>>;
+  annotationScaleId?: string | null;
+  spatialFilterEnabled?: boolean;
 }
 
 export class MlightCadImportCancelledError extends Error {
@@ -76,6 +81,12 @@ export class CancellableLibreDwgConverter extends AcDbLibreDwgConverter {
           loadProfile: this.preparation.loadProfile,
           forcePreparation: this.preparation.forcePreparation,
           forceFull: this.preparation.forceFull,
+          xrefSources: this.preparation.xrefSources,
+          preferredXrefFileIds: this.preparation.preferredXrefFileIds
+            ? { ...this.preparation.preferredXrefFileIds }
+            : undefined,
+          annotationScaleId: this.preparation.annotationScaleId,
+          spatialFilterEnabled: this.preparation.spatialFilterEnabled,
         },
         {
           onPreflight: (report) => {

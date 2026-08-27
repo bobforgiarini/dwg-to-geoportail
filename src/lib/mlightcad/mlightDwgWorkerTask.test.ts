@@ -15,6 +15,24 @@ function database(): DwgDatabase {
   } as unknown as DwgDatabase;
 }
 
+function spatialResult(model: DwgDatabase) {
+  return {
+    model,
+    report: {
+      enabled: true as const,
+      coordinateReferenceSystem: 'EPSG:2169' as const,
+      bufferMeters: 1_000,
+      sourceAuthority: 'ACT',
+      sourceLicense: 'CC0-1.0',
+      retainedRootEntityCount: 0,
+      removedRootEntityCount: 0,
+      unknownRootEntityCount: 0,
+      removedBlockDefinitionCount: 0,
+      removedEntityKeys: [], unknownEntityKeys: [], removedBlockNames: [], warnings: [],
+    },
+  };
+}
+
 function report(shouldPrepare = true): DwgPreflightReport {
   return {
     schemaVersion: 1,
@@ -67,13 +85,24 @@ describe('MLightCAD DWG worker task', () => {
       analyze,
       filter,
       normalize: vi.fn(),
+      inspectXrefs: () => [],
+      spatialFilter: (model) => spatialResult(model),
     });
 
     await vi.waitFor(() => expect(emitPreflight).toHaveBeenCalledWith(report(), true));
     expect(filter).not.toHaveBeenCalled();
     continueTask?.({ decision: 'filtered', profile: filteredProfile });
 
-    await expect(task).resolves.toEqual({ database: filtered, stats: { unknownEntityCount: 3 } });
+    await expect(task).resolves.toEqual({
+      database: filtered,
+      annotationScale: undefined,
+      stats: {
+        unknownEntityCount: 3,
+        annotationScale: undefined,
+        externalReferenceCount: 0,
+        spatialFilter: spatialResult(source).report,
+      },
+    });
     expect(parse).toHaveBeenCalledWith(expect.any(ArrayBuffer), '/mlightcad-workers/0.3.0');
     expect(analyze).toHaveBeenCalledWith(source, expect.objectContaining({
       maxBlockDepth: 24,
@@ -95,6 +124,7 @@ describe('MLightCAD DWG worker task', () => {
     }, {
       parse: async () => ({ database: source, stats: { unknownEntityCount: 0 } }),
       analyze: () => report(false), filter, normalize: vi.fn(),
+      inspectXrefs: () => [], spatialFilter: (model) => spatialResult(model),
     });
 
     expect(waitForDecision).not.toHaveBeenCalled();
@@ -116,7 +146,79 @@ describe('MLightCAD DWG worker task', () => {
       parse: async () => ({ database: source, stats: { unknownEntityCount: 0 } }),
       analyze: () => { throw new Error('preflight failed'); },
       filter, normalize: vi.fn(),
-    })).resolves.toEqual({ database: source, stats: { unknownEntityCount: 0 } });
+      inspectXrefs: () => [], spatialFilter: (model) => spatialResult(model),
+    })).resolves.toEqual({
+      database: source,
+      annotationScale: undefined,
+      stats: {
+        unknownEntityCount: 0,
+        annotationScale: undefined,
+        externalReferenceCount: 0,
+        spatialFilter: spatialResult(source).report,
+      },
+    });
     expect(filter).toHaveBeenCalledWith(source, FULL_PROFILE);
+  });
+
+  it('resolves local XRefs sequentially and applies scale/spatial decisions without reparsing', async () => {
+    const root = database();
+    const child = database();
+    const merged = database();
+    const spatiallyFiltered = database();
+    const filter = vi.fn((model: DwgDatabase) => model);
+    const parse = vi.fn(async (data: ArrayBuffer) => ({
+      database: data.byteLength === 12 ? root : child,
+      stats: { unknownEntityCount: data.byteLength === 12 ? 2 : 3 },
+      annotationScale: data.byteLength === 12 ? {
+        mode: 'saved' as const, savedScaleId: '100', selectedScaleId: '100',
+        availableScales: [
+          { id: '100', name: '1:100', paperUnits: 1, drawingUnits: 100, ratio: 100, source: 'saved' as const, isDefault: true },
+          { id: '500', name: '1:500', paperUnits: 1, drawingUnits: 500, ratio: 500, source: 'context' as const, isDefault: false },
+        ],
+        contextObjectCount: 2, failOpen: true,
+      } : undefined,
+    }));
+    const declaration = {
+      id: 'X1:child', name: 'child', normalizedName: 'child', sourcePath: null,
+      kind: 'attachment' as const, hasEmbeddedEntities: false,
+    };
+    const mergeXref = vi.fn(() => merged);
+    const spatialFilter = vi.fn(() => ({ ...spatialResult(spatiallyFiltered) }));
+
+    const result = await runMlightDwgWorkerTask({
+      type: 'start', jobId: 'bundle', data: new ArrayBuffer(12),
+      options: {
+        wasmBaseUrl: '/mlightcad-workers/0.5.0', canPrepare: true,
+        xrefSources: [{
+          file: { id: 'child-file', name: 'child.dwg', size: 4, lastModified: 1 },
+          data: new ArrayBuffer(4),
+        }],
+      },
+    }, {
+      emitPreflight: vi.fn(),
+      waitForDecision: async () => ({
+        decision: 'full', annotationScaleId: '500', spatialFilterEnabled: false,
+      }),
+    }, {
+      parse,
+      analyze: () => report(true),
+      filter,
+      normalize: vi.fn(),
+      inspectXrefs: (model) => model === root ? [declaration] : [],
+      mergeXref,
+      spatialFilter,
+    });
+
+    expect(parse.mock.calls.map(([data]) => data.byteLength)).toEqual([12, 4]);
+    expect(mergeXref).toHaveBeenCalledWith(root, declaration, child);
+    expect(spatialFilter).toHaveBeenCalledOnce();
+    expect(filter).toHaveBeenCalledWith(merged, FULL_PROFILE);
+    expect(result.annotationScale).toMatchObject({ mode: 'manual', selectedScaleId: '500' });
+    expect(result.stats).toMatchObject({
+      unknownEntityCount: 5,
+      externalReferenceCount: 1,
+      spatialFilter: { enabled: false },
+      annotationScale: { selectedScaleId: '500' },
+    });
   });
 });

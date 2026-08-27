@@ -2,6 +2,42 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.5.0] – 2026-08-27
+
+### Hinzugefügt
+
+- nativen Annotationsmaßstab-Preflight für `SCALE`, `CONTEXTDATAMANAGER` und bekannte `*OBJECTCONTEXTDATA` ergänzt; gespeicherte und erkannte Maßstäbe können für den Import fest gewählt werden, beschädigte oder mehrdeutige Zuordnungen bleiben bewusst unverändert
+- lokale Mehrfachauswahl für fehlende XRefs sowie sequenzielle, basisnamengestützte Auflösung mit Status für Attachments, Overlays, Mehrdeutigkeiten, Zyklen und ungültige Referenzen ergänzt; DWG-Dateien bleiben vollständig im Browser-Arbeitsspeicher
+- lokalen Luxemburg-Filter auf Grundlage der offiziellen ACT-Landesgrenze ergänzt: standardmäßig aktiv, exakt 1.000 Meter Puffer, konservatives Behalten schneidender und unbekannter Objekte
+- Darstellungsprofile `Original` und `Karte` sowie einen separaten Regler ausschließlich für HATCH-/SOLID-/Füllungsmaterialien ergänzt
+- Objektaktionen `Ganz nach vorne` und `Ganz nach hinten` in beiden Viewern ergänzt; mehrteilige Darstellungen und wiederverwendete Block-Unterobjekte verwenden stabile gemeinsame Reihenfolgeschlüssel
+- Vorbereitungsbericht auf Schema 2 mit konkreten Auswirkungen, echten Objektzahlen und ausdrücklich getrennten Performancekostenschätzungen erweitert
+- Datenquellen-, Architektur-, Test- und Release-Dokumentation für Annotationsmaßstäbe, lokale XRefs, ACT-Grenzdaten, Darstellung und Zeichenreihenfolge ergänzt
+
+### Geändert
+
+- MLightCAD führt aufgelöste XRefs vor der Viewer-Konvertierung unter getrennten `XRefName|…`-Tabellen- und Blocknamensräumen zusammen; Attachments können weitere lokale Referenzen laden, Overlays nicht
+- Layer-, Block-, Text-, Objekt-, Filter-, Darstellungs-, Maßstabs- und Zeichenreihenfolgezustände bleiben innerhalb der Sitzung zwischen `/` und `/openlayers` erhalten und werden bei einer neuen Haupt-DWG zurückgesetzt
+- `Original` zeigt Füllungen mit 100 Prozent; `Karte` startet mit 35 Prozent Füllungsdeckkraft, ohne leere Canvasbereiche, Orthofoto, Linien oder Texte abzudunkeln
+- OpenLayers setzt Zeichenreihenfolgen über `Style.zIndex` und genau eine Ebenenaktualisierung um; MLightCAD verwendet begrenzte Preview-Fragmente mit vollständigem Dispose statt eines CAD-Neuimports
+- die App-Version im Kopf und die Paketmetadaten wurden auf `0.5.0` angehoben; die bestehenden MLightCAD-Abhängigkeiten und der Worker-Assetpfad `/mlightcad-workers/0.3.0/` bleiben unverändert
+- Vorbereitung, Annotationsmaßstab, XRef-Zustände, Luxemburg-Filter, Darstellungsprofile und Zeichenreihenfolge vollständig in Deutsch, Französisch und Englisch ergänzt
+- vom MLightCAD-Renderer nach Renderstart gemeldete fehlende beziehungsweise ersetzte CAD-Schriften werden bestmöglich mit Schriftname und Vorkommenszahl im lokalisierten Importbericht angezeigt
+
+### Performance
+
+- der synchrone Kamera-Hotpath aus `0.2.4`/`0.4.1` bleibt unverändert: jede MLightCAD-Meldung setzt direkt LUREF-Mittelpunkt und Auflösung und führt im selben Ereignis `renderSync()` aus
+- Annotationen, XRefs, Grenzfilter und Importauswirkungen werden ausschließlich während Preflight beziehungsweise Import berechnet; Pan und Zoom erhalten keine zusätzliche Worker-, React-, Projektions- oder Grenzprüfungsarbeit
+- MLightCAD-Preview-Budgets verhindern übergroße Zeichenreihenfolgeaktionen; bei Überschreitung bleibt die Szene unverändert und zeigt einen lokalisierten Hinweis
+
+### Grenzen
+
+- keine Datei wird allein aufgrund ihrer Größe blockiert; ein vollständiger Ladeversuch bleibt verfügbar
+- XCLIP, proprietäre Custom-/Proxy-Objekte, 3D-Darstellung, CAD-Bearbeitung und das Schreiben einer optimierten DWG bleiben außerhalb dieses Releases
+- weil `convertEx()` keine belastbare Eigentümerzuordnung alternativer Annotationsdarstellungen liefert, bleibt die Maßstabsauswahl fail-open und entfernt in 0.5.0 keine Darstellung heuristisch
+- die Schriftmeldung basiert auf den vom Renderer erkannten `missedFonts`; vom Parser ausgelassene oder nicht gemeldete Schriftverwendungen können weiterhin fehlen
+- private Referenz-DWGs werden nicht in das Repository aufgenommen, hochgeladen oder persistent gespeichert
+
 ## [0.4.1] – 2026-08-26
 
 ### Behoben

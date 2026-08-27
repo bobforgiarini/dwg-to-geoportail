@@ -10,6 +10,7 @@ import type { CadDocument, CadEntity, CadPoint3D } from '@flyfish-dev/cad-viewer
 import { LUREF_CODE, WEB_MERCATOR_CODE } from '../crs';
 import type { CadOverlayLayer } from '../../types/models';
 import { createCadObjectKey } from './objectKey';
+import { createCadDrawOrderGroupKey } from './drawOrder';
 
 type Matrix = [number, number, number, number, number, number];
 type XY = [number, number];
@@ -420,6 +421,10 @@ export function convertCadDocument(document: CadDocument): CadConversionResult {
     const feature = new Feature({ geometry });
     const featureId = `${entity.handle ?? entity.id ?? entity.type}-${features.length}`;
     const objectKey = createCadObjectKey(String(entity.handle ?? entity.id ?? featureId), stack);
+    const drawOrderGroupKey = createCadDrawOrderGroupKey(
+      String(entity.handle ?? entity.id ?? featureId),
+      stack,
+    );
     const normalizedType = String(entity.type ?? '').trim().toUpperCase();
     const isCadAnnotation = kind === 'text'
       || normalizedType === 'LEADER'
@@ -429,6 +434,7 @@ export function convertCadDocument(document: CadDocument): CadConversionResult {
     feature.setProperties({
       featureId,
       objectKey,
+      drawOrderGroupKey,
       layerId,
       cadType: entity.type,
       cadColor: resolveCadColor(entity, document, { background: '#334b36', foreground: '#ffffff', contrastMode: 'preserve' }),

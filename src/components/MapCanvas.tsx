@@ -25,8 +25,10 @@ import type { BasemapHealthReporter, BasemapHealthState } from '../lib/basemapHe
 import { bindBasemapSourceHealth, createBasemapLayer } from '../lib/geoportail';
 import { mapToLuref } from '../lib/crs';
 import { normalizeCadOpacity } from '../lib/mlightcad/opacity';
-import type { DwgImportResult, LocationTrackingState, SelectedCadObject } from '../types/models';
+import type { CadObjectDrawOrder, DwgImportResult, LocationTrackingState, SelectedCadObject } from '../types/models';
 import { browserPreflightDevice } from '../lib/cad/importRecovery';
+import { cadObjectDrawOrderZIndex } from '../lib/cad/drawOrder';
+import { normalizeFillOpacity, type CadAppearanceSettings } from '../lib/cad/appearance';
 
 interface Props {
   dwg: DwgImportResult | null;
@@ -45,6 +47,8 @@ interface Props {
   onCadSelect: (selection: SelectedCadObject | null) => void;
   cadTextVisible: boolean;
   cadOpacity: number;
+  objectDrawOrder: CadObjectDrawOrder;
+  appearance: CadAppearanceSettings;
   fitOnDwgChange?: boolean;
 }
 
@@ -52,7 +56,7 @@ export interface MapCanvasHandle {
   fitDrawing: () => void;
 }
 
-export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({ dwg, visibleLayers, location, basemapHealth, basemapHealthReporter, basemapVisible, basemapSuspended = false, onManualMove, onCoordinate, hiddenFeatureIds, hiddenObjectKeys, hiddenBlockNames, selectedFeatureId, onCadSelect, cadTextVisible, cadOpacity, fitOnDwgChange = true }, ref) {
+export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({ dwg, visibleLayers, location, basemapHealth, basemapHealthReporter, basemapVisible, basemapSuspended = false, onManualMove, onCoordinate, hiddenFeatureIds, hiddenObjectKeys, hiddenBlockNames, selectedFeatureId, onCadSelect, cadTextVisible, cadOpacity, objectDrawOrder, appearance, fitOnDwgChange = true }, ref) {
   const { t } = useTranslation();
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
@@ -68,6 +72,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
   const selectedRef = useRef(selectedFeatureId);
   const onCadSelectRef = useRef(onCadSelect);
   const cadTextVisibleRef = useRef(cadTextVisible);
+  const drawOrderRef = useRef(objectDrawOrder);
+  const appearanceRef = useRef(appearance);
   const [rotation, setRotation] = useState(0);
   visibleRef.current = visibleLayers;
   hiddenRef.current = hiddenFeatureIds;
@@ -76,6 +82,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
   selectedRef.current = selectedFeatureId;
   onCadSelectRef.current = onCadSelect;
   cadTextVisibleRef.current = cadTextVisible;
+  drawOrderRef.current = objectDrawOrder;
+  appearanceRef.current = appearance;
   basemapVisibleRef.current = basemapVisible;
 
   const cadLayer = useMemo(() => new VectorLayer({
@@ -92,23 +100,32 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
       const color = String(feature.get('cadColor') || '#f1be88');
       const label = String(feature.get('label') || '');
       const selected = selectedRef.current === featureId;
+      const drawOrderGroupKey = String(feature.get('drawOrderGroupKey') ?? objectKey);
+      const zIndex = cadObjectDrawOrderZIndex(drawOrderRef.current, drawOrderGroupKey);
+      const mapProfile = appearanceRef.current.profile === 'map';
+      const fillOpacity = normalizeFillOpacity(appearanceRef.current.fillOpacity) / 100;
+      const fillColor = color.startsWith('#') && (color.length === 4 || color.length === 7)
+        ? `${color}${Math.round(fillOpacity * 255).toString(16).padStart(2, '0')}`
+        : color;
       const selection = new Style({
         stroke: new Stroke({ color: '#f1be88', width: 8 }),
         fill: new Fill({ color: 'rgba(241,190,136,.28)' }),
         image: new CircleStyle({ radius: 10, fill: new Fill({ color: 'rgba(241,190,136,.25)' }), stroke: new Stroke({ color: '#f1be88', width: 3 }) }),
+        zIndex,
       });
-      const halo = new Style({ stroke: new Stroke({ color: 'rgba(0,0,0,.72)', width: 5 }) });
+      const halo = new Style({ stroke: new Stroke({ color: mapProfile ? 'rgba(0,0,0,.86)' : 'rgba(0,0,0,.72)', width: mapProfile ? 6 : 5 }), zIndex });
       const foreground = new Style({
-        stroke: new Stroke({ color, width: 2 }),
-        fill: new Fill({ color: `${color}55` }),
-        image: new CircleStyle({ radius: 4, fill: new Fill({ color }), stroke: new Stroke({ color: '#051c2c', width: 2 }) }),
+        stroke: new Stroke({ color, width: mapProfile ? 2.5 : 2 }),
+        fill: new Fill({ color: fillColor }),
+        image: new CircleStyle({ radius: mapProfile ? 4.5 : 4, fill: new Fill({ color }), stroke: new Stroke({ color: '#051c2c', width: mapProfile ? 2.5 : 2 }) }),
         text: label ? new Text({
           text: label,
-          font: '600 12px system-ui, sans-serif',
+          font: `${mapProfile ? '700 13px' : '600 12px'} system-ui, sans-serif`,
           fill: new Fill({ color }),
-          stroke: new Stroke({ color: '#051c2c', width: 4 }),
+          stroke: new Stroke({ color: '#051c2c', width: mapProfile ? 5 : 4 }),
           offsetY: -10,
         }) : undefined,
+        zIndex,
       });
       return selected ? [selection, halo, foreground] : [halo, foreground];
     },
@@ -162,6 +179,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
       onCadSelectRef.current({
         featureId,
         objectKey: String(feature.get('objectKey') ?? featureId),
+        drawOrderGroupKey: String(feature.get('drawOrderGroupKey') ?? feature.get('objectKey') ?? featureId),
         layerId: String(feature.get('layerId') ?? '0'),
         cadType: String(feature.get('cadType') ?? 'CAD'),
         label: String(feature.get('label') ?? ''),
@@ -226,7 +244,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
     cadLayer.setOpacity(normalizeCadOpacity(cadOpacity) / 100);
   }, [cadLayer, cadOpacity]);
 
-  useEffect(() => { cadLayer.changed(); }, [cadLayer, cadTextVisible, hiddenBlockNames, hiddenFeatureIds, hiddenObjectKeys, selectedFeatureId, visibleLayers]);
+  useEffect(() => { cadLayer.changed(); }, [appearance, cadLayer, cadTextVisible, hiddenBlockNames, hiddenFeatureIds, hiddenObjectKeys, objectDrawOrder, selectedFeatureId, visibleLayers]);
 
   useEffect(() => {
     locationSource.clear();

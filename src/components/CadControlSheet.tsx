@@ -2,10 +2,13 @@ import type { ReactNode } from 'react';
 import { FileUp, RotateCcw, Trash2, Type, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { BottomSheet } from './BottomSheet';
+import { CadAppearanceControl } from './CadAppearanceControl';
 import { CadOpacityControl } from './CadOpacityControl';
 import { CadRenderQualityControl } from './CadRenderQualityControl';
+import { CadSpatialFilterControl } from './CadSpatialFilterControl';
 import { LoadingSpinner } from './LoadingSpinner';
 import type { CadRenderQualityMode } from '../lib/mlightcad/renderQuality';
+import type { CadAppearanceSettings } from '../lib/cad/appearance';
 
 interface Props {
   open: boolean;
@@ -16,6 +19,8 @@ interface Props {
   progressLabel: string;
   message: string | null;
   opacity: number;
+  appearance?: CadAppearanceSettings;
+  spatialFilterEnabled?: boolean;
   renderQuality?: CadRenderQualityMode;
   cadTextVisible: boolean;
   hiddenObjectCount: number;
@@ -27,6 +32,8 @@ interface Props {
   onRemoveFile: () => void;
   onCancel: () => void;
   onOpacityChange: (value: number) => void;
+  onAppearanceChange?: (value: CadAppearanceSettings) => void;
+  onSpatialFilterChange?: (enabled: boolean) => void;
   onRenderQualityChange?: (value: CadRenderQualityMode) => void;
   onToggleTexts: () => void;
   onRestoreHidden: () => void;
@@ -41,6 +48,8 @@ export function CadControlSheet({
   progressLabel,
   message,
   opacity,
+  appearance,
+  spatialFilterEnabled,
   renderQuality,
   cadTextVisible,
   hiddenObjectCount,
@@ -52,6 +61,8 @@ export function CadControlSheet({
   onRemoveFile,
   onCancel,
   onOpacityChange,
+  onAppearanceChange,
+  onSpatialFilterChange,
   onRenderQualityChange,
   onToggleTexts,
   onRestoreHidden,
@@ -109,6 +120,20 @@ export function CadControlSheet({
       <section className="cad-control-section" aria-labelledby="display-control-title">
         <h3 id="display-control-title">{t('cadDisplay')}</h3>
         <CadOpacityControl value={opacity} onChange={onOpacityChange} />
+        {appearance && onAppearanceChange && (
+          <CadAppearanceControl
+            value={appearance}
+            disabled={controlsDisabled}
+            onChange={onAppearanceChange}
+          />
+        )}
+        {spatialFilterEnabled !== undefined && onSpatialFilterChange && (
+          <CadSpatialFilterControl
+            enabled={spatialFilterEnabled}
+            disabled={loading}
+            onChange={onSpatialFilterChange}
+          />
+        )}
         {renderQuality && onRenderQualityChange && (
           <CadRenderQualityControl value={renderQuality} onChange={onRenderQualityChange} />
         )}

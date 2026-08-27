@@ -1,10 +1,13 @@
 import type { DwgDatabase } from '@mlightcad/libredwg-web';
 import type {
+  CadAnnotationScaleSelection,
   CadLoadDecision,
   CadLoadProfile,
   DwgPreflightOptions,
   DwgPreflightReport,
 } from '../cad/preflightTypes';
+import type { CadSpatialFilterReport } from '../cad/luxembourgSpatialFilter';
+import type { CadDwgSource } from '../cad/xrefBundle';
 
 export interface MlightDwgWorkerStartOptions {
   wasmBaseUrl: string;
@@ -14,6 +17,10 @@ export interface MlightDwgWorkerStartOptions {
   loadProfile?: CadLoadProfile;
   forcePreparation?: boolean;
   forceFull?: boolean;
+  xrefSources?: CadDwgSource[];
+  preferredXrefFileIds?: Record<string, string>;
+  annotationScaleId?: string | null;
+  spatialFilterEnabled?: boolean;
   canPrepare: boolean;
 }
 
@@ -29,6 +36,8 @@ export interface MlightDwgWorkerContinueMessage {
   jobId: string;
   decision: Exclude<CadLoadDecision, 'cancel'>;
   profile?: CadLoadProfile;
+  annotationScaleId?: string | null;
+  spatialFilterEnabled?: boolean;
 }
 
 export interface MlightDwgWorkerCancelMessage {
@@ -52,7 +61,14 @@ export interface MlightDwgWorkerResultMessage {
   type: 'result';
   jobId: string;
   model: DwgDatabase;
-  stats: { unknownEntityCount: number };
+  stats: MlightDwgWorkerStats;
+}
+
+export interface MlightDwgWorkerStats {
+  unknownEntityCount: number;
+  annotationScale?: CadAnnotationScaleSelection;
+  externalReferenceCount?: number;
+  spatialFilter?: CadSpatialFilterReport;
 }
 
 export interface MlightDwgWorkerErrorMessage {
@@ -78,4 +94,6 @@ export type MlightDwgWorkerResponse =
 export interface MlightDwgWorkerDecision {
   decision: Exclude<CadLoadDecision, 'cancel'>;
   profile?: CadLoadProfile;
+  annotationScaleId?: string | null;
+  spatialFilterEnabled?: boolean;
 }

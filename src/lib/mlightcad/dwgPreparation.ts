@@ -90,6 +90,7 @@ function toCadEntity(entity: DwgEntity): CadEntity {
     insertColumnCount: insert?.columnCount,
     insertRowSpacing: insert?.rowSpacing,
     insertColumnSpacing: insert?.columnSpacing,
+    rotation: insert?.rotation,
     scale: insert ? { x: insert.xScale, y: insert.yScale, z: insert.zScale } : undefined,
     attribs: insert?.attribs?.map(toCadEntity),
     // The adapter document is short-lived and never structured-cloned. Keeping

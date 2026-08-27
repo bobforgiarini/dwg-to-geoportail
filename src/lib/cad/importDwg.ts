@@ -4,6 +4,7 @@ import type { DwgImportResult } from '../../types/models';
 import type { CadLoadDecision, CadLoadProfile, DwgPreflightOptions, DwgPreflightReport } from './preflightTypes';
 import { awaitCadRuntimeDisposal } from './runtimeDisposal';
 import { MlightDwgPreparationWorkerClient } from '../mlightcad/MlightDwgPreparationWorkerClient';
+import { cadFileDescriptor, type CadDwgSource } from './xrefBundle';
 
 export const RECOMMENDED_DWG_BYTES = 10 * 1024 * 1024;
 export const DWG_TIMEOUT_MS = 120_000;
@@ -18,6 +19,8 @@ const FULL_PROFILE: CadLoadProfile = {
 export interface DwgPreparationDecision {
   decision: CadLoadDecision;
   profile?: CadLoadProfile;
+  annotationScaleId?: string | null;
+  spatialFilterEnabled?: boolean;
 }
 
 export interface DwgImportOptions {
@@ -26,6 +29,10 @@ export interface DwgImportOptions {
   onPreparation?: (report: DwgPreflightReport) => Promise<DwgPreparationDecision>;
   forceFull?: boolean;
   forcePreparation?: boolean;
+  xrefFiles?: readonly File[];
+  preferredXrefFileIds?: Readonly<Record<string, string>>;
+  annotationScaleId?: string | null;
+  spatialFilterEnabled?: boolean;
 }
 
 export class DwgPreflightError extends Error {
@@ -64,6 +71,12 @@ export async function importDwg(
     if (signal.aborted) throw new DOMException('Import aborted', 'AbortError');
     onProgress?.({ phase: 'worker-start', message: 'Starting adaptive DWG worker' });
 
+    const xrefSources: CadDwgSource[] = [];
+    for (const xref of options.xrefFiles ?? []) {
+      if (signal.aborted) throw new DOMException('Import aborted', 'AbortError');
+      xrefSources.push({ file: cadFileDescriptor(xref), data: await xref.arrayBuffer() });
+    }
+
     let preflight: DwgPreflightReport | null = null;
     let preflightReceived = false;
     let appliedProfile = options.forceFull ? FULL_PROFILE : options.initialProfile ?? FULL_PROFILE;
@@ -77,6 +90,12 @@ export async function importDwg(
         loadProfile: options.initialProfile,
         forcePreparation: options.forcePreparation,
         forceFull: options.forceFull,
+        xrefSources,
+        preferredXrefFileIds: options.preferredXrefFileIds
+          ? { ...options.preferredXrefFileIds }
+          : undefined,
+        annotationScaleId: options.annotationScaleId,
+        spatialFilterEnabled: options.spatialFilterEnabled,
       }, {
         onPreflight: (report) => {
           preflight = report;

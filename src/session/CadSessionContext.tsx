@@ -20,7 +20,14 @@ import {
   type DwgImportRecoveryMarker,
 } from '../lib/cad/importRecovery';
 import type { CadLoadProfile, DwgPreflightReport } from '../lib/cad/preflightTypes';
+import { cadFileDescriptor } from '../lib/cad/xrefBundle';
 import type { CadRenderQualityMode } from '../lib/mlightcad/renderQuality';
+import { EMPTY_CAD_OBJECT_DRAW_ORDER, moveCadObjectDrawOrder } from '../lib/cad/drawOrder';
+import {
+  DEFAULT_CAD_APPEARANCE,
+  type CadAppearanceSettings,
+} from '../lib/cad/appearance';
+import type { CadObjectDrawOrder, CadObjectDrawOrderTier } from '../types/models';
 import {
   getViewerHref,
   navigateBrowserToViewer,
@@ -36,6 +43,14 @@ export interface CadSession {
   file: File | null;
   /** Changes whenever the selected file is set or cleared. */
   fileRevision: number;
+  /** Local XRef files held only for the current browser session. */
+  xrefFiles: File[];
+  /** Explicit choices for ambiguous XRef base-name matches. */
+  preferredXrefFileIds: Record<string, string>;
+  /** Fixed annotation scale selected for the current main DWG. */
+  annotationScaleId: string | null;
+  /** Luxembourg plus 1 km conservative model filter. */
+  spatialFilterEnabled: boolean;
   activeViewer: ViewerKind;
   /** Shared visibility of the Geoportail background in both viewers. */
   basemapVisible: boolean;
@@ -45,7 +60,11 @@ export interface CadSession {
   loadProfile: CadLoadProfile;
   cadTextVisible: boolean;
   cadRenderQuality: CadRenderQualityMode;
+  /** Shared CAD-only appearance; it never changes the Geoportail layer. */
+  cadAppearance: CadAppearanceSettings;
   hiddenObjectIds: string[];
+  /** Session-only front/back overrides shared by both CAD viewers. */
+  objectDrawOrder: CadObjectDrawOrder;
   /** Marker left by a previous hard tab termination; contains metadata only. */
   recoveryMarker: DwgImportRecoveryMarker | null;
   recoveryPreparationRequired: boolean;
@@ -54,6 +73,10 @@ export interface CadSession {
 export interface CadSessionContextValue extends CadSession {
   setFile: (file: File) => void;
   clearFile: () => void;
+  addXrefFiles: (files: readonly File[]) => void;
+  setPreferredXrefFile: (xrefId: string, fileId: string) => void;
+  setAnnotationScaleId: (scaleId: string | null) => void;
+  setSpatialFilterEnabled: (enabled: boolean) => void;
   setViewer: (viewer: ViewerKind, options?: ViewerNavigationOptions) => void;
   getViewerHref: (viewer: ViewerKind) => string;
   setBasemapVisible: (visible: boolean) => void;
@@ -68,7 +91,9 @@ export interface CadSessionContextValue extends CadSession {
   resetLoadProfile: () => void;
   setCadTextVisible: (visible: boolean) => void;
   setCadRenderQuality: (quality: CadRenderQualityMode) => void;
+  setCadAppearance: (appearance: CadAppearanceSettings) => void;
   setObjectHidden: (objectId: string, hidden: boolean) => void;
+  setObjectDrawOrder: (groupKey: string, tier: CadObjectDrawOrderTier) => void;
   restoreHiddenObjects: () => void;
   clearRecoveryPreparationRequirement: () => void;
   reloadFile: () => void;
@@ -96,6 +121,10 @@ function updateVisibility(values: string[], id: string, visible: boolean): strin
 export function CadSessionProvider({ children }: PropsWithChildren) {
   const [file, updateFile] = useState<File | null>(null);
   const [fileRevision, setFileRevision] = useState(0);
+  const [xrefFiles, setXrefFiles] = useState<File[]>([]);
+  const [preferredXrefFileIds, setPreferredXrefFileIds] = useState<Record<string, string>>({});
+  const [annotationScaleId, setAnnotationScaleId] = useState<string | null>(null);
+  const [spatialFilterEnabled, setSpatialFilterEnabled] = useState(true);
   const [activeViewer, setActiveViewer] = useState<ViewerKind>(readInitialViewer);
   const [basemapVisible, setBasemapVisible] = useState(true);
   const [basemapHealthSuspended, setBasemapHealthSuspended] = useState(false);
@@ -103,7 +132,12 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
   const [loadProfile, setLoadProfileState] = useState<CadLoadProfile>(EMPTY_LOAD_PROFILE);
   const [cadTextVisible, setCadTextVisible] = useState(true);
   const [cadRenderQuality, setCadRenderQuality] = useState<CadRenderQualityMode>('auto');
+  const [cadAppearance, setCadAppearanceState] = useState<CadAppearanceSettings>(DEFAULT_CAD_APPEARANCE);
   const [hiddenObjectIds, setHiddenObjectIds] = useState<string[]>([]);
+  const [objectDrawOrder, setObjectDrawOrderState] = useState<CadObjectDrawOrder>(() => ({
+    front: [...EMPTY_CAD_OBJECT_DRAW_ORDER.front],
+    back: [...EMPTY_CAD_OBJECT_DRAW_ORDER.back],
+  }));
   const [recoveryMarker, setRecoveryMarker] = useState<DwgImportRecoveryMarker | null>(
     () => consumeDwgImportRecoveryMarker(),
   );
@@ -162,20 +196,50 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
     recoveryMarkerRef.current = null;
     setRecoveryMarker(null);
     updateFile(nextFile);
+    setXrefFiles([]);
+    setPreferredXrefFileIds({});
+    setAnnotationScaleId(null);
+    setSpatialFilterEnabled(true);
     setPreflightReport(null);
     setLoadProfileState(EMPTY_LOAD_PROFILE);
     setCadTextVisible(true);
+    setCadAppearanceState(DEFAULT_CAD_APPEARANCE);
     setHiddenObjectIds([]);
+    setObjectDrawOrderState({ front: [], back: [] });
     setFileRevision((currentRevision) => currentRevision + 1);
   }, []);
 
   const clearFile = useCallback(() => {
     setRecoveryPreparationRequired(false);
     updateFile(null);
+    setXrefFiles([]);
+    setPreferredXrefFileIds({});
+    setAnnotationScaleId(null);
+    setSpatialFilterEnabled(true);
     setPreflightReport(null);
     setLoadProfileState(EMPTY_LOAD_PROFILE);
     setCadTextVisible(true);
+    setCadAppearanceState(DEFAULT_CAD_APPEARANCE);
     setHiddenObjectIds([]);
+    setObjectDrawOrderState({ front: [], back: [] });
+    setFileRevision((currentRevision) => currentRevision + 1);
+  }, []);
+
+  const addXrefFiles = useCallback((nextFiles: readonly File[]) => {
+    if (!nextFiles.length) return;
+    setXrefFiles((current) => {
+      const byId = new Map(current.map((candidate) => [cadFileDescriptor(candidate).id, candidate]));
+      for (const candidate of nextFiles) {
+        if (!candidate.name.toLocaleLowerCase('en-US').endsWith('.dwg')) continue;
+        byId.set(cadFileDescriptor(candidate).id, candidate);
+      }
+      return [...byId.values()];
+    });
+    setFileRevision((currentRevision) => currentRevision + 1);
+  }, []);
+
+  const setPreferredXrefFile = useCallback((xrefId: string, fileId: string) => {
+    setPreferredXrefFileIds((current) => ({ ...current, [xrefId]: fileId }));
     setFileRevision((currentRevision) => currentRevision + 1);
   }, []);
 
@@ -211,10 +275,16 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
   }, []);
 
   const resetLoadProfile = useCallback(() => setLoadProfileState(EMPTY_LOAD_PROFILE), []);
+  const setCadAppearance = useCallback((appearance: CadAppearanceSettings) => {
+    setCadAppearanceState({ ...appearance });
+  }, []);
   const setObjectHidden = useCallback((objectId: string, hidden: boolean) => {
     setHiddenObjectIds((current) => updateVisibility(current, objectId, !hidden));
   }, []);
   const restoreHiddenObjects = useCallback(() => setHiddenObjectIds([]), []);
+  const setObjectDrawOrder = useCallback((groupKey: string, tier: CadObjectDrawOrderTier) => {
+    setObjectDrawOrderState((current) => moveCadObjectDrawOrder(current, groupKey, tier));
+  }, []);
   const clearRecoveryPreparationRequirement = useCallback(
     () => setRecoveryPreparationRequired(false),
     [],
@@ -236,6 +306,10 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
     () => ({
       file,
       fileRevision,
+      xrefFiles,
+      preferredXrefFileIds,
+      annotationScaleId,
+      spatialFilterEnabled,
       activeViewer,
       basemapVisible,
       basemapHealth,
@@ -244,11 +318,17 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       loadProfile,
       cadTextVisible,
       cadRenderQuality,
+      cadAppearance,
       hiddenObjectIds,
+      objectDrawOrder,
       recoveryMarker,
       recoveryPreparationRequired,
       setFile,
       clearFile,
+      addXrefFiles,
+      setPreferredXrefFile,
+      setAnnotationScaleId,
+      setSpatialFilterEnabled,
       setViewer,
       getViewerHref,
       setBasemapVisible,
@@ -261,12 +341,14 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       resetLoadProfile,
       setCadTextVisible,
       setCadRenderQuality,
+      setCadAppearance,
       setObjectHidden,
+      setObjectDrawOrder,
       restoreHiddenObjects,
       clearRecoveryPreparationRequirement,
       reloadFile,
     }),
-    [activeViewer, basemapHealth, basemapHealthReporter, basemapVisible, cadRenderQuality, cadTextVisible, clearFile, clearRecoveryPreparationRequirement, file, fileRevision, hiddenObjectIds, loadProfile, preflightReport, recoveryMarker, recoveryPreparationRequired, reloadFile, resetLoadProfile, restoreHiddenObjects, setBlockProfileVisible, setFile, setLayerProfileVisible, setLoadProfile, setObjectHidden, setViewer, toggleBasemapVisible],
+    [activeViewer, addXrefFiles, annotationScaleId, basemapHealth, basemapHealthReporter, basemapVisible, cadAppearance, cadRenderQuality, cadTextVisible, clearFile, clearRecoveryPreparationRequirement, file, fileRevision, hiddenObjectIds, loadProfile, objectDrawOrder, preferredXrefFileIds, preflightReport, recoveryMarker, recoveryPreparationRequired, reloadFile, resetLoadProfile, restoreHiddenObjects, setBlockProfileVisible, setCadAppearance, setFile, setLayerProfileVisible, setLoadProfile, setObjectDrawOrder, setObjectHidden, setPreferredXrefFile, setViewer, spatialFilterEnabled, toggleBasemapVisible, xrefFiles],
   );
 
   return <CadSessionContext.Provider value={value}>{children}</CadSessionContext.Provider>;

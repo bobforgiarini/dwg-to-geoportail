@@ -100,6 +100,17 @@ describe('DWG preflight analysis', () => {
     expect(report.recommendedProfile.hiddenLayerIds).toEqual(['FROZEN', 'HIDDEN', 'NOPLOT']);
     expect(report.recommendedProfile.hiddenEntityCategories).toEqual(['paper-space']);
     expect(report.recommendedProfile.hiddenBlockNames).toEqual([]);
+    expect(report.schemaVersion).toBe(2);
+    expect(report.effects).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'layer:HIDDEN', reason: 'layer-off', label: 'Hidden' }),
+      expect.objectContaining({ id: 'layer:FROZEN', reason: 'layer-frozen', label: 'Frozen' }),
+      expect.objectContaining({ id: 'layer:NOPLOT', reason: 'layer-no-plot', label: 'No plot' }),
+      expect.objectContaining({ id: 'category:paper-space', policy: 'required', affectedEntityCount: 2 }),
+    ]));
+    expect(report.impact).toMatchObject({
+      before: { entityCount: 12 },
+      recommended: { entityCount: 9 },
+    });
     // Size alone is metadata, not a mobile hard block or preparation trigger.
     expect(report.risk.shouldPrepare).toBe(false);
   });
@@ -178,6 +189,27 @@ describe('DWG preflight analysis', () => {
     expect(report.entityCounts).toMatchObject({ modelEntities: 8, proxyObjects: 7 });
     expect(report.risk.estimatedRenderCost).toBeGreaterThanOrEqual(36);
     expect(report.recommendedProfile.hiddenEntityCategories).toContain('proxy');
+  });
+
+  it('carries annotation and local XRef diagnostics into schema 2', () => {
+    const report = analyzeCadDocument(documentWith(), {
+      annotationScale: {
+        mode: 'saved', savedScaleId: null, selectedScaleId: null,
+        availableScales: [], contextObjectCount: 3, failOpen: true,
+      },
+      externalReferences: [{
+        id: 'root:xref', name: 'XRef', normalizedName: 'xref', sourcePath: null,
+        kind: 'attachment', status: 'missing', parentFileId: 'root', resolvedFileId: null,
+        candidateFileIds: [], depth: 0, path: ['root', 'XRef'],
+      }],
+    });
+
+    expect(report.annotationScale?.contextObjectCount).toBe(3);
+    expect(report.externalReferences?.[0].status).toBe('missing');
+    expect(report.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'annotation-scale-unresolved' }),
+      expect.objectContaining({ code: 'xref-missing', blockName: 'XRef' }),
+    ]));
   });
 });
 

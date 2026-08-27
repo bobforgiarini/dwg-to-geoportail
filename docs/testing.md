@@ -1,10 +1,10 @@
-# Test- und Abnahmeplan 0.4.1
+# Test- und Abnahmeplan 0.5.0
 
 ## Grundsatz
 
 Automatisierte Tests prüfen Datenstrukturen, Filterung, Zustandsautomaten und Lebenszyklus. Sie ersetzen weder den visuellen Vergleich mit einer bekannten LUREF-DWG noch einen echten Speichertest in iOS Safari. Private DWG-Dateien bleiben außerhalb des Repositorys und werden nicht an einen externen Dienst übertragen.
 
-Gezielter Regressionsstand für Version 0.4.1: **31 Tests erfolgreich**. Sie decken den geänderten Kamera-, Drawer- und Layerlisten-Hotpath ab; der TypeScript-/Vite-Produktionsbuild ist ebenfalls erfolgreich. Diese Zahl ist ausdrücklich keine neu erfundene Gesamtzahl der vollständigen Suite. Die reale Junglinster-Prüfung ist unten mit ihren Messwerten dokumentiert. Prüfungen auf echter iPhone-Hardware bleiben weiterhin als manuelle Abnahme markiert.
+Die unten aufgeführten automatisierten und manuellen Prüfungen sind die Abnahmebasis für Version 0.5.0. Der vollständige Abschlusslauf umfasst 47 Vitest-Dateien mit 227 bestandenen Tests, einen fehlerfreien TypeScript-Projektbuild und einen erfolgreichen Vite-Produktionsbuild. Die reale Junglinster-Prüfung aus Version 0.4.1 bleibt mit ihren Messwerten als Performance-Referenz dokumentiert. Prüfungen mit privaten XRef-DWGs und auf echter iPhone-Hardware bleiben lokale Abnahmen.
 
 ## Automatisierte Prüfung
 
@@ -22,6 +22,30 @@ npm run build
 - DWG-Version, Dateimetadaten, Layer, direkte und rekursive Instanzen, Objektarten, Blocktiefe und Warnungen werden stabil in `DwgPreflightReport` abgebildet
 - das empfohlene Profil entfernt zunächst nur ausgeschaltete, eingefrorene und No-Plot-Layer sowie Papierbereich, nicht aufgelöste XRefs, Bilder, OLE-/Proxy- und 3D-Inhalte
 - benannte fachliche Blöcke, Texte und Hatches bleiben im automatisch empfohlenen Profil erhalten
+- Schema-2-Berichte führen konkrete `DwgProfileEffect`-Einträge für feste, empfohlene und manuelle Ausschlüsse sowie `DwgProfileImpact` für vorher/empfohlen
+- echte Objektzahlen und gewichtete Performancekosten werden getrennt berechnet und beschriftet; Kosten erscheinen niemals als „Renderobjekte“
+- Schema-1-Fixtures bleiben während der Migration ohne die neuen optionalen Abschnitte lesbar
+
+### Annotationsmaßstäbe und lokale XRefs
+
+- valide `SCALE`-, `CONTEXTDATAMANAGER`- und `*OBJECTCONTEXTDATA`-Strukturen liefern gespeicherten und verfügbare Annotationsmaßstäbe
+- der gespeicherte Maßstab wird standardmäßig gewählt; eine manuelle Auswahl bleibt bei Pan, Zoom und Viewerwechsel unverändert
+- beschädigte, fehlende und mehrdeutige Kontextdaten arbeiten fail-open, entfernen keine Darstellung und erzeugen eine Warnung
+- Text, Linie und Pfeil von Leader/MLeader teilen denselben Textsichtbarkeitszustand
+- XRef-Basisnamen werden unabhängig von Pfadtrennzeichen, Erweiterung und Groß-/Kleinschreibung normalisiert
+- eindeutige, fehlende, mehrdeutige, zyklische und ungültige lokale Referenzen liefern jeweils den erwarteten Status
+- Attachments dürfen weitere lokale Referenzen laden; Overlays werden nicht rekursiv verfolgt
+- zusammengeführte Tabellen und Blöcke erhalten getrennte `XRefName|…`-Namensräume; INSERT-Position, Rotation und Skalierung bleiben erhalten
+- XRef-Dateien werden sequenziell im selben Worker verarbeitet und verlassen den Browser-Arbeitsspeicher nicht
+
+### Luxemburg-Filter
+
+- die generierte Grenze besitzt `EPSG:2169`, fünf Meter Vereinfachungstoleranz, 1.000 Meter Puffer und die dokumentierte ACT-Quellprüfsumme
+- Objekte innerhalb, auf der Puffergrenze und mit schneidender Ausdehnung bleiben vollständig erhalten
+- ausschließlich sicher vollständig außerhalb liegende Objekte werden entfernt
+- unbekannte, ungültige, zyklische und nicht berechenbare Ausdehnungen bleiben fail-open mit Warnung erhalten
+- rekursive INSERT-Transformationen werden vor der räumlichen Entscheidung angewendet; danach nicht mehr erreichbare Blockdefinitionen werden verworfen
+- der Filter ist für eine neue Haupt-DWG aktiv, kann separat ausgeschaltet werden und wird von „Vollständig laden“ nicht überschrieben
 
 ### Blockgraph und Filter
 
@@ -52,7 +76,7 @@ Zusätzlich wird geprüft:
 - `/` löst MLightCAD als Standard-Viewer auf; `/openlayers` öffnet ausschließlich die OpenLayers-Legacy-Ansicht
 - der Viewer-Umschalter schreibt die jeweils kanonische Route in die Browser-History und bewahrt dabei die lokale Dateisitzung
 - die bisherige Route `/mlightcad` bleibt ein kompatibler MLightCAD-Einstieg; unbekannte SPA-Pfade fallen auf den Standard-Viewer zurück
-- die Version im App-Kopf entspricht `package.json` und zeigt für diesen Release `0.4.1`
+- die Version im App-Kopf entspricht `package.json` und zeigt für diesen Release `0.5.0`
 
 ### Layer- und Block-Drawer
 
@@ -131,9 +155,24 @@ Zusätzlich wird geprüft:
 - die OpenLayers-Basiskarte verwendet auf mobilen beziehungsweise grob bedienten Geräten weiterhin DPR 1; keine MLightCAD-Qualitätsstufe darf ihren Pixelratio verändern
 - `Auto`, `Scharf` und `Speichersparend` ändern weder CAD-Weltkoordinaten noch Meter-pro-CSS-Pixel der Kamerabrücke
 
+### Darstellungsprofile, Füllungen und Zeichenreihenfolge
+
+- `Original` ist die Vorgabe und zeigt Füllungen mit 100 Prozent; `Karte` startet bei 35 Prozent Füllungsdeckkraft
+- der Füllungsregler verändert HATCH-, SOLID- und echte Füllmaterialien, aber keine leeren Canvaspixel, Kartenkacheln, Linien oder Texte
+- vom MLightCAD-Renderer gemeldete `missedFonts` werden nach Renderstart je Schrift zusammengefasst und in DE/FR/EN mit Schriftname und Vorkommenszahl angezeigt
+- ein Profil- oder Deckkraftwechsel erstellt weder OpenLayers-`Map`/`View` noch CAD-Dokument oder WebGL-Kontext neu
+- `Ganz nach vorne` und `Ganz nach hinten` aktualisieren dieselbe logische Objektgruppe; die zuletzt verschobene Gruppe liegt am jeweiligen Extrem
+- Leader plus Text/Pfeil und Hatch plus Kontur teilen ihren `drawOrderGroupKey`
+- Unterobjekte einer wiederverwendeten Blockdefinition ändern bewusst alle Instanzen; ein eigenständiges Modellbereichs-INSERT behält seine Identität
+- die Reihenfolge bleibt zwischen `/` und `/openlayers`, bei Sichtbarkeitswechsel und kontrolliertem CAD-Neuladen erhalten; eine neue Haupt-DWG setzt sie zurück
+- OpenLayers ändert ausschließlich vorberechnete `Style.zIndex`-Werte und ruft je Aktion genau einmal `cadLayer.changed()` auf
+- MLightCAD ersetzt bestehende Previews, erhält die Auswahlzuordnung und gibt Materialien sowie geklonte Geometrien bei Wechsel, Neuladen und Dispose frei
+- Preview-Budgets 128/384 auf Mobilgeräten und 256/512 auf Desktop lassen die Szene bei Überschreitung unverändert und melden die Grenze lokalisiert
+- während Pan und Zoom findet keine Zeichenreihenfolgearbeit statt
+
 ### i18n und Regression
 
-- alle neuen Preflight-, Block-, Recovery- und Basemap-Texte sind in Deutsch, Französisch und Englisch vorhanden
+- alle neuen Preflight-, Annotation-, XRef-, Luxemburg-, Darstellungs- und Zeichenreihenfolgetexte sind in Deutsch, Französisch und Englisch vorhanden
 - Umlaute, französische Apostrophe und englische Platzhalter werden korrekt gerendert
 - bestehende CRS-, HATCH-, Kurven-, Auswahl-, Layer-, Text-/Leader- und MLeader-Encoding-Tests bleiben grün
 - TypeScript-Build und Vite-Produktionsbuild laufen ohne Fehler
@@ -161,10 +200,31 @@ Das LibreDWG-WASM muss valide sein und 128 MiB Anfangsspeicher deklarieren. Brow
 5. „Empfohlen laden“ wählen: Die Wirkungsschätzung muss sich plausibel verringern, fachliche benannte Blöcke, Texte und Hatches bleiben erhalten.
 6. „Auswahl anpassen“ öffnen: Layer- und Blockauswahl ändern, anwenden und das Ergebnis gegen eine CAD-Referenz vergleichen.
 7. Während des Imports abbrechen: Oberfläche und Karte müssen unmittelbar wieder bedienbar sein.
+8. Im Schema-2-Bericht Haupt-DWG/XRefs, Maßstab, Luxemburg-Filter, feste Ausschlüsse, Empfehlungen und manuelle Auswahl getrennt kontrollieren.
+9. Für jeden Ausschluss Name, Typ, Grund, echte Objektzahl und ausdrücklich als Schätzung bezeichnete Performancekosten prüfen.
+
+### Lokale XRefs und Annotationen
+
+1. Eine Haupt-DWG mit beiden privaten XRef-Dateien zunächst ohne Ergänzungen öffnen und die fehlenden Referenzen prüfen.
+2. „XRefs hinzufügen“ verwenden und beide Dateien gemeinsam auswählen; im Netzwerkprotokoll darf kein DWG-Upload erscheinen.
+3. Eine zweite lokale Datei mit identischem normalisiertem Basisnamen anbieten und den mehrdeutigen Treffer anhand Dateiname, Größe und Änderungsdatum auflösen.
+4. Attachment-Kette, Overlay, fehlende Referenz und Zyklus jeweils kontrollieren; nur Attachments dürfen rekursiv weiterladen.
+5. Zeichnung in beiden Viewern gegen die CAD-Referenz vergleichen und INSERT-Position, Rotation, Skalierung und Layer-/Blocknamen prüfen.
+6. Jeden erkannten Annotationsmaßstab fest auswählen. Annotative Texte, Bemaßungen, Attribute, Leader, MLeader und INSERTs dürfen bei Pan oder Zoom nicht die Variante wechseln.
+7. Eine beschädigte Kontextfixture muss fail-open bleiben und eine Warnung zeigen, statt Geometrie still zu löschen.
+
+### Räumlicher Filter und Darstellung
+
+1. Luxemburg-Filter bei einer neuen Haupt-DWG als aktiviert prüfen und die dokumentierte Toleranz von 1.000 Metern anzeigen lassen.
+2. Referenzobjekte innerhalb, außerhalb, berührend, schneidend und mit unbekannter Ausdehnung prüfen; nur der sicher vollständig äußere Fall darf verschwinden.
+3. Den Filter deaktivieren und kontrolliert neu laden; Kamera, GPS, Opazität und Drawerzustand müssen erhalten bleiben.
+4. `Original` und `Karte` vergleichen. Im Kartenprofil Füllungsdeckkraft von 0 bis 100 Prozent bewegen: Orthofoto, Linien und Texte dürfen sich nicht verdunkeln.
+5. Ein Objekt ganz nach vorne und danach ganz nach hinten setzen; dieselbe Gruppe muss in beiden Viewern und nach einem CAD-Neuladen am gewählten Extrem bleiben.
+6. Leader, Hatch plus Kontur und ein Unterobjekt eines wiederverwendeten Blocks prüfen. Bei letzterem müssen bewusst alle Vorkommen gemeinsam reagieren.
 
 ### Lokale Junglinster-Referenz
 
-Die bekannte lokale Junglinster-DWG bleibt außerhalb von Git. Sie dient als reale Stabilitäts- und Performance-Referenz, nicht als öffentliches Testasset. Der lokale Browserlauf für Version 0.4.1 ergab:
+Die bekannte lokale Junglinster-DWG bleibt außerhalb von Git. Sie dient als reale Stabilitäts- und Performance-Referenz, nicht als öffentliches Testasset. Der lokale Browserlauf für Version 0.4.1 ergab und muss für 0.5.0 ohne relevante Verschlechterung wiederholt werden:
 
 | Kennzahl | Ergebnis |
 | --- | --- |
@@ -177,6 +237,12 @@ Die bekannte lokale Junglinster-DWG bleibt außerhalb von Git. Sie dient als rea
 | Browserwarnungen | keine |
 
 Dieser Lauf bestätigt den Desktop-Browser-Hotpath, ersetzt aber keine Prüfung auf echter iPhone-Hardware. Ein auf einen schmalen mobilen Viewport gesetzter Desktop-Browser bleibt ebenfalls nur eine responsive UI-Prüfung und kein Ersatz für iOS Safari.
+
+### Lokale XRef-Funktionsprüfung 0.5.0
+
+Die beiden privaten XRef-Referenzen wurden ausschließlich lokal in einem Desktop-Browser geprüft und nicht ins Repository kopiert. Die Projektdatei öffnete als Hauptzeichnung mit 5.086 Objekten, 166 Layern und 18 Blöcken. Die Straßenbauzeichnung meldete vor Ergänzung 56.435 Objekte, 460 Blöcke und 269 Layer sowie zwei fehlende Attachments. Nach lokaler Ergänzung der Projektdatei zeigte der Bericht 62.265 Objekte, 480 Blöcke und 271 Layer; die importierten Tabellen erschienen im getrennten `XRefName|…`-Namensraum. Das empfohlene Profil ließ sich anschließend laden und rendern. Die weiterhin fehlende Trafo-Referenz blieb sichtbar gemeldet.
+
+Der Lauf bestätigt Basisnamenzuordnung, lokale Nachlieferung, Namensräume, Schema-2-Bericht und das Rendern des zusammengeführten Bundles. Er ist keine vollständige visuelle CAD-Paritätsprüfung und ersetzt insbesondere weder die offene Maßstabsvarianten-Abnahme noch den Speichertest auf echtem iPhone-Safari.
 
 - auf einem leistungsfähigen Desktop vollständig laden
 - auf einem echten iPhone zuerst das empfohlene Profil prüfen
@@ -218,6 +284,8 @@ Ein erfolgreicher Lauf auf einem einzelnen Desktop belegt keine iPhone-Kompatibi
 - Bearbeiten oder Neuschreiben einer DWG
 - Erzeugen einer optimierten DWG zum Download
 - Upload, Netlify Function, Datenbank oder persistente Dateispeicherung
-- positive Darstellungsgarantie für XRefs, Papierlayouts, proprietäre Custom Entities oder 3D-Inhalte
+- vollständige Darstellungsgarantie für nicht lokal aufgelöste XRefs, Papierlayouts, proprietäre Custom Entities oder 3D-Inhalte
+- vollständige XCLIP-, Proxy-/Custom-Entity- oder AutoCAD-XRef-Parität
+- vollständige Schrifterkennung über die vom Renderer gemeldeten `missedFonts` hinaus
 
-Nach einem GitHub-Push übernimmt das vorhandene Git-basierte Netlify-Projekt Build und Bereitstellung von Version 0.4.1. Die dortigen Ergebnisse und die manuelle Routenabnahme sind bis dahin ausstehend.
+Nach einem späteren GitHub-Push übernimmt das vorhandene Git-basierte Netlify-Projekt Build und Bereitstellung von Version 0.5.0. Push und Deploy gehören nicht zu diesem Implementierungsschritt; die dortigen Ergebnisse und die manuelle Routenabnahme sind bis dahin ausstehend.

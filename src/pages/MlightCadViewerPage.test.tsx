@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 import { CadSessionProvider } from '../session/CadSessionContext';
@@ -13,6 +13,7 @@ const harness = vi.hoisted(() => {
     fitDrawing: vi.fn(),
     hideObject: vi.fn(),
     hideObjectByKey: vi.fn(() => true),
+    applyObjectDrawOrder: vi.fn(() => 'applied' as const),
     hiddenObjectCount: 0,
     restoreHiddenObjects: vi.fn(),
     setAllLayersVisible: vi.fn(),
@@ -20,6 +21,7 @@ const harness = vi.hoisted(() => {
     setCamera: vi.fn(),
     setLayerVisible: vi.fn(),
     setOpacity: vi.fn(),
+    setObjectDrawOrder: vi.fn(() => 'applied' as const),
     setRenderQuality: vi.fn(),
     setTextsVisible: vi.fn(),
   };
@@ -81,6 +83,15 @@ vi.mock('../components/MlightCadCanvas', async () => {
     renderQuality: 'auto' | 'sharp' | 'memory';
     onAdapterChange: (adapter: typeof harness.adapter | null) => void;
     onCamera: (camera: { center: [number, number]; resolution: number }) => void;
+    onSelection: (selection: {
+      featureId: string;
+      objectKey: string;
+      drawOrderGroupKey: string;
+      layerId: string;
+      cadType: string;
+      label: string;
+      blockPath: string[];
+    } | null) => void;
     onProgress: (progress: { phase: 'ready'; percentage: number }) => void;
     onReady: (ready: { layers: typeof harness.layers; blocks: []; entityCount: number; preflight: null }) => void;
   };
@@ -236,5 +247,41 @@ describe('MLightCAD viewer page integration', () => {
       expect(latestProps?.fileRevision).toBe(2);
       expect(harness.adapter.setCamera).toHaveBeenCalledWith({ center: [80_000, 100_000], resolution: 2 });
     });
+  });
+
+  it('applies a draw-order interaction exactly once before persisting it in the session', async () => {
+    const { container, getByRole } = renderPage();
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [new File(['dwg'], 'order.dwg')] } });
+
+    await waitFor(() => expect(getByRole('button', { name: i18n.t('fitDrawing') })).toBeEnabled());
+    const canvas = harness.canvasProps.mock.calls.at(-1)?.[0] as {
+      onSelection: (selection: {
+        featureId: string;
+        objectKey: string;
+        drawOrderGroupKey: string;
+        layerId: string;
+        cadType: string;
+        label: string;
+        blockPath: string[];
+      }) => void;
+    };
+    act(() => canvas.onSelection({
+      featureId: '42',
+      objectKey: 'entity:42',
+      drawOrderGroupKey: 'group:42',
+      layerId: 'draft',
+      cadType: 'HATCH',
+      label: '',
+      blockPath: [],
+    }));
+
+    harness.adapter.setObjectDrawOrder.mockClear();
+    harness.adapter.applyObjectDrawOrder.mockClear();
+    fireEvent.click(getByRole('button', { name: i18n.t('bringToFront') }));
+
+    expect(harness.adapter.setObjectDrawOrder).toHaveBeenCalledTimes(1);
+    expect(harness.adapter.setObjectDrawOrder).toHaveBeenCalledWith('group:42', 'front');
+    await waitFor(() => expect(harness.adapter.applyObjectDrawOrder).not.toHaveBeenCalled());
   });
 });

@@ -74,7 +74,12 @@ scope.onmessage = (event: MessageEvent<MlightDwgWorkerRequest>) => {
   }
   if (message.jobId !== activeJobId) return;
   if (message.type === 'continue') {
-    resolveDecision?.({ decision: message.decision, profile: message.profile });
+    resolveDecision?.({
+      decision: message.decision,
+      profile: message.profile,
+      annotationScaleId: message.annotationScaleId,
+      spatialFilterEnabled: message.spatialFilterEnabled,
+    });
     resolveDecision = null;
     rejectDecision = null;
     return;

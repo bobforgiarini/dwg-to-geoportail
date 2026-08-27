@@ -253,21 +253,21 @@ describe('MlightCadMap interaction handover', () => {
     const coordinateCallsBeforePan = onCoordinate.mock.calls.length;
 
     act(() => {
-      cameraListener?.({ center: [10, 20], resolution: 4 });
-      cameraListener?.({ center: [30, 40], resolution: 2 });
-      cameraListener?.({ center: [50, 60], resolution: 1 });
+      for (let index = 0; index < 240; index += 1) {
+        cameraListener?.({ center: [index, index + 1], resolution: 4 / (index + 1) });
+      }
     });
-    expect(harness.view.setCenter).toHaveBeenCalledTimes(3);
-    expect(harness.view.setCenter).toHaveBeenLastCalledWith([50, 60]);
-    expect(harness.view.setResolution).toHaveBeenLastCalledWith(1);
-    expect(harness.renderSync).toHaveBeenCalledTimes(3);
+    expect(harness.view.setCenter).toHaveBeenCalledTimes(240);
+    expect(harness.view.setCenter).toHaveBeenLastCalledWith([239, 240]);
+    expect(harness.view.setResolution).toHaveBeenLastCalledWith(4 / 240);
+    expect(harness.renderSync).toHaveBeenCalledTimes(240);
     expect(onCoordinate).toHaveBeenCalledTimes(coordinateCallsBeforePan);
 
     act(() => {
       vi.advanceTimersByTime(100);
     });
     expect(onCoordinate).toHaveBeenCalledTimes(coordinateCallsBeforePan + 1);
-    expect(onCoordinate).toHaveBeenLastCalledWith([50, 60]);
+    expect(onCoordinate).toHaveBeenLastCalledWith([239, 240]);
 
     unmount();
     expect(removeListener).toHaveBeenCalledOnce();

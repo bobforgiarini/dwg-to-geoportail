@@ -64,6 +64,7 @@ export default function App() {
   }, [basemapSuspended, session.setBasemapHealthSuspended]);
   const [preserveViewOnImport, setPreserveViewOnImport] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const xrefInput = useRef<HTMLInputElement>(null);
   const mapCanvas = useRef<MapCanvasHandle>(null);
   const abortController = useRef<AbortController | null>(null);
   const preparationResolver = useRef<((decision: DwgPreparationDecision) => void) | null>(null);
@@ -111,13 +112,26 @@ export default function App() {
     setBlockReturnToPreparation(false);
     setBasemapSuspended(report.risk.level === 'high');
     setDrawerState('prepare');
+    if (session.annotationScaleId == null) {
+      session.setAnnotationScaleId(
+        report.annotationScale?.selectedScaleId ?? report.annotationScale?.savedScaleId ?? null,
+      );
+    }
     return new Promise((resolve) => { preparationResolver.current = resolve; });
   };
 
   const finishPreparation = (decision: DwgPreparationDecision) => {
-    const resolvedDecision = decision.decision === 'filtered' && !decision.profile && preparationReport
-      ? { ...decision, profile: preparationReport.recommendedProfile }
-      : decision;
+    const configuredDecision = decision.decision === 'cancel' ? decision : {
+      ...decision,
+      annotationScaleId: session.annotationScaleId
+        ?? preparationReport?.annotationScale?.selectedScaleId
+        ?? preparationReport?.annotationScale?.savedScaleId
+        ?? null,
+      spatialFilterEnabled: session.spatialFilterEnabled,
+    };
+    const resolvedDecision = configuredDecision.decision === 'filtered' && !configuredDecision.profile && preparationReport
+      ? { ...configuredDecision, profile: preparationReport.recommendedProfile }
+      : configuredDecision;
     if (resolvedDecision.decision === 'filtered' && resolvedDecision.profile) session.setLoadProfile(resolvedDecision.profile);
     if (decision.decision === 'full') session.resetLoadProfile();
     preparationResolver.current?.(resolvedDecision);
@@ -150,6 +164,10 @@ export default function App() {
         },
         forceFull,
         forcePreparation: !forceFull && session.recoveryPreparationRequired,
+        xrefFiles: session.xrefFiles,
+        preferredXrefFileIds: session.preferredXrefFileIds,
+        annotationScaleId: session.annotationScaleId,
+        spatialFilterEnabled: session.spatialFilterEnabled,
       });
       if (!isCurrentImport()) return;
       setDwg(result);
@@ -215,6 +233,15 @@ export default function App() {
     setPreserveViewOnImport(false);
     setDrawerState('controls');
     if (fileInput.current) fileInput.current.value = '';
+  };
+
+  const handleXrefFiles = (files: FileList | null) => {
+    const dwgFiles = [...(files ?? [])].filter((file) => file.name.toLocaleLowerCase('en-US').endsWith('.dwg'));
+    if (dwgFiles.length) {
+      setDrawerState(null);
+      session.addXrefFiles(dwgFiles);
+    }
+    if (xrefInput.current) xrefInput.current.value = '';
   };
 
   const cancelImport = () => {
@@ -368,6 +395,10 @@ export default function App() {
     if (nextSelection) setDrawerState('object');
     else setDrawerState((current) => current === 'object' ? null : current);
   };
+  const setSelectedDrawOrder = (tier: 'front' | 'back') => {
+    if (!selection) return;
+    session.setObjectDrawOrder(selection.drawOrderGroupKey, tier);
+  };
 
   const locationAction = () => {
     if (location.state.follow === 'off') location.start();
@@ -420,6 +451,8 @@ export default function App() {
         onCadSelect={handleCadSelect}
         cadTextVisible={session.cadTextVisible}
         cadOpacity={cadOpacity}
+        objectDrawOrder={session.objectDrawOrder}
+        appearance={session.cadAppearance}
         fitOnDwgChange={!preserveViewOnImport}
       />
 
@@ -464,6 +497,8 @@ export default function App() {
             onHideObject={hideSelectedObject}
             onHideLayer={hideSelectedLayer}
             onHideBlock={hideSelectedBlock}
+            onBringToFront={() => setSelectedDrawOrder('front')}
+            onSendToBack={() => setSelectedDrawOrder('back')}
           />
         </div>
       </BottomSheet>
@@ -477,6 +512,8 @@ export default function App() {
         progressLabel={progress}
         message={message}
         opacity={cadOpacity}
+        appearance={session.cadAppearance}
+        spatialFilterEnabled={session.spatialFilterEnabled}
         cadTextVisible={session.cadTextVisible}
         hiddenObjectCount={hiddenObjectCount}
         controlsDisabled={!dwg || importState !== 'ready'}
@@ -486,6 +523,12 @@ export default function App() {
         onRemoveFile={removeDwg}
         onCancel={cancelImport}
         onOpacityChange={setCadOpacity}
+        onAppearanceChange={session.setCadAppearance}
+        onSpatialFilterChange={(enabled) => {
+          session.setSpatialFilterEnabled(enabled);
+          setPreserveViewOnImport(true);
+          session.reloadFile();
+        }}
         onToggleTexts={() => session.setCadTextVisible(!session.cadTextVisible)}
         onRestoreHidden={restoreAllHidden}
         footer={<>
@@ -497,6 +540,7 @@ export default function App() {
       />
 
       <input ref={fileInput} className="visually-hidden" type="file" accept=".dwg,application/acad,application/x-dwg" onChange={(event) => handleFile(event.target.files?.[0])} />
+      <input ref={xrefInput} className="visually-hidden" type="file" multiple accept=".dwg,application/acad,application/x-dwg" onChange={(event) => handleXrefFiles(event.target.files)} />
       <SiteBanner />
       <DwgPreparationSheet
         open={drawerState === 'prepare' || drawerState === 'prepare-failed'}
@@ -517,6 +561,16 @@ export default function App() {
         onDesktopCheck={() => {
           setMessage(t('preparation.desktopAdvice'));
           setDrawerState('controls');
+        }}
+        spatialFilterEnabled={session.spatialFilterEnabled}
+        onSpatialFilterChange={session.setSpatialFilterEnabled}
+        annotationScaleId={session.annotationScaleId}
+        onAnnotationScaleChange={session.setAnnotationScaleId}
+        onAddXrefs={() => xrefInput.current?.click()}
+        onChooseXrefCandidate={(xrefId, fileId) => {
+          setPreserveViewOnImport(true);
+          setDrawerState(null);
+          session.setPreferredXrefFile(xrefId, fileId);
         }}
       />
       <BlockSheet

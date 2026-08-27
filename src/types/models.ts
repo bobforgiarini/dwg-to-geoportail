@@ -23,11 +23,22 @@ export interface DwgImportResult {
 export interface SelectedCadObject {
   featureId: string;
   objectKey: string;
+  /** Stable render-order identity. Block-definition children share this key across all INSERT occurrences. */
+  drawOrderGroupKey: string;
   layerId: string;
   cadType: string;
   label: string;
   /** Outer-to-inner block definition path. Empty for model-space entities. */
   blockPath: string[];
+}
+
+export type CadObjectDrawOrderTier = 'front' | 'back';
+
+export interface CadObjectDrawOrder {
+  /** Oldest-to-newest; the last item is rendered foremost. */
+  front: string[];
+  /** Oldest-to-newest; the last item is rendered farthest behind. */
+  back: string[];
 }
 
 export type LocationPermission = 'idle' | 'prompt' | 'granted' | 'denied' | 'unavailable';

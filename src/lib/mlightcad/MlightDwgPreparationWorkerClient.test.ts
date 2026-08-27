@@ -90,6 +90,26 @@ describe('MlightDwgPreparationWorkerClient', () => {
     expect(worker.terminate).toHaveBeenCalledOnce();
   });
 
+  it('transfers every local XRef buffer with the root in one start message', async () => {
+    const worker = new FakeWorker();
+    const client = new MlightDwgPreparationWorkerClient(() => worker);
+    const root = new ArrayBuffer(8);
+    const first = new ArrayBuffer(4);
+    const second = new ArrayBuffer(6);
+
+    const task = client.execute(root, {
+      wasmBaseUrl: '/mlightcad-workers/0.5.0',
+      xrefSources: [
+        { file: { id: 'a', name: 'a.dwg', size: 4, lastModified: 1 }, data: first },
+        { file: { id: 'b', name: 'b.dwg', size: 6, lastModified: 2 }, data: second },
+      ],
+    }, {}, 10_000);
+
+    expect(worker.sent[0].transfer).toEqual([root, first, second]);
+    client.cancel();
+    await expect(task).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
   it('terminates and rejects synchronously when cancelled', async () => {
     const worker = new FakeWorker();
     const client = new MlightDwgPreparationWorkerClient(() => worker);

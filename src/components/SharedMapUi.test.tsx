@@ -151,13 +151,17 @@ describe('shared map UI', () => {
 
   it('uses only the shared handle to close the object drawer', () => {
     const onClose = vi.fn();
+    const onBringToFront = vi.fn();
+    const onSendToBack = vi.fn();
     const { getByRole } = render(
       <BottomSheet open modal ariaLabel={i18n.t('objectDetails')} closeLabel={i18n.t('close')} onClose={onClose}>
         <SelectionPanel
-          selection={{ featureId: '1', objectKey: '::1', layerId: 'A', cadType: 'LINE', label: '', blockPath: [] }}
+          selection={{ featureId: '1', objectKey: '::1', drawOrderGroupKey: '::1', layerId: 'A', cadType: 'LINE', label: '', blockPath: [] }}
           layerName="Layer A"
           onHideObject={vi.fn()}
           onHideLayer={vi.fn()}
+          onBringToFront={onBringToFront}
+          onSendToBack={onSendToBack}
         />
       </BottomSheet>,
     );
@@ -165,6 +169,10 @@ describe('shared map UI', () => {
     const dialog = getByRole('dialog', { name: i18n.t('objectDetails') });
     expect(within(dialog).getAllByRole('button', { name: i18n.t('close') })).toHaveLength(1);
     expect(dialog.querySelector('.selection-panel header button')).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: i18n.t('bringToFront') }));
+    fireEvent.click(within(dialog).getByRole('button', { name: i18n.t('sendToBack') }));
+    expect(onBringToFront).toHaveBeenCalledOnce();
+    expect(onSendToBack).toHaveBeenCalledOnce();
   });
 
   it('renders the reusable spinner as a non-announced span', () => {

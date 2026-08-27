@@ -32,6 +32,21 @@ describe('CAD document conversion', () => {
     expect(result.features[0].get('layerId')).toBe('BLOCK');
   });
 
+  it('gives reused block children one definition-wide draw-order key', () => {
+    const result = convertCadDocument(documentWith([
+      { id: 'insert-a', type: 'INSERT', kind: 'insert', blockName: 'symbol', insertionPoint: { x: 80_000, y: 100_000 } },
+      { id: 'insert-b', type: 'INSERT', kind: 'insert', blockName: 'symbol', insertionPoint: { x: 80_100, y: 100_000 } },
+    ], {
+      symbol: { name: 'symbol', entities: [
+        { id: 'line-42', type: 'LINE', kind: 'line', startPoint: { x: 0, y: 0 }, endPoint: { x: 10, y: 0 } },
+      ] },
+    }));
+
+    expect(result.features).toHaveLength(2);
+    expect(result.features.map((feature) => feature.get('drawOrderGroupKey')))
+      .toEqual(['symbol::line-42', 'symbol::line-42']);
+  });
+
   it('approximates curves and reports ignored 3D and paper-space content', () => {
     const result = convertCadDocument(documentWith([
       { type: 'CIRCLE', kind: 'circle', layer: 'A', center: { x: 80_000, y: 100_000 }, radius: 5 },

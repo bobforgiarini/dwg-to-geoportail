@@ -14,11 +14,26 @@ import {
   type AcDbEntity,
   type AcDbProgressdEventArgs,
 } from '@mlightcad/data-model';
-import type { CadOverlayLayer, SelectedCadObject } from '../../types/models';
+import { disposePreviewSubset } from '@mlightcad/three-renderer';
+import { Group, Raycaster, Vector2, type Material, type Object3D } from 'three';
+import type {
+  CadObjectDrawOrder,
+  CadObjectDrawOrderTier,
+  CadOverlayLayer,
+  SelectedCadObject,
+} from '../../types/models';
 import type { CadLoadProfile, CadOverlayBlock, DwgPreflightReport } from '../cad/preflightTypes';
 import { awaitCadRuntimeDisposal, registerCadRuntimeDisposal } from '../cad/runtimeDisposal';
 import { cadObjectIdFromKey, createCadObjectKey } from '../cad/objectKey';
+import { createCadDrawOrderGroupKey, moveCadObjectDrawOrder } from '../cad/drawOrder';
+import {
+  DEFAULT_CAD_APPEARANCE,
+  normalizeFillOpacity,
+  type CadAppearanceSettings,
+} from '../cad/appearance';
 import { readCadCamera } from './cameraBridge';
+import { CadFillOpacityController } from './fillOpacity';
+import { appendFontSubstitutionWarnings } from './fontWarnings';
 import { CancellableLibreDwgConverter } from './CancellableLibreDwgConverter';
 import { normalizeCadOpacity, opacityToCss } from './opacity';
 import {
@@ -33,6 +48,7 @@ import {
   type MlightCadAdapterEvents,
   type MlightCadLoadOptions,
 } from './types';
+import { cadFileDescriptor, type CadDwgSource } from '../cad/xrefBundle';
 
 const WORKER_ROOT = '/mlightcad-workers/0.3.0';
 const DWG_WORKER_URL = `${WORKER_ROOT}/${LIBREDWG_PARSER_WORKER_FILE}`;
@@ -46,6 +62,14 @@ const MOBILE_SELECTION_RADIUS_PX = 12;
 const TAP_MOVE_TOLERANCE_PX = 10;
 const MOBILE_TOUCH_ZOOM_SPEED = 2.25;
 const FIT_CAMERA_SYNC_DELAY_MS = 350;
+const MOBILE_REORDER_ACTION_BUDGET = 128;
+const MOBILE_REORDER_TOTAL_BUDGET = 384;
+const DESKTOP_REORDER_ACTION_BUDGET = 256;
+const DESKTOP_REORDER_TOTAL_BUDGET = 512;
+const REORDER_RENDER_TIER = 9_000;
+const REORDER_RANK_STEP = 256;
+
+export type MlightCadDrawOrderResult = 'applied' | 'budget-exceeded' | 'not-found';
 
 // LEADER and MULTILEADER annotations are a single CAD entity whose rendered
 // geometry contains both the annotation and its leader line. Hiding only the
@@ -90,6 +114,20 @@ interface BlockReferenceEntity extends AcDbEntity {
     name: string;
     newIterator: () => Iterable<AcDbEntity>;
   };
+}
+
+interface ReorderPreview {
+  root: Group;
+  objectIds: string[];
+  fragmentCount: number;
+  subsets: Array<{ root: Group; layerId: string }>;
+}
+
+function drawableMaterials(object: Object3D): Material[] {
+  if (!('material' in object)) return [];
+  const material = (object as Object3D & { material?: Material | Material[] }).material;
+  if (!material) return [];
+  return Array.isArray(material) ? material : [material];
 }
 
 function bindCadEvent<T>(
@@ -192,12 +230,21 @@ export class MlightCadViewerAdapter {
   private readonly hiddenBlockObjectIds = new Set<string>();
   private readonly objectBlockPaths = new Map<string, string[]>();
   private readonly objectIdsByKey = new Map<string, string>();
+  private readonly drawOrderKeyByObjectId = new Map<string, string>();
+  private readonly objectIdsByDrawOrderKey = new Map<string, Set<string>>();
+  private readonly reorderPreviews = new Map<string, ReorderPreview>();
+  private readonly reorderedObjectIds = new Set<string>();
+  private drawOrder: CadObjectDrawOrder = { front: [], back: [] };
+  private readonly previewRaycaster = new Raycaster();
+  private readonly previewPointer = new Vector2();
+  private readonly fillOpacityController = new CadFillOpacityController();
   private readonly hiddenObjectIds = new Set<string>();
   private readonly textObjectIds = new Set<string>();
   private readonly textSceneObjects = new Map<string, Set<RenderedSceneNode>>();
   private readonly cameraSyncTimers = new Set<ReturnType<typeof setTimeout>>();
   private textVisible = true;
   private opacity = 100;
+  private appearance: CadAppearanceSettings = { ...DEFAULT_CAD_APPEARANCE };
   private renderQualityMode: CadRenderQualityMode = 'auto';
   private renderQualityContext: CadRenderQualityContext = {};
   private generation = 0;
@@ -244,6 +291,14 @@ export class MlightCadViewerAdapter {
       await disposalBarrier;
       await awaitCadRuntimeDisposal();
       if (this.disposed || generation !== this.generation) return;
+
+      const xrefSources: CadDwgSource[] = options.xrefSources ? [...options.xrefSources] : [];
+      if (!options.xrefSources) {
+        for (const xref of options.xrefFiles ?? []) {
+          if (this.disposed || generation !== this.generation) return;
+          xrefSources.push({ file: cadFileDescriptor(xref), data: await xref.arrayBuffer() });
+        }
+      }
 
       this.events.progress.dispatch({ phase: 'workers', percentage: null });
       const workersReady = await AcApDocManager.checkWebworkerReadiness({
@@ -295,6 +350,10 @@ export class MlightCadViewerAdapter {
           : undefined,
         forcePreparation: options.forcePreparation,
         forceFull: options.forceFull,
+        xrefSources,
+        preferredXrefFileIds: options.preferredXrefFileIds,
+        annotationScaleId: options.annotationScaleId,
+        spatialFilterEnabled: options.spatialFilterEnabled,
       });
       this.converter = converter;
       AcDbDatabaseConverterManager.instance.register(AcDbFileType.DWG, converter);
@@ -369,7 +428,19 @@ export class MlightCadViewerAdapter {
       // Deferred text and hatch geometry can finish after document open.
       this.configureTransparentRenderer(view);
 
+      if (this.preflight) {
+        const enrichedPreflight = appendFontSubstitutionWarnings(
+          this.preflight,
+          view.renderer.missedFonts,
+        );
+        if (enrichedPreflight !== this.preflight) {
+          this.preflight = enrichedPreflight;
+          this.events.preflight.dispatch(enrichedPreflight);
+        }
+      }
+
       this.bindDocument(manager);
+      this.applyAppearance();
       view.zoomToFitDrawing(PARSER_TIMEOUT_MS, view.modelSpaceBtrId);
       // zoomToFitDrawing uses an internal 300 ms condition waiter even when
       // the view is already idle. Wait for that final fit before publishing
@@ -429,6 +500,14 @@ export class MlightCadViewerAdapter {
     if (this.view) this.view.renderer.domElement.style.opacity = opacityToCss(this.opacity);
   }
 
+  setAppearance(value: CadAppearanceSettings): void {
+    this.appearance = {
+      profile: value.profile === 'map' ? 'map' : 'original',
+      fillOpacity: normalizeFillOpacity(value.fillOpacity),
+    };
+    this.applyAppearance();
+  }
+
   setRenderQuality(mode: CadRenderQualityMode): void {
     this.renderQualityMode = mode;
     this.applyRenderQuality();
@@ -439,6 +518,7 @@ export class MlightCadViewerAdapter {
     this.view.cadScene.forEachSceneLayer(layerId, (layer) => { layer.visible = visible; });
     this.view.isDirty = true;
     this.layers = this.layers.map((layer) => layer.id === layerId ? { ...layer, visible } : layer);
+    this.refreshAllReorderPreviewVisibility();
     this.events.layers.dispatch(this.currentLayers);
   }
 
@@ -448,6 +528,7 @@ export class MlightCadViewerAdapter {
     }
     if (this.view) this.view.isDirty = true;
     this.layers = this.layers.map((layer) => ({ ...layer, visible }));
+    this.refreshAllReorderPreviewVisibility();
     this.events.layers.dispatch(this.currentLayers);
   }
 
@@ -474,6 +555,7 @@ export class MlightCadViewerAdapter {
     }
     if (this.view) this.view.isDirty = true;
     this.blocks = this.blocks.map((candidate) => candidate === block ? { ...candidate, visible } : candidate);
+    this.refreshAllReorderPreviewVisibility();
     this.events.blocks.dispatch(this.currentBlocks);
     return block.isNested || !objectIds?.size;
   }
@@ -510,6 +592,7 @@ export class MlightCadViewerAdapter {
     this.hiddenObjectIds.add(objectId);
     this.applyObjectVisibility(objectId);
     this.applyRenderedTextVisibility(objectId);
+    this.refreshAllReorderPreviewVisibility();
     this.view?.selectionSet.clear();
     this.events.selection.dispatch(null);
   }
@@ -530,6 +613,60 @@ export class MlightCadViewerAdapter {
     return true;
   }
 
+  /**
+   * Moves a logical CAD object to an extreme render tier without rebuilding the
+   * drawing. Preview extraction happens only here, never in the camera path.
+   */
+  setObjectDrawOrder(
+    groupKey: string,
+    tier: CadObjectDrawOrderTier,
+  ): MlightCadDrawOrderResult {
+    const view = this.view;
+    if (!view) return 'not-found';
+    let preview = this.reorderPreviews.get(groupKey);
+    if (!preview) {
+      const objectIds = [...(this.objectIdsByDrawOrderKey.get(groupKey) ?? [])];
+      const fallbackId = cadObjectIdFromKey(groupKey);
+      if (objectIds.length === 0 && view.cadScene.hasEntity(fallbackId)) objectIds.push(fallbackId);
+      if (objectIds.length === 0) return 'not-found';
+      const created = this.createReorderPreview(objectIds);
+      if (created === 'budget-exceeded') return created;
+      if (!created) return 'not-found';
+      preview = created;
+      this.reorderPreviews.set(groupKey, preview);
+      for (const objectId of preview.objectIds) this.reorderedObjectIds.add(objectId);
+      view.cadScene.internalScene.add(preview.root);
+      this.applyFillOpacity(false);
+    }
+
+    this.drawOrder = moveCadObjectDrawOrder(this.drawOrder, groupKey, tier);
+    this.refreshReorderPreviewOrders();
+    for (const objectId of preview.objectIds) {
+      this.applyObjectVisibility(objectId);
+      this.applyRenderedTextVisibility(objectId);
+    }
+    this.refreshReorderPreviewVisibility(groupKey);
+    view.selectionSet.clear();
+    const selected = this.describeObject(preview.objectIds[0]);
+    if (selected) this.events.selection.dispatch(selected);
+    view.isDirty = true;
+    return 'applied';
+  }
+
+  /** Replays session order after a CAD-only reload or viewer switch. */
+  applyObjectDrawOrder(order: CadObjectDrawOrder): MlightCadDrawOrderResult {
+    let result: MlightCadDrawOrderResult = 'applied';
+    for (const groupKey of order.back) {
+      const next = this.setObjectDrawOrder(groupKey, 'back');
+      if (next !== 'applied') result = next;
+    }
+    for (const groupKey of order.front) {
+      const next = this.setObjectDrawOrder(groupKey, 'front');
+      if (next !== 'applied') result = next;
+    }
+    return result;
+  }
+
   clearSelection(): void {
     this.view?.selectionSet.clear();
   }
@@ -541,12 +678,14 @@ export class MlightCadViewerAdapter {
       this.applyObjectVisibility(objectId);
       this.applyRenderedTextVisibility(objectId);
     }
+    this.refreshAllReorderPreviewVisibility();
   }
 
   setTextsVisible(visible: boolean): void {
     this.textVisible = visible;
     for (const objectId of this.textObjectIds) this.applyObjectVisibility(objectId);
     for (const objectId of this.textSceneObjects.keys()) this.applyRenderedTextVisibility(objectId);
+    this.refreshAllReorderPreviewVisibility();
     if (this.view) this.view.isDirty = true;
   }
 
@@ -572,6 +711,8 @@ export class MlightCadViewerAdapter {
 
       const renderer = view?.renderer;
       runCleanup(() => view?.selectionSet.clear());
+      runCleanup(() => this.fillOpacityController.restore());
+      runCleanup(() => this.disposeReorderPreviews());
       runCleanup(() => view?.stopAnimationLoop());
       runCleanup(() => renderer?.internalRenderer.setAnimationLoop(null));
       runCleanup(() => view?.clear());
@@ -588,11 +729,16 @@ export class MlightCadViewerAdapter {
       runCleanup(() => AcDbDatabaseConverterManager.instance.unregister(AcDbFileType.DWG));
       runCleanup(() => this.container.replaceChildren());
       this.container.style.removeProperty('opacity');
+      this.container.style.removeProperty('filter');
       this.hiddenObjectIds.clear();
       this.hiddenBlockObjectIds.clear();
       this.directBlockObjectIds.clear();
       this.objectBlockPaths.clear();
       this.objectIdsByKey.clear();
+      this.drawOrderKeyByObjectId.clear();
+      this.objectIdsByDrawOrderKey.clear();
+      this.reorderedObjectIds.clear();
+      this.drawOrder = { front: [], back: [] };
       this.textObjectIds.clear();
       this.textSceneObjects.clear();
       this.layers = [];
@@ -612,6 +758,9 @@ export class MlightCadViewerAdapter {
     view.renderer.internalRenderer.setClearAlpha(0);
     view.renderer.domElement.style.background = 'transparent';
     view.renderer.domElement.style.opacity = opacityToCss(this.opacity);
+    view.renderer.domElement.style.filter = this.appearance.profile === 'map'
+      ? 'contrast(1.08) saturate(1.05)'
+      : '';
     view.container.style.background = 'transparent';
     view.isDirty = true;
     this.container.style.removeProperty('opacity');
@@ -625,6 +774,26 @@ export class MlightCadViewerAdapter {
 
   private applyRenderQuality(): void {
     if (this.view) this.configureRenderQuality(this.view);
+  }
+
+  private applyFillOpacity(markDirty: boolean): void {
+    const view = this.view;
+    if (!view) return;
+    this.fillOpacityController.apply(
+      view.cadScene.internalScene,
+      this.appearance.fillOpacity,
+    );
+    if (markDirty) view.isDirty = true;
+  }
+
+  private applyAppearance(): void {
+    const view = this.view;
+    if (!view) return;
+    view.renderer.domElement.style.filter = this.appearance.profile === 'map'
+      ? 'contrast(1.08) saturate(1.05)'
+      : '';
+    this.applyFillOpacity(false);
+    view.isDirty = true;
   }
 
   private configureTouchNavigation(view: AcTrView2d): void {
@@ -759,6 +928,12 @@ export class MlightCadViewerAdapter {
       fallbackTimer = setTimeout(() => {
         fallbackTimer = null;
         if (this.disposed || this.view !== view) return;
+        const frontPreviewId = this.pickReorderPreview(view, clientPoint, 'front');
+        if (frontPreviewId) {
+          const selected = this.describeObject(frontPreviewId);
+          if (selected) this.events.selection.dispatch(selected);
+          return;
+        }
         const canvasPoint = view.viewportToCanvas(clientPoint);
         const picked = view.pick(
           view.screenToWorld(canvasPoint),
@@ -770,8 +945,14 @@ export class MlightCadViewerAdapter {
           if (view.selectionSet.count !== 1 || !view.selectionSet.has(objectId)) {
             view.applySelection([objectId], 'replace');
           }
-        } else if (view.selectionSet.count > 0) {
-          view.selectionSet.clear();
+        } else {
+          const backPreviewId = this.pickReorderPreview(view, clientPoint, 'back');
+          if (backPreviewId) {
+            const selected = this.describeObject(backPreviewId);
+            if (selected) this.events.selection.dispatch(selected);
+          } else if (view.selectionSet.count > 0) {
+            view.selectionSet.clear();
+          }
         }
       }, 0);
     };
@@ -799,11 +980,20 @@ export class MlightCadViewerAdapter {
     this.hiddenBlockObjectIds.clear();
     this.objectBlockPaths.clear();
     this.objectIdsByKey.clear();
+    this.drawOrderKeyByObjectId.clear();
+    this.objectIdsByDrawOrderKey.clear();
     const expandedDefinitions = new Set<string>();
     const visitBlockPath = (entity: AcDbEntity, parentPath: string[], branch: Set<string>) => {
       const path = isBlockReference(entity) ? [...parentPath, entity.blockName] : parentPath;
       if (!this.objectBlockPaths.has(entity.objectId)) this.objectBlockPaths.set(entity.objectId, path);
       this.objectIdsByKey.set(createCadObjectKey(entity.objectId, path), entity.objectId);
+      const drawOrderKey = isBlockReference(entity) && parentPath.length === 0
+        ? createCadObjectKey(entity.objectId, [])
+        : createCadDrawOrderGroupKey(entity.objectId, path);
+      this.drawOrderKeyByObjectId.set(entity.objectId, drawOrderKey);
+      const drawOrderIds = this.objectIdsByDrawOrderKey.get(drawOrderKey) ?? new Set<string>();
+      drawOrderIds.add(entity.objectId);
+      this.objectIdsByDrawOrderKey.set(drawOrderKey, drawOrderIds);
       if (TEXT_CONTROLLED_ENTITY_TYPES.has(entity.dxfTypeName.toUpperCase())) {
         this.textObjectIds.add(entity.objectId);
       }
@@ -874,31 +1064,182 @@ export class MlightCadViewerAdapter {
     for (const objectId of this.textSceneObjects.keys()) this.applyRenderedTextVisibility(objectId);
   }
 
+  private createReorderPreview(objectIds: string[]): ReorderPreview | 'budget-exceeded' | null {
+    const layout = this.view?.cadScene.modelSpaceLayout;
+    if (!layout) return null;
+    const mobile = this.renderQualityContext.mobile === true;
+    const actionBudget = mobile ? MOBILE_REORDER_ACTION_BUDGET : DESKTOP_REORDER_ACTION_BUDGET;
+    const totalBudget = mobile ? MOBILE_REORDER_TOTAL_BUDGET : DESKTOP_REORDER_TOTAL_BUDGET;
+    const activeFragments = [...this.reorderPreviews.values()]
+      .reduce((sum, preview) => sum + preview.fragmentCount, 0);
+    const root = new Group();
+    root.name = 'CadDrawOrderPreview';
+    let fragmentCount = 0;
+    const subsets: ReorderPreview['subsets'] = [];
+
+    for (const objectId of objectIds) {
+      for (const layer of layout.layers.values()) {
+        if (!layer.hasEntity(objectId)) continue;
+        const remaining = actionBudget - fragmentCount;
+        if (remaining <= 0) {
+          disposePreviewSubset(root);
+          return 'budget-exceeded';
+        }
+        // Request one extra slot so truncated extraction is detected instead of
+        // silently presenting only part of a complex INSERT/HATCH.
+        const subset = layer.createPreviewSubset([objectId], {
+          maxSlots: remaining + 1,
+          missingEntity: 'skip',
+        });
+        if (!subset) continue;
+        const added = subset.children.length;
+        if (added > remaining || activeFragments + fragmentCount + added > totalBudget) {
+          disposePreviewSubset(subset);
+          disposePreviewSubset(root);
+          return 'budget-exceeded';
+        }
+        fragmentCount += added;
+        subsets.push({ root: subset, layerId: layer.name });
+        root.add(subset);
+      }
+    }
+    if (fragmentCount === 0) {
+      disposePreviewSubset(root);
+      return null;
+    }
+
+    root.traverse((object) => {
+      object.userData.cadReorderLocalRenderOrder = object.renderOrder;
+      for (const material of drawableMaterials(object)) {
+        material.depthTest = false;
+        material.depthWrite = false;
+        material.needsUpdate = true;
+      }
+    });
+    return { root, objectIds: [...objectIds], fragmentCount, subsets };
+  }
+
+  private refreshReorderPreviewOrders(): void {
+    const apply = (groupKey: string, rank: number, tier: CadObjectDrawOrderTier) => {
+      const preview = this.reorderPreviews.get(groupKey);
+      if (!preview) return;
+      preview.root.traverse((object) => {
+        const local = Number(object.userData.cadReorderLocalRenderOrder ?? 0);
+        object.renderOrder = rank + Math.max(-64, Math.min(64, local));
+        for (const material of drawableMaterials(object)) {
+          // Front previews deliberately ignore the source depth buffer. Back
+          // previews remain depth-tested and receive a positive polygon offset,
+          // so even transparent fills stay behind normal CAD geometry.
+          material.depthTest = tier === 'back';
+          material.depthWrite = false;
+          material.polygonOffset = tier === 'back';
+          material.polygonOffsetFactor = tier === 'back' ? 2 : 0;
+          material.polygonOffsetUnits = tier === 'back' ? 2 : 0;
+        }
+      });
+    };
+    this.drawOrder.back.forEach((groupKey, index) => {
+      apply(groupKey, -REORDER_RENDER_TIER - index * REORDER_RANK_STEP, 'back');
+    });
+    this.drawOrder.front.forEach((groupKey, index) => {
+      apply(groupKey, REORDER_RENDER_TIER + index * REORDER_RANK_STEP, 'front');
+    });
+  }
+
+  private previewObjectVisible(objectId: string): boolean {
+    const entity = this.manager?.curDocument.database.tables.blockTable.getEntityById(objectId)
+      ?? this.manager?.curDocument.database.getObjectById(objectId);
+    if (!isCadEntity(entity)) return false;
+    const layerVisible = this.layers.find((layer) => layer.id === entity.layer)?.visible ?? true;
+    return layerVisible
+      && !this.hiddenObjectIds.has(objectId)
+      && !this.hiddenBlockObjectIds.has(objectId)
+      && (this.textVisible || !this.textObjectIds.has(objectId));
+  }
+
+  private refreshReorderPreviewVisibility(groupKey: string): void {
+    const preview = this.reorderPreviews.get(groupKey);
+    if (!preview) return;
+    let anySubsetVisible = false;
+    for (const subset of preview.subsets) {
+      subset.root.visible = this.layers.find((layer) => layer.id === subset.layerId)?.visible ?? true;
+      anySubsetVisible = anySubsetVisible || subset.root.visible;
+    }
+    preview.root.visible = anySubsetVisible
+      && preview.objectIds.some((objectId) => this.previewObjectVisible(objectId));
+  }
+
+  private refreshAllReorderPreviewVisibility(): void {
+    for (const groupKey of this.reorderPreviews.keys()) this.refreshReorderPreviewVisibility(groupKey);
+    if (this.view) this.view.isDirty = true;
+  }
+
+  private disposeReorderPreviews(): void {
+    for (const preview of this.reorderPreviews.values()) {
+      preview.root.removeFromParent();
+      disposePreviewSubset(preview.root);
+    }
+    this.reorderPreviews.clear();
+    this.reorderedObjectIds.clear();
+  }
+
+  private pickReorderPreview(
+    view: AcTrView2d,
+    clientPoint: { x: number; y: number },
+    tier: CadObjectDrawOrderTier,
+  ): string | null {
+    const rect = view.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    this.previewPointer.set(
+      ((clientPoint.x - rect.left) / rect.width) * 2 - 1,
+      -((clientPoint.y - rect.top) / rect.height) * 2 + 1,
+    );
+    const threshold = readCadCamera(view).resolution * MOBILE_SELECTION_RADIUS_PX;
+    this.previewRaycaster.params.Line = { threshold };
+    this.previewRaycaster.params.Points = { threshold };
+    this.previewRaycaster.setFromCamera(this.previewPointer, view.internalCamera);
+    const keys = tier === 'front' ? [...this.drawOrder.front].reverse() : [...this.drawOrder.back];
+    for (const groupKey of keys) {
+      const preview = this.reorderPreviews.get(groupKey);
+      if (!preview?.root.visible) continue;
+      if (this.previewRaycaster.intersectObject(preview.root, true).length > 0) {
+        return preview.objectIds[0] ?? null;
+      }
+    }
+    return null;
+  }
+
   private describeObject(objectId: string): SelectedCadObject | null {
     const entity = this.manager?.curDocument.database.tables.blockTable.getEntityById(objectId)
       ?? this.manager?.curDocument.database.getObjectById(objectId);
     if (!isCadEntity(entity)) return null;
+    const blockPath = this.objectBlockPaths.get(objectId)
+      ?? (isBlockReference(entity) ? [entity.blockName] : []);
     return {
       featureId: objectId,
-      objectKey: createCadObjectKey(objectId, this.objectBlockPaths.get(objectId)
-        ?? (isBlockReference(entity) ? [entity.blockName] : [])),
+      objectKey: createCadObjectKey(objectId, blockPath),
+      drawOrderGroupKey: this.drawOrderKeyByObjectId.get(objectId)
+        ?? (isBlockReference(entity)
+          ? createCadObjectKey(objectId, [])
+          : createCadDrawOrderGroupKey(objectId, blockPath)),
       layerId: entity.layer,
       cadType: entity.dxfTypeName,
       label: '',
-      blockPath: this.objectBlockPaths.get(objectId)
-        ?? (isBlockReference(entity) ? [entity.blockName] : []),
+      blockPath,
     };
   }
 
   private applyObjectVisibility(objectId: string): void {
-    const shouldShow = !this.hiddenObjectIds.has(objectId)
+    const shouldShow = !this.reorderedObjectIds.has(objectId)
+      && !this.hiddenObjectIds.has(objectId)
       && !this.hiddenBlockObjectIds.has(objectId)
       && (this.textVisible || !this.textObjectIds.has(objectId));
     this.view?.setEntitySceneVisible(objectId, shouldShow);
   }
 
   private applyRenderedTextVisibility(objectId: string): void {
-    const visible = this.textVisible
+    const visible = !this.reorderedObjectIds.has(objectId)
+      && this.textVisible
       && !this.hiddenObjectIds.has(objectId)
       && !this.hiddenBlockObjectIds.has(objectId);
     for (const node of this.textSceneObjects.get(objectId) ?? []) node.visible = visible;

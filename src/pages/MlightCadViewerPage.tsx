@@ -49,6 +49,7 @@ export default function MlightCadViewerPage() {
   const { t } = useTranslation();
   const session = useCadSession();
   const fileInput = useRef<HTMLInputElement>(null);
+  const xrefInput = useRef<HTMLInputElement>(null);
   const pointerActive = useRef(false);
   const preparationResolver = useRef<((decision: MlightCadPreparationResult) => void) | null>(null);
   const activeImportMarker = useRef<DwgImportRecoveryMarker | null>(null);
@@ -56,10 +57,12 @@ export default function MlightCadViewerPage() {
   const previousFile = useRef<File | null>(null);
   const latestCamera = useRef<MlightCadCamera | null>(null);
   const cameraToRestore = useRef<MlightCadCamera | null>(null);
+  const locallyAppliedDrawOrderAdapter = useRef<MlightCadViewerAdapter | null>(null);
   const [adapter, setAdapter] = useState<MlightCadViewerAdapter | null>(null);
   const [layers, setLayers] = useState<CadOverlayLayer[]>([]);
   const [blocks, setBlocks] = useState<CadOverlayBlock[]>([]);
   const [selection, setSelection] = useState<SelectedCadObject | null>(null);
+  const [drawOrderMessageKey, setDrawOrderMessageKey] = useState<string | null>(null);
   const [entityCount, setEntityCount] = useState(0);
   const [opacity, setOpacity] = useState(DEFAULT_MLIGHTCAD_OPACITY);
   const [importState, setImportState] = useState<ImportState>(session.file ? 'loading' : 'idle');
@@ -132,6 +135,21 @@ export default function MlightCadViewerPage() {
   }, [adapter, importState, session.cadTextVisible, session.hiddenObjectIds]);
 
   useEffect(() => {
+    if (!adapter || importState !== 'ready') return;
+    if (locallyAppliedDrawOrderAdapter.current === adapter) {
+      locallyAppliedDrawOrderAdapter.current = null;
+      return;
+    }
+    locallyAppliedDrawOrderAdapter.current = null;
+    const result = adapter.applyObjectDrawOrder(session.objectDrawOrder);
+    if (result === 'applied') setDrawOrderMessageKey(null);
+    else if (result === 'budget-exceeded') setDrawOrderMessageKey('drawOrderBudgetExceeded');
+    else if (result === 'not-found' && (session.objectDrawOrder.front.length || session.objectDrawOrder.back.length)) {
+      setDrawOrderMessageKey('drawOrderUnavailable');
+    }
+  }, [adapter, importState, session.objectDrawOrder]);
+
+  useEffect(() => {
     if (!adapter || importState !== 'ready' || location.state.follow !== 'following' || !location.state.position) return;
     const center = transform([location.state.position.coords.longitude, location.state.position.coords.latitude], 'EPSG:4326', 'EPSG:2169');
     adapter.centerOn([center[0], center[1]]);
@@ -141,12 +159,23 @@ export default function MlightCadViewerPage() {
     preflightReceived.current = true;
     session.setPreflightReport(report); setPreparationReport(report); setPendingProfile(report.recommendedProfile);
     setBlockReturnToPreparation(false); setBasemapSuspended(report.risk.level === 'high'); setDrawerState('prepare');
+    if (session.annotationScaleId == null) {
+      session.setAnnotationScaleId(report.annotationScale?.selectedScaleId ?? report.annotationScale?.savedScaleId ?? null);
+    }
     return new Promise((resolve) => { preparationResolver.current = resolve; });
   };
 
   const finishPreparation = (decision: MlightCadPreparationResult) => {
-    const resolved = decision.decision === 'filtered' && !decision.profile && preparationReport
-      ? { ...decision, profile: preparationReport.recommendedProfile } : decision;
+    const configured = decision.decision === 'cancel' ? decision : {
+      ...decision,
+      annotationScaleId: session.annotationScaleId
+        ?? preparationReport?.annotationScale?.selectedScaleId
+        ?? preparationReport?.annotationScale?.savedScaleId
+        ?? null,
+      spatialFilterEnabled: session.spatialFilterEnabled,
+    };
+    const resolved = configured.decision === 'filtered' && !configured.profile && preparationReport
+      ? { ...configured, profile: preparationReport.recommendedProfile } : configured;
     if (resolved.decision === 'filtered' && resolved.profile) session.setLoadProfile(resolved.profile);
     if (resolved.decision === 'full') session.resetLoadProfile();
     preparationResolver.current?.(resolved); preparationResolver.current = null;
@@ -161,6 +190,15 @@ export default function MlightCadViewerPage() {
     }
     cameraToRestore.current = null; setBlockReloadPending(false); setLayerReloadPending(false); session.setFile(file); setDrawerState('controls');
     if (fileInput.current) fileInput.current.value = '';
+  };
+  const handleXrefFiles = (files: FileList | null) => {
+    const dwgFiles = [...(files ?? [])].filter((file) => file.name.toLocaleLowerCase('en-US').endsWith('.dwg'));
+    if (dwgFiles.length) {
+      cameraToRestore.current = latestCamera.current;
+      setDrawerState(null);
+      session.addXrefFiles(dwgFiles);
+    }
+    if (xrefInput.current) xrefInput.current.value = '';
   };
 
   const handleProgress = (next: MlightCadProgress) => { setProgress(next); if (next.phase !== 'ready') setImportState('loading'); };
@@ -198,7 +236,7 @@ export default function MlightCadViewerPage() {
   };
 
   const handleSelection = (next: SelectedCadObject | null) => {
-    setSelection(next); if (next) setDrawerState('object'); else setDrawerState((current) => current === 'object' ? null : current);
+    setSelection(next); setDrawOrderMessageKey(null); if (next) setDrawerState('object'); else setDrawerState((current) => current === 'object' ? null : current);
   };
   const closeSelection = () => { adapter?.clearSelection(); setSelection(null); setDrawerState(null); };
   const hideSelectedObject = () => {
@@ -209,6 +247,22 @@ export default function MlightCadViewerPage() {
     if (!selection || !adapter) return;
     adapter.setLayerVisible(selection.layerId, false); session.setLayerProfileVisible(selection.layerId, false); adapter.clearSelection();
     setSelection(null); setDrawerState(null);
+  };
+  const setSelectedDrawOrder = (tier: 'front' | 'back') => {
+    if (!selection || !adapter) return;
+    const result = adapter.setObjectDrawOrder(selection.drawOrderGroupKey, tier);
+    if (result === 'applied') {
+      // The active adapter already applied this interaction once. Mark it so
+      // the session persistence effect does not rebuild the same preview a
+      // second time; a new adapter still replays the complete session order.
+      locallyAppliedDrawOrderAdapter.current = adapter;
+      session.setObjectDrawOrder(selection.drawOrderGroupKey, tier);
+      setDrawOrderMessageKey(null);
+      return;
+    }
+    setDrawOrderMessageKey(result === 'budget-exceeded'
+      ? 'drawOrderBudgetExceeded'
+      : 'drawOrderUnavailable');
   };
 
   const displayedBlocks = preparationReport && blockReturnToPreparation
@@ -337,11 +391,17 @@ export default function MlightCadViewerPage() {
     session.preflightReport?.risk.deviceBudget,
   ]);
   const layerSheetLabels = useMemo(() => createLayerSheetLabels(t), [t]);
+  const fontWarnings = (session.preflightReport?.warnings ?? [])
+    .filter((warning) => warning.code === 'font-substitution');
 
   const loadOptions: MlightCadLoadOptions = {
     device: browserPreflightDevice(), loadProfile: session.loadProfile.mode === 'filtered' ? session.loadProfile : undefined,
     onPreparation: requestPreparation, forceFull: forceFullAttempt,
     forcePreparation: !forceFullAttempt && session.recoveryPreparationRequired,
+    xrefFiles: session.xrefFiles,
+    preferredXrefFileIds: session.preferredXrefFileIds,
+    annotationScaleId: session.annotationScaleId,
+    spatialFilterEnabled: session.spatialFilterEnabled,
   };
   const mlightControlsActive = Boolean(adapter && importState === 'ready');
 
@@ -354,7 +414,7 @@ export default function MlightCadViewerPage() {
       <div className={`mlightcad-interaction-layer ${mlightControlsActive ? 'mlightcad-active' : 'openlayers-active'}`}
         onPointerDown={() => { pointerActive.current = true; }} onPointerMove={() => { if (pointerActive.current) location.pause(); }}
         onPointerUp={() => { pointerActive.current = false; }} onPointerCancel={() => { pointerActive.current = false; }} onWheel={location.pause}>
-        <MlightCadCanvas file={session.file} fileRevision={session.fileRevision} opacity={opacity} renderQuality={session.cadRenderQuality} loadOptions={loadOptions}
+        <MlightCadCanvas file={session.file} fileRevision={session.fileRevision} opacity={opacity} renderQuality={session.cadRenderQuality} appearance={session.cadAppearance} loadOptions={loadOptions}
           onAdapterChange={setAdapter} onError={handleError} onLayers={setLayers} onBlocks={setBlocks} onPreflight={handlePreflight}
           onCamera={(camera) => { latestCamera.current = camera; }} onProgress={handleProgress} onReady={handleReady} onSelection={handleSelection} />
       </div>
@@ -372,20 +432,44 @@ export default function MlightCadViewerPage() {
         closeLabel={t('closeDrawer')} onClose={closeSelection}>
         <div aria-live="polite" className="object-sheet-content">
           <SelectionPanel selection={selection} layerName={layers.find((layer) => layer.id === selection?.layerId)?.name ?? selection?.layerId ?? ''}
-            onHideObject={hideSelectedObject} onHideLayer={hideSelectedLayer} onHideBlock={selection?.blockPath.length ? hideSelectedBlock : undefined} />
+            onHideObject={hideSelectedObject} onHideLayer={hideSelectedLayer} onHideBlock={selection?.blockPath.length ? hideSelectedBlock : undefined}
+            onBringToFront={() => setSelectedDrawOrder('front')} onSendToBack={() => setSelectedDrawOrder('back')}
+            drawOrderMessage={drawOrderMessageKey ? t(drawOrderMessageKey) : null} />
         </div>
       </BottomSheet>
 
       <CadControlSheet open={drawerState === 'controls'} file={session.file} entityCount={entityCount} loading={importState === 'loading'}
         loadingTitle={t('importingMlight')} progressLabel={progressLabel(progress, t)} message={messageKey ? t(messageKey) : null}
-        opacity={opacity} cadTextVisible={session.cadTextVisible} hiddenObjectCount={session.hiddenObjectIds.length}
+        opacity={opacity} appearance={session.cadAppearance} cadTextVisible={session.cadTextVisible} hiddenObjectCount={session.hiddenObjectIds.length}
+        spatialFilterEnabled={session.spatialFilterEnabled}
         renderQuality={session.cadRenderQuality} onRenderQualityChange={session.setCadRenderQuality}
         controlsDisabled={!adapter || importState !== 'ready'} onClose={() => setDrawerState(null)} onDismissMessage={() => setMessageKey(null)}
-        onChooseFile={chooseFile} onRemoveFile={removeDwg} onCancel={cancelImport} onOpacityChange={setOpacity}
+        onChooseFile={chooseFile} onRemoveFile={removeDwg} onCancel={cancelImport} onOpacityChange={setOpacity} onAppearanceChange={session.setCadAppearance}
+        onSpatialFilterChange={(enabled) => {
+          captureCameraForReload();
+          session.setSpatialFilterEnabled(enabled);
+          session.reloadFile();
+        }}
         onToggleTexts={toggleTexts} onRestoreHidden={restoreAllHidden}
-        footer={<>{location.state.follow === 'paused' && <button className="follow-banner" onClick={location.resume}><LocateFixed size={17} />{t('locationPaused')} · {t('locationResume')}</button>}</>} />
+        footer={<>
+          {location.state.follow === 'paused' && <button className="follow-banner" onClick={location.resume}><LocateFixed size={17} />{t('locationPaused')} · {t('locationResume')}</button>}
+          {fontWarnings.length > 0 && (
+            <details className="warnings">
+              <summary>{t('warnings')} ({fontWarnings.length})</summary>
+              <ul>{fontWarnings.map((warning, index) => (
+                <li key={`${warning.fontName ?? 'font'}:${index}`}>
+                  {t('fontSubstitutionWarning', {
+                    font: warning.fontName ?? '—',
+                    count: warning.affectedCharacterCount ?? 0,
+                  })}
+                </li>
+              ))}</ul>
+            </details>
+          )}
+        </>} />
 
       <input ref={fileInput} className="visually-hidden" type="file" accept=".dwg,application/acad,application/x-dwg" onChange={(event) => handleFile(event.target.files?.[0])} />
+      <input ref={xrefInput} className="visually-hidden" type="file" multiple accept=".dwg,application/acad,application/x-dwg" onChange={(event) => handleXrefFiles(event.target.files)} />
       <SiteBanner />
       <DwgPreparationSheet open={drawerState === 'prepare' || drawerState === 'prepare-failed'} report={preparationReport} profile={pendingProfile}
         failed={drawerState === 'prepare-failed'} onLoadFull={() => finishPreparation({ decision: 'full' })}
@@ -394,7 +478,17 @@ export default function MlightCadViewerPage() {
         onEditLayers={() => { setDrawerState(null); setLayerSheetMode('preparation'); }} onEditBlocks={() => { setBlockReturnToPreparation(true); setDrawerState('blocks'); }}
         onCancel={() => finishPreparation({ decision: 'cancel' })}
         onTryFull={() => { preparationResolver.current = null; setForceFullAttempt(true); setDrawerState(null); session.reloadFile(); }}
-        onDesktopCheck={() => { setMessageKey('preparation.desktopAdvice'); setDrawerState('controls'); }} />
+        onDesktopCheck={() => { setMessageKey('preparation.desktopAdvice'); setDrawerState('controls'); }}
+        spatialFilterEnabled={session.spatialFilterEnabled}
+        onSpatialFilterChange={session.setSpatialFilterEnabled}
+        annotationScaleId={session.annotationScaleId}
+        onAnnotationScaleChange={session.setAnnotationScaleId}
+        onAddXrefs={() => xrefInput.current?.click()}
+        onChooseXrefCandidate={(xrefId, fileId) => {
+          cameraToRestore.current = latestCamera.current;
+          setDrawerState(null);
+          session.setPreferredXrefFile(xrefId, fileId);
+        }} />
       <BlockSheet open={drawerState === 'blocks'} blocks={blockItems} labels={blockSheetLabels}
         onClose={() => { setDrawerState(blockReturnToPreparation ? 'prepare' : null); setBlockReturnToPreparation(false); }}
         onSetVisible={setBlockVisible} onSetAllVisible={setAllBlocks} applyPending={blockReloadPending}

@@ -105,6 +105,8 @@ export class MlightDwgPreparationWorkerClient {
               jobId,
               decision: selection.decision,
               profile: selection.profile,
+              annotationScaleId: selection.annotationScaleId,
+              spatialFilterEnabled: selection.spatialFilterEnabled,
             });
             armTimeout();
           }, (error: unknown) => {
@@ -133,12 +135,13 @@ export class MlightDwgPreparationWorkerClient {
       };
 
       armTimeout();
+      const xrefTransfers = options.xrefSources?.map((source) => source.data) ?? [];
       worker.postMessage({
         type: 'start',
         jobId,
         data,
         options: { ...options, canPrepare: Boolean(callbacks.onPreparation) },
-      }, [data]);
+      }, [data, ...xrefTransfers]);
     });
   }
 

@@ -3,6 +3,7 @@ import type { CadOverlayLayer } from '../../types/models';
 import type { CadOverlayBlock } from '../cad/preflightTypes';
 import type { CadRenderQualityContext } from './renderQuality';
 import { AdapterEvent } from './types';
+import { Group } from 'three';
 
 const runtimeHarness = vi.hoisted(() => ({
   checkWebworkerReadiness: vi.fn(),
@@ -27,6 +28,10 @@ vi.mock('@mlightcad/data-model', () => ({
   AcDbOpenDatabaseError: { throwOnWorkerParseFailure: vi.fn() },
   acdbCreateWorkerApi: vi.fn(),
   acdbHostApplicationServices: vi.fn(),
+}));
+
+vi.mock('@mlightcad/three-renderer', () => ({
+  disposePreviewSubset: vi.fn((root: { removeFromParent?: () => void }) => root.removeFromParent?.()),
 }));
 
 vi.mock('@mlightcad/libredwg-converter', () => ({
@@ -312,7 +317,7 @@ describe('MlightCadViewerAdapter controls', () => {
     internals(adapter).objectBlockPaths.set('42', ['OUTER', 'INNER']);
 
     expect(internals(adapter).describeObject('42')).toEqual({
-      featureId: '42', objectKey: 'outer>inner::42', layerId: 'FILL', cadType: 'HATCH', label: '', blockPath: ['OUTER', 'INNER'],
+      featureId: '42', objectKey: 'outer>inner::42', drawOrderGroupKey: 'inner::42', layerId: 'FILL', cadType: 'HATCH', label: '', blockPath: ['OUTER', 'INNER'],
     });
     adapter.hideObject('42');
     expect(adapter.hiddenObjectCount).toBe(1);
@@ -329,6 +334,79 @@ describe('MlightCadViewerAdapter controls', () => {
     expect(adapter.hideObjectByKey('different>instance::42')).toBe(true);
     expect(adapter.hiddenObjectCount).toBe(1);
     expect(setVisible).toHaveBeenLastCalledWith('42', false);
+  });
+
+  it('reuses a bounded preview when moving one object between the extreme tiers', () => {
+    const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+    const scene = new Group();
+    const setVisible = vi.fn();
+    const layer = {
+      hasEntity: (id: string) => id === '42',
+      createPreviewSubset: () => {
+        const subset = new Group();
+        subset.add(new Group());
+        return subset;
+      },
+    };
+    internals(adapter).view = {
+      cadScene: {
+        hasEntity: () => true,
+        internalScene: scene,
+        modelSpaceLayout: { layers: new Map([['A', layer]]) },
+      },
+      selectionSet: { clear: vi.fn() },
+      setEntitySceneVisible: setVisible,
+      isDirty: false,
+    };
+    internals(adapter).manager = {
+      curDocument: {
+        database: {
+          tables: { blockTable: { getEntityById: () => ({ objectId: '42', dxfTypeName: 'LINE', layer: 'A' }) } },
+          getObjectById: vi.fn(),
+        },
+      },
+    };
+    const adapterState = internals(adapter) as AdapterInternals & {
+      objectIdsByDrawOrderKey: Map<string, Set<string>>;
+    };
+    adapterState.objectIdsByDrawOrderKey.set('::42', new Set(['42']));
+
+    expect(adapter.setObjectDrawOrder('::42', 'front')).toBe('applied');
+    expect(scene.children).toHaveLength(1);
+    expect(scene.children[0].children[0].children[0].renderOrder).toBeGreaterThanOrEqual(9_000);
+    expect(setVisible).toHaveBeenLastCalledWith('42', false);
+
+    expect(adapter.setObjectDrawOrder('::42', 'back')).toBe('applied');
+    expect(scene.children).toHaveLength(1);
+    expect(scene.children[0].children[0].children[0].renderOrder).toBeLessThanOrEqual(-9_000);
+  });
+
+  it('rejects an oversized mobile preview without changing the mounted scene', () => {
+    const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+    const scene = new Group();
+    const layer = {
+      hasEntity: () => true,
+      createPreviewSubset: (_ids: string[], options: { maxSlots: number }) => {
+        const subset = new Group();
+        for (let index = 0; index < options.maxSlots; index += 1) subset.add(new Group());
+        return subset;
+      },
+    };
+    internals(adapter).view = {
+      cadScene: {
+        hasEntity: () => true,
+        internalScene: scene,
+        modelSpaceLayout: { layers: new Map([['A', layer]]) },
+      },
+      selectionSet: { clear: vi.fn() },
+      setEntitySceneVisible: vi.fn(),
+    };
+    internals(adapter).renderQualityContext = { mobile: true };
+    (internals(adapter) as AdapterInternals & { objectIdsByDrawOrderKey: Map<string, Set<string>> })
+      .objectIdsByDrawOrderKey.set('::42', new Set(['42']));
+
+    expect(adapter.setObjectDrawOrder('::42', 'front')).toBe('budget-exceeded');
+    expect(scene.children).toHaveLength(0);
   });
 
   it('hides direct block references immediately and requests a reload for nested blocks', () => {
@@ -549,7 +627,7 @@ describe('MlightCadViewerAdapter controls', () => {
       expect(view.pick).toHaveBeenCalledWith({ x: 100, y: 120 }, 12, true);
       expect(applySelection).toHaveBeenCalledOnce();
       expect(emitted.at(-1)).toEqual({
-        featureId: '42', objectKey: '::42', layerId: 'A', cadType: 'LINE', label: '', blockPath: [],
+        featureId: '42', objectKey: '::42', drawOrderGroupKey: '::42', layerId: 'A', cadType: 'LINE', label: '', blockPath: [],
       });
 
       // The library's native mouse path may already have selected this id
