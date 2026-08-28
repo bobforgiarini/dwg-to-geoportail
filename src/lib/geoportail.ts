@@ -16,8 +16,10 @@ export const WMTS_URL = 'https://wmts1.geoportail.lu/opendata/service';
 export const WMS_URL = WMTS_URL;
 export const WMTS_LAYER = 'ortho_2025';
 export const WMS_LAYER = 'ortho_latest';
+export const CADASTRE_PARCELS_WMTS_LAYER = 'parcels';
+export const CADASTRE_LABELS_WMTS_LAYER = 'parcels_labels';
 
-export function createWmtsSource(): WMTS {
+function createGeoportailWmtsSource(layer: string, format: string): WMTS {
   const projection = getProjection('EPSG:3857');
   if (!projection) throw new Error('EPSG:3857 is not available.');
   const extent = projection.getExtent();
@@ -27,9 +29,9 @@ export function createWmtsSource(): WMTS {
 
   return new WMTS({
     url: WMTS_URL,
-    layer: WMTS_LAYER,
+    layer,
     matrixSet: 'GLOBAL_WEBMERCATOR_4_V3',
-    format: 'image/jpeg',
+    format,
     projection,
     tileGrid: new WMTSTileGrid({
       origin: getTopLeft(extent),
@@ -40,6 +42,17 @@ export function createWmtsSource(): WMTS {
     attributions: GEOPORTAIL_ATTRIBUTION,
     crossOrigin: 'anonymous',
   });
+}
+
+export function createWmtsSource(): WMTS {
+  return createGeoportailWmtsSource(WMTS_LAYER, 'image/jpeg');
+}
+
+export function createCadastreWmtsSources(): [WMTS, WMTS] {
+  return [
+    createGeoportailWmtsSource(CADASTRE_PARCELS_WMTS_LAYER, 'image/png'),
+    createGeoportailWmtsSource(CADASTRE_LABELS_WMTS_LAYER, 'image/png'),
+  ];
 }
 
 export function createWmsSource(): TileWMS {
@@ -70,6 +83,14 @@ export function createBasemapLayer(
     source: mode === 'wmts' ? createWmtsSource() : createWmsSource(),
     cacheSize: options.cacheSize,
   });
+}
+
+export function createCadastreLayers(options: BasemapLayerOptions = {}): [TileLayer<WMTS>, TileLayer<WMTS>] {
+  const [parcels, labels] = createCadastreWmtsSources();
+  return [parcels, labels].map((source) => new TileLayer({
+    source,
+    cacheSize: options.cacheSize,
+  })) as [TileLayer<WMTS>, TileLayer<WMTS>];
 }
 
 /**

@@ -54,6 +54,8 @@ export interface CadSession {
   activeViewer: ViewerKind;
   /** Shared visibility of the Geoportail background in both viewers. */
   basemapVisible: boolean;
+  /** Optional Geoportail cadastral plan overlay shared by both viewers. */
+  cadastreVisible: boolean;
   /** Shared Geoportail source/health state; survives CAD viewer switches. */
   basemapHealth: BasemapHealthState;
   preflightReport: DwgPreflightReport | null;
@@ -81,6 +83,8 @@ export interface CadSessionContextValue extends CadSession {
   getViewerHref: (viewer: ViewerKind) => string;
   setBasemapVisible: (visible: boolean) => void;
   toggleBasemapVisible: () => void;
+  setCadastreVisible: (visible: boolean) => void;
+  toggleCadastreVisible: () => void;
   /** Temporarily stops tile requests and health timers while CAD needs the memory budget. */
   setBasemapHealthSuspended: (suspended: boolean) => void;
   basemapHealthReporter: BasemapHealthReporter;
@@ -127,6 +131,7 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
   const [spatialFilterEnabled, setSpatialFilterEnabled] = useState(true);
   const [activeViewer, setActiveViewer] = useState<ViewerKind>(readInitialViewer);
   const [basemapVisible, setBasemapVisible] = useState(true);
+  const [cadastreVisible, setCadastreVisible] = useState(false);
   const [basemapHealthSuspended, setBasemapHealthSuspended] = useState(false);
   const [preflightReport, setPreflightReport] = useState<DwgPreflightReport | null>(null);
   const [loadProfile, setLoadProfileState] = useState<CadLoadProfile>(EMPTY_LOAD_PROFILE);
@@ -302,6 +307,10 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
     setBasemapVisible((visible) => !visible);
   }, []);
 
+  const toggleCadastreVisible = useCallback(() => {
+    setCadastreVisible((visible) => !visible);
+  }, []);
+
   const value = useMemo<CadSessionContextValue>(
     () => ({
       file,
@@ -312,6 +321,7 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       spatialFilterEnabled,
       activeViewer,
       basemapVisible,
+      cadastreVisible,
       basemapHealth,
       basemapHealthReporter,
       preflightReport,
@@ -333,6 +343,8 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       getViewerHref,
       setBasemapVisible,
       toggleBasemapVisible,
+      setCadastreVisible,
+      toggleCadastreVisible,
       setBasemapHealthSuspended,
       setPreflightReport,
       setLoadProfile,
@@ -348,7 +360,7 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       clearRecoveryPreparationRequirement,
       reloadFile,
     }),
-    [activeViewer, addXrefFiles, annotationScaleId, basemapHealth, basemapHealthReporter, basemapVisible, cadAppearance, cadRenderQuality, cadTextVisible, clearFile, clearRecoveryPreparationRequirement, file, fileRevision, hiddenObjectIds, loadProfile, objectDrawOrder, preferredXrefFileIds, preflightReport, recoveryMarker, recoveryPreparationRequired, reloadFile, resetLoadProfile, restoreHiddenObjects, setBlockProfileVisible, setCadAppearance, setFile, setLayerProfileVisible, setLoadProfile, setObjectDrawOrder, setObjectHidden, setPreferredXrefFile, setViewer, spatialFilterEnabled, toggleBasemapVisible, xrefFiles],
+    [activeViewer, addXrefFiles, annotationScaleId, basemapHealth, basemapHealthReporter, basemapVisible, cadAppearance, cadRenderQuality, cadTextVisible, cadastreVisible, clearFile, clearRecoveryPreparationRequirement, file, fileRevision, hiddenObjectIds, loadProfile, objectDrawOrder, preferredXrefFileIds, preflightReport, recoveryMarker, recoveryPreparationRequired, reloadFile, resetLoadProfile, restoreHiddenObjects, setBlockProfileVisible, setCadAppearance, setFile, setLayerProfileVisible, setLoadProfile, setObjectDrawOrder, setObjectHidden, setPreferredXrefFile, setViewer, spatialFilterEnabled, toggleBasemapVisible, toggleCadastreVisible, xrefFiles],
   );
 
   return <CadSessionContext.Provider value={value}>{children}</CadSessionContext.Provider>;

@@ -11,6 +11,7 @@ import { LayerSheet } from './components/LayerSheet';
 import { createLayerSheetItems, createLayerSheetLabels, isLayerHidden, layerIdentityMatches } from './components/layerSheetModel';
 import { MapActionControls } from './components/MapActionControls';
 import { MapCanvas, type MapCanvasHandle } from './components/MapCanvas';
+import { MapCenterCrosshair } from './components/MapCenterCrosshair';
 import { MapStatusBadges } from './components/MapStatusBadges';
 import { SelectionPanel } from './components/SelectionPanel';
 import { SiteBanner } from './components/SiteBanner';
@@ -121,6 +122,7 @@ export default function App() {
   };
 
   const finishPreparation = (decision: DwgPreparationDecision) => {
+    const resolver = preparationResolver.current;
     const configuredDecision = decision.decision === 'cancel' ? decision : {
       ...decision,
       annotationScaleId: session.annotationScaleId
@@ -134,10 +136,24 @@ export default function App() {
       : configuredDecision;
     if (resolvedDecision.decision === 'filtered' && resolvedDecision.profile) session.setLoadProfile(resolvedDecision.profile);
     if (decision.decision === 'full') session.resetLoadProfile();
-    preparationResolver.current?.(resolvedDecision);
+    resolver?.(resolvedDecision);
     preparationResolver.current = null;
     setDrawerState(null);
     setBlockReturnToPreparation(false);
+    if (!resolver && decision.decision !== 'cancel' && session.file) {
+      setPreserveViewOnImport(true);
+      session.reloadFile();
+    }
+  };
+
+  const openPreparation = () => {
+    const report = session.preflightReport;
+    if (!report) return;
+    preparationResolver.current = null;
+    setPreparationReport(report);
+    setPendingProfile(session.loadProfile.mode === 'filtered' ? session.loadProfile : report.recommendedProfile);
+    setBlockReturnToPreparation(false);
+    setDrawerState('prepare');
   };
 
   const importSessionFile = async (file: File, forceFull = false) => {
@@ -441,6 +457,7 @@ export default function App() {
         basemapHealth={session.basemapHealth}
         basemapHealthReporter={session.basemapHealthReporter}
         basemapVisible={session.basemapVisible}
+        cadastreVisible={session.cadastreVisible}
         basemapSuspended={basemapSuspended}
         onManualMove={location.pause}
         onCoordinate={(value) => setCoordinate([value[0], value[1]])}
@@ -456,12 +473,16 @@ export default function App() {
         fitOnDwgChange={!preserveViewOnImport}
       />
 
+      <MapCenterCrosshair />
+
       <MapStatusBadges
         basemapHealth={session.basemapHealth}
         basemapVisible={session.basemapVisible}
+        cadastreVisible={session.cadastreVisible}
         coordinate={coordinate}
         accuracy={location.state.accuracy}
         onToggleBasemap={session.toggleBasemapVisible}
+        onToggleCadastre={session.toggleCadastreVisible}
       />
 
       <MapActionControls
@@ -512,7 +533,7 @@ export default function App() {
         progressLabel={progress}
         message={message}
         opacity={cadOpacity}
-        appearance={session.cadAppearance}
+        preparationAvailable={Boolean(session.preflightReport)}
         spatialFilterEnabled={session.spatialFilterEnabled}
         cadTextVisible={session.cadTextVisible}
         hiddenObjectCount={hiddenObjectCount}
@@ -523,7 +544,7 @@ export default function App() {
         onRemoveFile={removeDwg}
         onCancel={cancelImport}
         onOpacityChange={setCadOpacity}
-        onAppearanceChange={session.setCadAppearance}
+        onOpenPreparation={openPreparation}
         onSpatialFilterChange={(enabled) => {
           session.setSpatialFilterEnabled(enabled);
           setPreserveViewOnImport(true);

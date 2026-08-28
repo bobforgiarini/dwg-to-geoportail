@@ -11,6 +11,7 @@ import { DwgPreparationSheet } from '../components/DwgPreparationSheet';
 import { LayerSheet } from '../components/LayerSheet';
 import { createLayerSheetItems, createLayerSheetLabels, isLayerHidden, layerIdentityMatches, mergeLoadedLayerSheetLayers } from '../components/layerSheetModel';
 import { MapActionControls } from '../components/MapActionControls';
+import { MapCenterCrosshair } from '../components/MapCenterCrosshair';
 import { MapStatusBadges } from '../components/MapStatusBadges';
 import { MlightCadCanvas } from '../components/MlightCadCanvas';
 import { MlightCadMap } from '../components/MlightCadMap';
@@ -166,6 +167,7 @@ export default function MlightCadViewerPage() {
   };
 
   const finishPreparation = (decision: MlightCadPreparationResult) => {
+    const resolver = preparationResolver.current;
     const configured = decision.decision === 'cancel' ? decision : {
       ...decision,
       annotationScaleId: session.annotationScaleId
@@ -178,8 +180,22 @@ export default function MlightCadViewerPage() {
       ? { ...configured, profile: preparationReport.recommendedProfile } : configured;
     if (resolved.decision === 'filtered' && resolved.profile) session.setLoadProfile(resolved.profile);
     if (resolved.decision === 'full') session.resetLoadProfile();
-    preparationResolver.current?.(resolved); preparationResolver.current = null;
+    resolver?.(resolved); preparationResolver.current = null;
     setDrawerState(null); setBlockReturnToPreparation(false);
+    if (!resolver && decision.decision !== 'cancel' && session.file) {
+      cameraToRestore.current = latestCamera.current;
+      session.reloadFile();
+    }
+  };
+
+  const openPreparation = () => {
+    const report = session.preflightReport;
+    if (!report) return;
+    preparationResolver.current = null;
+    setPreparationReport(report);
+    setPendingProfile(session.loadProfile.mode === 'filtered' ? session.loadProfile : report.recommendedProfile);
+    setBlockReturnToPreparation(false);
+    setDrawerState('prepare');
   };
 
   const chooseFile = () => fileInput.current?.click();
@@ -409,7 +425,7 @@ export default function MlightCadViewerPage() {
     <main className={`app-shell mlightcad-page ${drawerState || layerSheetMode ? 'drawer-open' : 'drawer-closed'}`}>
       <AppHeader />
       <MlightCadMap adapter={importState === 'ready' ? adapter : null} basemapHealth={session.basemapHealth} basemapHealthReporter={session.basemapHealthReporter}
-        basemapVisible={session.basemapVisible} basemapSuspended={basemapSuspended} mlightControlsActive={mlightControlsActive}
+        basemapVisible={session.basemapVisible} cadastreVisible={session.cadastreVisible} basemapSuspended={basemapSuspended} mlightControlsActive={mlightControlsActive}
         location={location.state} onCoordinate={setCoordinate} onManualMove={location.pause} />
       <div className={`mlightcad-interaction-layer ${mlightControlsActive ? 'mlightcad-active' : 'openlayers-active'}`}
         onPointerDown={() => { pointerActive.current = true; }} onPointerMove={() => { if (pointerActive.current) location.pause(); }}
@@ -419,8 +435,11 @@ export default function MlightCadViewerPage() {
           onCamera={(camera) => { latestCamera.current = camera; }} onProgress={handleProgress} onReady={handleReady} onSelection={handleSelection} />
       </div>
 
+      <MapCenterCrosshair />
+
       <MapStatusBadges basemapHealth={session.basemapHealth} basemapVisible={session.basemapVisible} coordinate={coordinate}
-        accuracy={location.state.accuracy} onToggleBasemap={session.toggleBasemapVisible} />
+        cadastreVisible={session.cadastreVisible} accuracy={location.state.accuracy} onToggleBasemap={session.toggleBasemapVisible}
+        onToggleCadastre={session.toggleCadastreVisible} />
       <MapActionControls locationMode={location.state.follow} fitDisabled={!adapter || importState !== 'ready'} layerCount={layerSheetItems.length}
         blockCount={displayedBlocks.length} blocksOpen={drawerState === 'blocks'} cadControlsOpen={drawerState === 'controls'}
         hiddenObjectCount={session.hiddenObjectIds.length} onLocation={locationAction} onFitDrawing={() => adapter?.fitDrawing()}
@@ -440,11 +459,11 @@ export default function MlightCadViewerPage() {
 
       <CadControlSheet open={drawerState === 'controls'} file={session.file} entityCount={entityCount} loading={importState === 'loading'}
         loadingTitle={t('importingMlight')} progressLabel={progressLabel(progress, t)} message={messageKey ? t(messageKey) : null}
-        opacity={opacity} appearance={session.cadAppearance} cadTextVisible={session.cadTextVisible} hiddenObjectCount={session.hiddenObjectIds.length}
+        opacity={opacity} preparationAvailable={Boolean(session.preflightReport)} cadTextVisible={session.cadTextVisible} hiddenObjectCount={session.hiddenObjectIds.length}
         spatialFilterEnabled={session.spatialFilterEnabled}
         renderQuality={session.cadRenderQuality} onRenderQualityChange={session.setCadRenderQuality}
         controlsDisabled={!adapter || importState !== 'ready'} onClose={() => setDrawerState(null)} onDismissMessage={() => setMessageKey(null)}
-        onChooseFile={chooseFile} onRemoveFile={removeDwg} onCancel={cancelImport} onOpacityChange={setOpacity} onAppearanceChange={session.setCadAppearance}
+        onChooseFile={chooseFile} onRemoveFile={removeDwg} onCancel={cancelImport} onOpacityChange={setOpacity} onOpenPreparation={openPreparation}
         onSpatialFilterChange={(enabled) => {
           captureCameraForReload();
           session.setSpatialFilterEnabled(enabled);

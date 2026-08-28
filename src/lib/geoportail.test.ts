@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   bindBasemapSourceHealth,
   createBasemapLayer,
+  createCadastreWmtsSources,
   createWmsSource,
   createWmtsProbeUrl,
   createWmtsSource,
@@ -23,6 +24,16 @@ describe('Geoportail sources', () => {
     expect(WMS_URL).toBe(WMTS_URL);
     expect(source.getParams().LAYERS).toBe('ortho_latest');
     expect(source.getParams().VERSION).toBe('1.3.0');
+  });
+
+  it('configures the official transparent cadastral parcel and number overlays', () => {
+    const sources = createCadastreWmtsSources();
+    expect(sources.map((source) => source.getLayer())).toEqual(['parcels', 'parcels_labels']);
+    sources.forEach((source) => {
+      expect(source.getUrls()).toContain(WMTS_URL);
+      expect(source.getFormat()).toBe('image/png');
+      expect(source.getMatrixSet()).toBe('GLOBAL_WEBMERCATOR_4_V3');
+    });
   });
 
   it('accepts a bounded layer tile cache for mobile maps', () => {

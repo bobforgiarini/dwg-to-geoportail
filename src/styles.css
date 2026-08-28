@@ -38,9 +38,11 @@ button:disabled { cursor: default; opacity: .45; }
 .map-status-stack { position: absolute; z-index: 10; top: calc(var(--app-header-height) + 8px + env(safe-area-inset-top)); left: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; pointer-events: none; }
 .map-status-card { min-height: 26px; padding: 4px 7px; display: flex; align-items: center; gap: 4px; color: #fff; background: rgba(5,28,44,.82); border: 1px solid rgba(255,255,255,.16); border-radius: 7px; backdrop-filter: blur(10px); font-size: 10px; line-height: 1.2; white-space: nowrap; }
 .map-status-basemap { position: relative; min-height: 26px; pointer-events: auto; cursor: pointer; transition: color .18s ease, background .18s ease, opacity .18s ease; }
-.map-status-basemap::before { content: ''; position: absolute; inset: -9px -4px; }
-.map-status-basemap.is-hidden { color: rgba(255,255,255,.82); background: rgba(5,28,44,.68); }
+.map-status-basemap::before, .map-status-cadastre::before { content: ''; position: absolute; inset: -3px; }
+.map-status-basemap.is-hidden, .map-status-cadastre.is-hidden { color: rgba(255,255,255,.82); background: rgba(5,28,44,.68); }
+.map-status-cadastre { position: relative; min-height: 26px; pointer-events: auto; cursor: pointer; transition: color .18s ease, background .18s ease, opacity .18s ease; }
 .map-status-coordinate, .map-status-accuracy { font-variant-numeric: tabular-nums; }
+.map-center-crosshair { position: fixed; z-index: 11; top: 50%; left: 50%; width: 20px; height: 20px; display: grid; place-items: center; color: #e22727; pointer-events: none; transform: translate(-50%, -50%); filter: drop-shadow(0 0 1px rgba(255,255,255,.95)); }
 .map-action-controls { position: absolute; z-index: 12; inset: 0; pointer-events: none; }
 .map-action-group { position: absolute; right: 8px; display: flex; flex-direction: column; gap: 6px; pointer-events: auto; }
 .map-action-group-top { top: calc(var(--app-header-height) + 8px + env(safe-area-inset-top)); }
@@ -139,6 +141,7 @@ site-info-banner { --sib-offset-block: calc(8px + env(safe-area-inset-bottom)); 
 .compact-file-row { gap: 7px; }
 .compact-file-row .file-icon { width: 36px; height: 36px; }
 .compact-file-row .icon-button { width: 44px; height: 44px; min-height: 44px; }
+.preparation-open-button { width: 100%; margin-top: 7px; }
 .compact-empty-import { gap: 8px; }
 .cad-display-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 8px; }
 .cad-display-actions button { position: relative; min-height: 44px; padding: 6px 9px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--navy); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; font-size: 11px; font-weight: 750; }

@@ -53,18 +53,24 @@ describe('CadSessionProvider', () => {
     expect(result.current.fileRevision).toBe(1);
   });
 
-  it('shares basemap visibility while switching renderers', () => {
+  it('shares basemap and cadastre visibility while switching renderers', () => {
     const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
 
     expect(result.current.basemapVisible).toBe(true);
+    expect(result.current.cadastreVisible).toBe(false);
     act(() => result.current.toggleBasemapVisible());
+    act(() => result.current.toggleCadastreVisible());
     expect(result.current.basemapVisible).toBe(false);
+    expect(result.current.cadastreVisible).toBe(true);
 
     act(() => result.current.setViewer('legacy'));
     expect(result.current.basemapVisible).toBe(false);
+    expect(result.current.cadastreVisible).toBe(true);
 
     act(() => result.current.setBasemapVisible(true));
+    act(() => result.current.setCadastreVisible(false));
     expect(result.current.basemapVisible).toBe(true);
+    expect(result.current.cadastreVisible).toBe(false);
   });
 
   it('retains the selected MLightCAD quality while switching renderers', () => {

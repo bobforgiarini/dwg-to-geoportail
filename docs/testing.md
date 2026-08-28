@@ -288,4 +288,16 @@ Ein erfolgreicher Lauf auf einem einzelnen Desktop belegt keine iPhone-Kompatibi
 - vollständige XCLIP-, Proxy-/Custom-Entity- oder AutoCAD-XRef-Parität
 - vollständige Schrifterkennung über die vom Renderer gemeldeten `missedFonts` hinaus
 
-Nach einem späteren GitHub-Push übernimmt das vorhandene Git-basierte Netlify-Projekt Build und Bereitstellung von Version 0.5.0. Push und Deploy gehören nicht zu diesem Implementierungsschritt; die dortigen Ergebnisse und die manuelle Routenabnahme sind bis dahin ausstehend.
+Nach einem späteren GitHub-Push übernimmt das vorhandene Git-basierte Netlify-Projekt Build und Bereitstellung der aktuellen Version. Push und Deploy gehören nicht zu diesem Implementierungsschritt; die dortigen Ergebnisse und die manuelle Routenabnahme sind bis dahin ausstehend.
+
+## Ergänzende Abnahme für 0.5.1
+
+- die offizielle WMTS-Konfiguration der PCN-Layer `parcels` und `parcels_labels` verwendet PNG-Transparenz und `GLOBAL_WEBMERCATOR_4_V3`
+- Satellit und Kataster lassen sich unabhängig schalten und behalten ihren sitzungsweiten Zustand beim Wechsel zwischen `/` und `/openlayers`
+- der Kataster-Layer liegt unter CAD und GPS; sein Schalter steht direkt unter dem Satellitenschalter
+- das rote Fadenkreuz bleibt klein, nicht interaktiv und exakt am CSS-Viewportmittelpunkt; die LUREF-Koordinatenkarte zeigt denselben Kartenmittelpunkt
+- eine automatisch geladene einfache DWG bietet im CAD-Drawer weiterhin „DWG vorbereiten“; bestätigte Änderungen laden nur CAD neu und erhalten die Ansicht
+- der CAD-Drawer enthält weder Darstellungsprofil noch Füllungsdeckkraft, behält aber die globale CAD-Deckkraft
+- eindeutige annotative Attribut- und MLeader-Varianten folgen dem gewählten Maßstab; uneindeutige Kontextdaten bleiben fail-open vollständig erhalten
+- der MLightCAD-Hotpath bleibt `viewChanged → setCenter/setResolution → renderSync()` ohne zusätzliche React-, Worker- oder Katasterarbeit
+- Version `0.5.1` erscheint in Paketmetadaten und Kopfzeile; TypeScript, Vitest, Produktionsbuild und visuelle Desktop-/Mobilprüfung müssen erfolgreich sein

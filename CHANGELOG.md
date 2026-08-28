@@ -2,6 +2,26 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.5.1] – 2026-08-28
+
+### Hinzugefügt
+
+- optionale Geoportail-Kataster-Overlays `parcels` und `parcels_labels` mit Parzellengrenzen und -nummern als eigenen kompakten Kartenschalter direkt unterhalb der Satellitenkarte ergänzt
+- kleines festes rotes Fadenkreuz in der Bildschirmmitte ergänzt; es markiert exakt den Kartenmittelpunkt, dessen LUREF-Koordinaten in der Statuskarte angezeigt werden
+- dauerhaft verfügbare Aktion „DWG vorbereiten“ im CAD-Drawer ergänzt, sodass Maßstab, XRefs, Luxemburg-Filter und Ladeprofil auch bei automatisch geladenen einfachen Zeichnungen nachträglich angepasst werden können
+- Importnachbearbeitung für eindeutig zuordenbare annotative Attribute und MLeader-Maßstabsvarianten ergänzt; mehrdeutige Kontextdaten bleiben weiterhin verlustfrei erhalten
+
+### Geändert
+
+- den nicht benötigten Bereich „Darstellungsprofil“ samt Profilwahl und Füllungsdeckkraft aus dem CAD-Drawer entfernt; die globale CAD-Deckkraft bleibt erhalten
+- Kataster- und Satellitenzustand werden gemeinsam sitzungsweit zwischen `/` und `/openlayers` erhalten
+- Paket-, Kopf- und Releaseversion auf `0.5.1` angehoben
+
+### Performance und Grenzen
+
+- die synchrone MLightCAD-Kamerabrücke und der Pan-/Zoom-Hotpath aus `0.2.4` bleiben unverändert; Kataster, Fadenkreuz und Koordinatenanzeige fügen dort keine React- oder Workerarbeit hinzu
+- alternative annotative Darstellungen werden nur bei belastbarer Zuordnung entfernt; beschädigte oder uneindeutige LibreDWG-Kontexte werden bewusst nicht heuristisch gelöscht
+
 ## [0.5.0] – 2026-08-27
 
 ### Hinzugefügt

@@ -18,7 +18,7 @@ import type TileWMS from 'ol/source/TileWMS';
 import type WMTS from 'ol/source/WMTS';
 import 'ol/ol.css';
 import type { BasemapHealthReporter, BasemapHealthState } from '../lib/basemapHealth';
-import { bindBasemapSourceHealth, createBasemapLayer } from '../lib/geoportail';
+import { bindBasemapSourceHealth, createBasemapLayer, createCadastreLayers } from '../lib/geoportail';
 import { syncCadCameraToMap } from '../lib/mlightcad/cameraBridge';
 import type { MlightCadViewerAdapter } from '../lib/mlightcad/MlightCadViewerAdapter';
 import type { LocationTrackingState } from '../types/models';
@@ -28,6 +28,7 @@ interface Props {
   basemapHealth: BasemapHealthState;
   basemapHealthReporter: BasemapHealthReporter;
   basemapVisible: boolean;
+  cadastreVisible?: boolean;
   basemapSuspended?: boolean;
   mlightControlsActive: boolean;
   location: LocationTrackingState;
@@ -46,10 +47,11 @@ export function isMemoryConstrainedMapRuntime(): boolean {
   return coarsePointer || mobileUserAgent;
 }
 
-export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, basemapVisible, basemapSuspended = false, mlightControlsActive, location, onCoordinate, onManualMove }: Props) {
+export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, basemapVisible, cadastreVisible = false, basemapSuspended = false, mlightControlsActive, location, onCoordinate, onManualMove }: Props) {
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const baseRef = useRef<TileLayer<WMTS | TileWMS> | null>(null);
+  const cadastreRef = useRef<Array<TileLayer<WMTS>>>([]);
   const basemapVisibleRef = useRef(basemapVisible);
   const mlightControlsActiveRef = useRef(mlightControlsActive);
   const memoryConstrained = useRef(isMemoryConstrainedMapRuntime());
@@ -62,6 +64,7 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
   const locationSource = useMemo(() => new VectorSource(), []);
   const locationLayer = useMemo(() => new VectorLayer({
     source: locationSource,
+    zIndex: 20,
     style: (feature) => feature.get('kind') === 'accuracy'
       ? new Style({
           fill: new Fill({ color: 'rgba(11,116,200,.16)' }),
@@ -123,6 +126,7 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
       map.setTarget(undefined);
       mapRef.current = null;
       baseRef.current = null;
+      cadastreRef.current = [];
     };
   }, [locationLayer]);
 
@@ -155,6 +159,7 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
       basemapHealthReporter,
     );
     replacement.setVisible(basemapVisibleRef.current);
+    replacement.setZIndex(0);
     const previous = baseRef.current;
     if (previous) {
       previous.getSource()?.clear();
@@ -168,6 +173,30 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
   useEffect(() => {
     baseRef.current?.setVisible(basemapVisible);
   }, [basemapVisible]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (basemapSuspended || !cadastreVisible) {
+      if (cadastreRef.current.length > 0) {
+        cadastreRef.current.forEach((layer) => {
+          layer.getSource()?.clear();
+          map.removeLayer(layer);
+        });
+        cadastreRef.current = [];
+      }
+      return;
+    }
+    if (cadastreRef.current.length > 0) return;
+    const layers = createCadastreLayers({
+      cacheSize: memoryConstrained.current ? MOBILE_TILE_CACHE_SIZE : undefined,
+    });
+    layers.forEach((layer, index) => {
+      layer.setZIndex(5 + index);
+      map.addLayer(layer);
+    });
+    cadastreRef.current = layers;
+  }, [basemapSuspended, cadastreVisible]);
 
   useEffect(() => {
     if (!adapter) return;

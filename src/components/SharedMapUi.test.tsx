@@ -7,6 +7,7 @@ import { LayerSheet } from './LayerSheet';
 import { createLayerSheetLabels } from './layerSheetModel';
 import { LoadingSpinner } from './LoadingSpinner';
 import { MapActionControls } from './MapActionControls';
+import { MapCenterCrosshair } from './MapCenterCrosshair';
 import { MapStatusBadges } from './MapStatusBadges';
 import { SelectionPanel } from './SelectionPanel';
 
@@ -66,13 +67,16 @@ describe('shared map UI', () => {
 
   it('toggles the basemap and presents LUREF coordinates and GPS accuracy', () => {
     const onToggleBasemap = vi.fn();
+    const onToggleCadastre = vi.fn();
     const { getByRole, getByText, rerender } = render(
       <MapStatusBadges
         basemapHealth={{ mode: 'wmts', status: 'ready', generation: 0, transitionReason: 'tile-loaded' }}
         basemapVisible
+        cadastreVisible={false}
         coordinate={[80_218.123, 87_074.509]}
         accuracy={7.6}
         onToggleBasemap={onToggleBasemap}
+        onToggleCadastre={onToggleCadastre}
       />,
     );
 
@@ -84,19 +88,65 @@ describe('shared map UI', () => {
     expect(getByText('GPS ±8 m')).toBeInTheDocument();
     fireEvent.click(toggle);
     expect(onToggleBasemap).toHaveBeenCalledOnce();
+    const cadastre = getByRole('button', { name: i18n.t('cadastreToggle') });
+    expect(cadastre).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(cadastre);
+    expect(onToggleCadastre).toHaveBeenCalledOnce();
 
     rerender(
       <MapStatusBadges
         basemapHealth={{ mode: 'wms', status: 'ready', generation: 1, transitionReason: 'tile-loaded' }}
         basemapVisible={false}
+        cadastreVisible
         coordinate={null}
         accuracy={null}
         onToggleBasemap={onToggleBasemap}
+        onToggleCadastre={onToggleCadastre}
       />,
     );
     expect(getByRole('button', { name: i18n.t('basemapToggle') })).toHaveAttribute('aria-pressed', 'false');
     expect(getByRole('button', { name: i18n.t('basemapToggle') })).toHaveAttribute('title', i18n.t('showBasemap'));
     expect(getByText(i18n.t('basemapOff'))).toBeInTheDocument();
+    expect(getByText(i18n.t('cadastreOn'))).toBeInTheDocument();
+  });
+
+  it('renders the fixed map-center crosshair as a non-interactive overlay', () => {
+    const { container } = render(<MapCenterCrosshair />);
+    const crosshair = container.querySelector('.map-center-crosshair');
+    expect(crosshair).toHaveAttribute('aria-hidden', 'true');
+    expect(crosshair?.querySelector('svg')).toBeInTheDocument();
+  });
+
+  it('offers preparation settings without rendering the removed appearance profile', () => {
+    const onOpenPreparation = vi.fn();
+    const { getByRole, queryByText } = render(
+      <CadControlSheet
+        open
+        file={new File([new Uint8Array(12)], 'drawing.dwg')}
+        entityCount={7}
+        loading={false}
+        loadingTitle=""
+        progressLabel=""
+        message={null}
+        opacity={70}
+        preparationAvailable
+        cadTextVisible
+        hiddenObjectCount={0}
+        controlsDisabled={false}
+        onClose={vi.fn()}
+        onDismissMessage={vi.fn()}
+        onChooseFile={vi.fn()}
+        onRemoveFile={vi.fn()}
+        onCancel={vi.fn()}
+        onOpacityChange={vi.fn()}
+        onOpenPreparation={onOpenPreparation}
+        onToggleTexts={vi.fn()}
+        onRestoreHidden={vi.fn()}
+      />,
+    );
+    fireEvent.click(getByRole('button', { name: i18n.t('openPreparation') }));
+    expect(onOpenPreparation).toHaveBeenCalledOnce();
+    expect(queryByText(i18n.t('appearance.title'))).not.toBeInTheDocument();
   });
 
   it('uses the fixed span spinner in the accessible CAD loading row', () => {

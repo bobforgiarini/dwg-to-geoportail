@@ -11,6 +11,7 @@ import {
   selectAnnotationScale,
   type RawAnnotationLibreDwg,
 } from '../cad/annotationScale';
+import { applyAnnotationScaleSelectionToDatabase } from '../cad/applyAnnotationScale';
 import {
   extractDatabaseXrefs,
   resolveCadXrefBundleSequentially,
@@ -234,6 +235,7 @@ export async function runMlightDwgWorkerTask(
 
   const spatialReport = spatialReportWithState(spatialCandidate, spatialFilterEnabled);
   const spatialModel = spatialFilterEnabled ? spatialCandidate.model : resolved.database;
+  applyAnnotationScaleSelectionToDatabase(spatialModel, annotationScale);
   return {
     database: runtime.filter(spatialModel, profile ?? FULL_PROFILE),
     annotationScale,

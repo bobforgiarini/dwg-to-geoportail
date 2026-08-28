@@ -17,15 +17,17 @@ const harness = vi.hoisted(() => {
   };
   const renderSync = vi.fn();
   const removeLayer = vi.fn();
+  const addLayer = vi.fn();
   const basemaps: Array<{
     getSource: () => { clear: ReturnType<typeof vi.fn> };
     setVisible: ReturnType<typeof vi.fn>;
+    setZIndex: ReturnType<typeof vi.fn>;
   }> = [];
   const basemapOptions: unknown[] = [];
   const mapOptions: unknown[] = [];
   const viewOptions: unknown[] = [];
   const viewports: HTMLDivElement[] = [];
-  return { basemapOptions, basemaps, interaction, mapOptions, removeLayer, renderSync, view, viewOptions, viewports };
+  return { addLayer, basemapOptions, basemaps, interaction, mapOptions, removeLayer, renderSync, view, viewOptions, viewports };
 });
 
 vi.mock('ol/interaction/defaults', () => ({
@@ -50,6 +52,7 @@ vi.mock('ol/Map', () => ({
       getLayers: () => ({ insertAt: vi.fn(), setAt: vi.fn() }),
       getView: () => harness.view,
       getViewport: () => viewport,
+      addLayer: harness.addLayer,
       on: vi.fn((event: string, listener: () => void) => {
         const eventListeners = listeners.get(event) ?? new Set<() => void>();
         eventListeners.add(listener);
@@ -78,9 +81,17 @@ vi.mock('../lib/geoportail', () => ({
     const layer = {
       getSource: () => source,
       setVisible: vi.fn(),
+      setZIndex: vi.fn(),
     };
     harness.basemaps.push(layer);
     return layer;
+  },
+  createCadastreLayers: (options: unknown) => {
+    harness.basemapOptions.push(options);
+    return [
+      { getSource: () => ({ clear: vi.fn() }), setZIndex: vi.fn() },
+      { getSource: () => ({ clear: vi.fn() }), setZIndex: vi.fn() },
+    ];
   },
 }));
 
@@ -100,6 +111,7 @@ describe('MlightCadMap interaction handover', () => {
     harness.viewOptions.length = 0;
     harness.viewports.length = 0;
     harness.interaction.setActive.mockClear();
+    harness.addLayer.mockClear();
     harness.removeLayer.mockClear();
     harness.renderSync.mockClear();
     Object.values(harness.view).forEach((value) => {
@@ -159,6 +171,27 @@ describe('MlightCadMap interaction handover', () => {
     rerender(<MlightCadMap {...props} basemapVisible={false} />);
     expect(harness.basemaps.at(-1)).toBe(currentLayer);
     expect(currentLayer?.setVisible).toHaveBeenLastCalledWith(false);
+  });
+
+  it('mounts the cadastral overlay only while requested', () => {
+    const props = {
+      adapter: null,
+      basemapHealth: { mode: 'wmts', status: 'loading', generation: 0, transitionReason: 'initial' } as const,
+      basemapHealthReporter: {
+        sourceMounted: vi.fn(), tileLoadStart: vi.fn(), tileLoadEnd: vi.fn(), tileLoadError: vi.fn(),
+      },
+      basemapVisible: true,
+      location: idleLocation,
+      mlightControlsActive: false,
+      onCoordinate: vi.fn(),
+      onManualMove: vi.fn(),
+    };
+    const { rerender } = render(<MlightCadMap {...props} cadastreVisible={false} />);
+    expect(harness.addLayer).not.toHaveBeenCalled();
+    rerender(<MlightCadMap {...props} cadastreVisible />);
+    expect(harness.addLayer).toHaveBeenCalledTimes(2);
+    rerender(<MlightCadMap {...props} cadastreVisible={false} />);
+    expect(harness.removeLayer).toHaveBeenCalledTimes(2);
   });
 
   it('releases the basemap while CAD preparation needs the mobile memory budget', () => {

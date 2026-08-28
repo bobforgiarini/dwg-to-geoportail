@@ -1,14 +1,12 @@
 import type { ReactNode } from 'react';
-import { FileUp, RotateCcw, Trash2, Type, X } from 'lucide-react';
+import { FileUp, ListChecks, RotateCcw, Trash2, Type, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { BottomSheet } from './BottomSheet';
-import { CadAppearanceControl } from './CadAppearanceControl';
 import { CadOpacityControl } from './CadOpacityControl';
 import { CadRenderQualityControl } from './CadRenderQualityControl';
 import { CadSpatialFilterControl } from './CadSpatialFilterControl';
 import { LoadingSpinner } from './LoadingSpinner';
 import type { CadRenderQualityMode } from '../lib/mlightcad/renderQuality';
-import type { CadAppearanceSettings } from '../lib/cad/appearance';
 
 interface Props {
   open: boolean;
@@ -19,7 +17,7 @@ interface Props {
   progressLabel: string;
   message: string | null;
   opacity: number;
-  appearance?: CadAppearanceSettings;
+  preparationAvailable?: boolean;
   spatialFilterEnabled?: boolean;
   renderQuality?: CadRenderQualityMode;
   cadTextVisible: boolean;
@@ -32,7 +30,7 @@ interface Props {
   onRemoveFile: () => void;
   onCancel: () => void;
   onOpacityChange: (value: number) => void;
-  onAppearanceChange?: (value: CadAppearanceSettings) => void;
+  onOpenPreparation?: () => void;
   onSpatialFilterChange?: (enabled: boolean) => void;
   onRenderQualityChange?: (value: CadRenderQualityMode) => void;
   onToggleTexts: () => void;
@@ -48,7 +46,7 @@ export function CadControlSheet({
   progressLabel,
   message,
   opacity,
-  appearance,
+  preparationAvailable = false,
   spatialFilterEnabled,
   renderQuality,
   cadTextVisible,
@@ -61,7 +59,7 @@ export function CadControlSheet({
   onRemoveFile,
   onCancel,
   onOpacityChange,
-  onAppearanceChange,
+  onOpenPreparation,
   onSpatialFilterChange,
   onRenderQualityChange,
   onToggleTexts,
@@ -115,18 +113,17 @@ export function CadControlSheet({
             <button className="primary-button" onClick={onChooseFile}><FileUp size={18} />{t('chooseDwg')}</button>
           </div>
         )}
+        {!loading && file && preparationAvailable && onOpenPreparation && (
+          <button className="secondary-button preparation-open-button" onClick={onOpenPreparation}>
+            <ListChecks size={17} aria-hidden="true" />
+            {t('openPreparation')}
+          </button>
+        )}
       </section>
 
       <section className="cad-control-section" aria-labelledby="display-control-title">
         <h3 id="display-control-title">{t('cadDisplay')}</h3>
         <CadOpacityControl value={opacity} onChange={onOpacityChange} />
-        {appearance && onAppearanceChange && (
-          <CadAppearanceControl
-            value={appearance}
-            disabled={controlsDisabled}
-            onChange={onAppearanceChange}
-          />
-        )}
         {spatialFilterEnabled !== undefined && onSpatialFilterChange && (
           <CadSpatialFilterControl
             enabled={spatialFilterEnabled}

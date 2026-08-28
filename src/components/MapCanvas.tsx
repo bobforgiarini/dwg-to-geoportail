@@ -22,7 +22,7 @@ import type WMTS from 'ol/source/WMTS';
 import type Geometry from 'ol/geom/Geometry';
 import 'ol/ol.css';
 import type { BasemapHealthReporter, BasemapHealthState } from '../lib/basemapHealth';
-import { bindBasemapSourceHealth, createBasemapLayer } from '../lib/geoportail';
+import { bindBasemapSourceHealth, createBasemapLayer, createCadastreLayers } from '../lib/geoportail';
 import { mapToLuref } from '../lib/crs';
 import { normalizeCadOpacity } from '../lib/mlightcad/opacity';
 import type { CadObjectDrawOrder, DwgImportResult, LocationTrackingState, SelectedCadObject } from '../types/models';
@@ -37,6 +37,7 @@ interface Props {
   basemapHealth: BasemapHealthState;
   basemapHealthReporter: BasemapHealthReporter;
   basemapVisible: boolean;
+  cadastreVisible?: boolean;
   basemapSuspended?: boolean;
   onManualMove: () => void;
   onCoordinate: (coordinate: Coordinate) => void;
@@ -56,12 +57,13 @@ export interface MapCanvasHandle {
   fitDrawing: () => void;
 }
 
-export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({ dwg, visibleLayers, location, basemapHealth, basemapHealthReporter, basemapVisible, basemapSuspended = false, onManualMove, onCoordinate, hiddenFeatureIds, hiddenObjectKeys, hiddenBlockNames, selectedFeatureId, onCadSelect, cadTextVisible, cadOpacity, objectDrawOrder, appearance, fitOnDwgChange = true }, ref) {
+export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({ dwg, visibleLayers, location, basemapHealth, basemapHealthReporter, basemapVisible, cadastreVisible = false, basemapSuspended = false, onManualMove, onCoordinate, hiddenFeatureIds, hiddenObjectKeys, hiddenBlockNames, selectedFeatureId, onCadSelect, cadTextVisible, cadOpacity, objectDrawOrder, appearance, fitOnDwgChange = true }, ref) {
   const { t } = useTranslation();
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const memoryConstrained = useRef(browserPreflightDevice().mobile === true);
   const baseRef = useRef<TileLayer<WMTS | TileWMS> | null>(null);
+  const cadastreRef = useRef<Array<TileLayer<WMTS>>>([]);
   const basemapVisibleRef = useRef(basemapVisible);
   const cadSource = useMemo(() => new VectorSource(), []);
   const locationSource = useMemo(() => new VectorSource(), []);
@@ -88,6 +90,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
 
   const cadLayer = useMemo(() => new VectorLayer({
     source: cadSource,
+    zIndex: 10,
     declutter: true,
     style: (feature) => {
       if (!visibleRef.current.has(String(feature.get('layerId')))) return undefined;
@@ -145,6 +148,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
 
   const locationLayer = useMemo(() => new VectorLayer({
     source: locationSource,
+    zIndex: 20,
     style: (feature) => feature.get('kind') === 'accuracy'
       ? new Style({ fill: new Fill({ color: 'rgba(11,116,200,.16)' }), stroke: new Stroke({ color: 'rgba(11,116,200,.7)', width: 1.5 }) })
       : new Style({ image: new CircleStyle({ radius: 8, fill: new Fill({ color: '#0b74c8' }), stroke: new Stroke({ color: '#fff', width: 3 }) }) }),
@@ -222,6 +226,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
       basemapHealthReporter,
     );
     replacement.setVisible(basemapVisibleRef.current);
+    replacement.setZIndex(0);
     if (baseRef.current) map.getLayers().setAt(0, replacement);
     else map.getLayers().insertAt(0, replacement);
     baseRef.current = replacement;
@@ -232,6 +237,28 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
   useEffect(() => {
     baseRef.current?.setVisible(basemapVisible);
   }, [basemapVisible]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (basemapSuspended || !cadastreVisible) {
+      if (cadastreRef.current.length > 0) {
+        cadastreRef.current.forEach((layer) => {
+          layer.getSource()?.clear();
+          map.removeLayer(layer);
+        });
+        cadastreRef.current = [];
+      }
+      return;
+    }
+    if (cadastreRef.current.length > 0) return;
+    const layers = createCadastreLayers({ cacheSize: memoryConstrained.current ? 32 : undefined });
+    layers.forEach((layer, index) => {
+      layer.setZIndex(5 + index);
+      map.addLayer(layer);
+    });
+    cadastreRef.current = layers;
+  }, [basemapSuspended, cadastreVisible]);
 
   useEffect(() => {
     cadSource.clear();

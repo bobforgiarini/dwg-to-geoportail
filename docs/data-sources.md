@@ -1,4 +1,4 @@
-# Datenquellen 0.5.0
+# Datenquellen 0.5.1
 
 Die Anwendung verarbeitet ausgewählte Haupt-DWGs und lokale XRefs ausschließlich im Browser. Diese Dateien sind Nutzerdaten und keine Datenquelle des Projekts: Sie werden weder hochgeladen noch im Repository, in einer Datenbank, in IndexedDB oder in Netlify-Speicher abgelegt.
 
@@ -10,6 +10,12 @@ Die Hintergrundkarte stammt aus den offiziellen Open-Data-Kartendiensten von Geo
 - Dienstendpunkt: `https://wmts1.geoportail.lu/opendata/service`
 - bevorzugt: WMTS-Layer `ortho_2025` mit Matrix-Set `GLOBAL_WEBMERCATOR_4_V3`
 - Fallback: WMS-Layer `ortho_latest`
+- optionale transparente Kataster-Overlays: WMTS-Layer `parcels` und `parcels_labels`, Format `image/png`, Matrix-Set `GLOBAL_WEBMERCATOR_4_V3`
+
+Der optionale Katasterdienst mit Parzellengrenzen und -nummern ist im offiziellen Datensatz **Plan cadastral numérisé (PCN) – Webservices WMS et WMTS** dokumentiert:
+
+- Datensatz: <https://data.public.lu/fr/datasets/plan-cadastral-numerise-pcn-webservices-wms-et-wmts/>
+- Dienstendpunkt: `https://wmts1.geoportail.lu/opendata/service`
 
 OpenLayers lädt Kartenbilder direkt vom Geoportail-Dienst. Es werden keine DWG-Bytes in Kartenanfragen eingebettet. Der Diensthinweis „© Map: geoportail.lu“ bleibt im Site-Banner sichtbar.
 

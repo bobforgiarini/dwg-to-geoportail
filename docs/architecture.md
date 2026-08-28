@@ -89,6 +89,8 @@ Der Worker liest `SCALE`, `CONTEXTDATAMANAGER` und bekannte `*OBJECTCONTEXTDATA`
 
 Die Zuordnung alternativer annotativer Darstellungen erfolgt ausschließlich bei eindeutigen Kontextinformationen. Ist die Eigentümer- oder Maßstabsbeziehung in der nativen Struktur nicht sicher ableitbar, arbeitet die Pipeline fail-open: Sie entfernt nichts und meldet die unvollständigen Kontextdaten. Damit wird keine gültige Geometrie heuristisch gelöscht, es können bei beschädigten Dateien aber weiterhin mehrere Darstellungen sichtbar bleiben. Leader-/MLeader-Führung und Text verwenden anschließend denselben Sichtbarkeitszustand.
 
+Version 0.5.1 wendet den fest gewählten Maßstabsfaktor zusätzlich auf eindeutig annotative Attribute an. Bei MLeader-Varianten entfernt die Nachbearbeitung nur dann Dubletten, wenn Typ, Layer, Inhalt und Führungspunkt dieselbe logische Beschriftung belegen und die Varianten unterschiedliche explizite Maßstabsfaktoren tragen. Die dem gewählten Maßstab nächste Variante bleibt erhalten; uneindeutige Gruppen bleiben unverändert. Der CAD-Drawer kann den Vorbereitungssheet nun auch nach einem automatischen Import explizit öffnen und lädt das CAD-Dokument nach bestätigten Änderungen mit erhaltener Kamera kontrolliert neu.
+
 `CadFileBundle` hält die Hauptdatei und ergänzte XRef-Dateien nur als Browser-`File`-Objekte. Die Auflösung normalisiert Pfade auf den DWG-Basisnamen. Eindeutige Treffer werden sequenziell im selben Worker geöffnet; mehrdeutige Treffer bleiben bis zu einer expliziten Auswahl offen. Attachments dürfen weitere lokale Referenzen verfolgen, Overlays nicht. Ein Besuchspfad beendet Zyklen, fehlende oder ungültige Dateien erzeugen Status und Warnungen. Beim Zusammenführen werden Tabellen- und Blocknamen mit `XRefName|…` getrennt; vorhandene INSERT-Transformationen bleiben maßgeblich. XCLIP, Proxy-/Custom-Objekte und vollständige AutoCAD-XRef-Parität werden nicht zugesichert.
 
 ## Luxemburg-Filter
@@ -100,6 +102,8 @@ Nach XRef-/Annotationsvorbereitung berechnet die Pipeline konservative transform
 ## Darstellung und Zeichenreihenfolge
 
 `CadAppearanceSettings` trennt das Profil von der globalen CAD-Deckkraft. `Original` verwendet unveränderte Farben und 100 Prozent Füllungsdeckkraft. `Karte` erhöht den Kontrast der Linien-/Textdarstellung und startet mit 35 Prozent für echte Fill-, HATCH- und SOLID-Materialien. Der Füllungsregler verändert weder leere WebGL-Pixel noch Orthofoto, Linien oder Texte. In OpenLayers wird die Füllfarbe im vorhandenen Style berechnet; in MLightCAD verwaltet ein eigener Materialcontroller ausschließlich erkannte Füllmaterialien und stellt deren Ursprungszustand beim Dispose wieder her. Die `Map`-, `View`- und CAD-Geometriestrukturen werden dafür nicht neu erzeugt.
+
+Die zugrunde liegende Appearance-Schnittstelle bleibt für Sitzungskompatibilität bestehen. Seit 0.5.1 zeigt der CAD-Drawer jedoch keine Profil- oder Füllungssteuerung mehr; die vom Nutzer gewünschte kompakte Oberfläche behält nur die globale CAD-Deckkraft.
 
 Der sitzungsweite `CadObjectDrawOrder` führt geordnete `front`- und `back`-Schlüssel. Mehrteilige logische Objekte teilen einen stabilen `drawOrderGroupKey`; Unterobjekte wiederverwendeter Blockdefinitionen werden bewusst definitionsweit gruppiert. OpenLayers berechnet daraus einen `Style.zIndex` und ruft je Aktion genau einmal `cadLayer.changed()` auf. MLightCAD verwendet begrenzte Preview-Fragmente in festen Vorder-/Hintergrund-Tiers und entsorgt ersetzte Geometrien und Materialien. Die Budgets betragen je Aktion/gesamt 128/384 Fragmente auf Mobilgeräten und 256/512 auf Desktop. Eine Überschreitung verändert die Szene nicht und wird lokalisiert gemeldet. Während Pan oder Zoom findet keine Reihenfolgearbeit statt.
 
@@ -204,6 +208,8 @@ Der Wechsel folgt einer kontrollierten Zustandsmaschine:
 6. Offline-/Online-Ereignisse und verspätete Ereignisse alter Quellgenerationen werden gesondert behandelt.
 
 Die Satelliten-Statuskarte zeigt den gemeinsamen Zustand. Auch bei `offline` oder `unavailable` bleiben CAD, Layer, Blöcke, Auswahl, GPS-Zustand und die bewusst schwarze Kartenfläche bedienbar.
+
+Die optionalen PCN-Kataster-Layer `parcels` und `parcels_labels` liegen als zwei gemeinsame OpenLayers-Overlays oberhalb der Orthofoto-Basis und unter CAD sowie GPS. Sie verwenden denselben offiziellen WMTS-Endpunkt, PNG-Transparenz und das Matrix-Set `GLOBAL_WEBMERCATOR_4_V3`. Satellit und Kataster lassen sich unabhängig schalten; beide Zustände bleiben beim Viewerwechsel erhalten. Das feste rote Fadenkreuz ist ein reines, nicht interaktives DOM-Overlay am CSS-Viewportmittelpunkt. Es liegt oberhalb von Karte und CAD, aber unter Kartenaktionen, Site-Banner und Drawern. Die bereits nachlaufend aktualisierte LUREF-Statuskarte verwendet denselben Kartenmittelpunkt, ohne den synchronen MLightCAD-Kamera-Hotpath zu verändern.
 
 ## Statische und externe Ressourcen
 
