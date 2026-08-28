@@ -32,6 +32,32 @@ function rawApi(): RawAnnotationLibreDwg {
   };
 }
 
+function contextWeightedRawApi(): RawAnnotationLibreDwg {
+  const fields = new Map<number, Record<string, unknown>>([
+    [11, { name: '1/1000 Best', paper_units: 1, drawing_units: 1, is_default: true }],
+    [12, { name: '1/500 Best', paper_units: 1, drawing_units: 0.5, is_default: true }],
+    [31, { scale: { id: 'A' }, is_default: 1 }],
+    [32, { scale: { id: 'A' }, is_default: 1 }],
+    [33, { scale: { id: 'A' }, is_default: 1 }],
+    [34, { scale: { id: 'B' }, is_default: 1 }],
+  ]);
+  const objects = [111, 112, 131, 132, 133, 134];
+  const types = new Map<number, number>([
+    [111, 706], [112, 706], [131, 521], [132, 521], [133, 521], [134, 521],
+  ]);
+  return {
+    dwg_get_num_objects: () => objects.length,
+    dwg_get_object: (_data, index) => objects[index] ?? 0,
+    dwg_object_get_fixedtype: (object) => types.get(object) ?? 0,
+    dwg_object_get_supertype: () => 1,
+    dwg_object_to_object_tio: (object) => object - 100,
+    dwg_object_get_handle_object: (object) => ({ value: object === 111 ? 10 : 11 }),
+    dwg_dynapi_entity_data: <T>(tio: number, field: string) => fields.get(tio)?.[field] as T,
+    dwg_dynapi_header_data: <T>() => undefined as T,
+    dwg_ref_get_id: (ref) => (ref as { id?: string } | null)?.id,
+  };
+}
+
 describe('raw annotation scales', () => {
   it('discovers runtime object ids without pinning another LibreDWG version', () => {
     expect(annotationObjectTypes({
@@ -65,6 +91,21 @@ describe('raw annotation scales', () => {
     expect(selectAnnotationScale(selection, 'B')).toMatchObject({ mode: 'manual', selectedScaleId: 'B' });
     expect(selectAnnotationScale(selection, 'missing')).toMatchObject({
       mode: 'saved', selectedScaleId: 'A', failOpen: true,
+    });
+  });
+
+  it('uses the dominant object context when an old DWG has no global saved scale', () => {
+    const selection = extractRawAnnotationScales(contextWeightedRawApi(), 1, {
+      scale: 706,
+      contextDataManager: undefined,
+      contextData: [521],
+    });
+
+    expect(selection).toMatchObject({
+      savedScaleId: 'A', selectedScaleId: 'A', contextObjectCount: 4, failOpen: true,
+    });
+    expect(selection.availableScales.find((scale) => scale.id === 'A')).toMatchObject({
+      name: '1/1000 Best', ratio: 1, source: 'context', isDefault: true,
     });
   });
 });

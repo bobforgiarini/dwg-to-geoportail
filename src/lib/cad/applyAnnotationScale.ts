@@ -3,9 +3,108 @@ import type { CadAnnotationScaleSelection } from './preflightTypes';
 
 type MutableCadEntity = Record<string, unknown> & { type?: string; layer?: string };
 
+export interface AnnotationScaleLayerName {
+  baseName: string;
+  factor: number;
+}
+
+const SCALE_LAYER_SUFFIX = /^(.*?)\s+@\s*(\d+(?:[.,]\d+)?)(?:\s*\(\d+\))?\s*$/u;
+
+/**
+ * Some survey DWGs author one physical layer per plot scale instead of native
+ * annotative representations (for example `LABEL @ 1`, `LABEL @ 0.5`).
+ * Keep this parser deliberately strict: unrelated layers containing an `@`
+ * remain untouched.
+ */
+export function parseAnnotationScaleLayerName(layerName: string): AnnotationScaleLayerName | null {
+  const match = SCALE_LAYER_SUFFIX.exec(layerName);
+  if (!match) return null;
+  const baseName = match[1].trim();
+  const factor = Number(match[2].replace(',', '.'));
+  if (!baseName || !Number.isFinite(factor) || factor <= 0) return null;
+  return { baseName, factor };
+}
+
 function selectedRatio(selection: CadAnnotationScaleSelection | undefined): number | null {
   const selected = selection?.availableScales.find((scale) => scale.id === selection.selectedScaleId);
   return selected && Number.isFinite(selected.ratio) && selected.ratio > 0 ? selected.ratio : null;
+}
+
+function canonical(value: string): string {
+  return value.trim().toLocaleLowerCase('en-US');
+}
+
+function approximatelyEqual(left: number, right: number): boolean {
+  const scale = Math.max(1, Math.abs(left), Math.abs(right));
+  return Math.abs(left - right) <= scale * 1e-6;
+}
+
+function selectedLayerFactors(selection: CadAnnotationScaleSelection | undefined): number[] {
+  const selected = selection?.availableScales.find((scale) => scale.id === selection.selectedScaleId);
+  if (!selected) return [];
+  const factors = [selected.ratio];
+  // BEST-style scale names use millimetres in the denominator while the
+  // explicitly scaled layer suffix is expressed in metres: 1/500 -> @ 0.5.
+  const namedScale = /\b1\s*[:/]\s*(\d+(?:[.,]\d+)?)\b/u.exec(selected.name);
+  if (namedScale) {
+    const denominator = Number(namedScale[1].replace(',', '.'));
+    if (Number.isFinite(denominator) && denominator > 0) factors.push(denominator / 1_000);
+  }
+  return factors.filter((factor, index, all) => (
+    Number.isFinite(factor)
+    && factor > 0
+    && all.findIndex((candidate) => approximatelyEqual(candidate, factor)) === index
+  ));
+}
+
+export function annotationScaleLayerNamesToHide(
+  database: DwgDatabase,
+  selection: CadAnnotationScaleSelection | undefined,
+): string[] {
+  const requestedFactors = selectedLayerFactors(selection);
+  if (!requestedFactors.length) return [];
+
+  const names = new Set<string>();
+  for (const layer of database.tables.LAYER?.entries ?? []) {
+    if (typeof layer.name === 'string') names.add(layer.name);
+  }
+  const collections = [
+    database.entities,
+    ...(database.tables.BLOCK_RECORD?.entries ?? []).map((entry) => entry.entities ?? []),
+  ] as unknown as MutableCadEntity[][];
+  for (const entities of collections) {
+    for (const entity of entities) {
+      if (typeof entity.layer === 'string') names.add(entity.layer);
+    }
+  }
+
+  const families = new Map<string, Array<{ name: string; factor: number }>>();
+  for (const name of names) {
+    const parsed = parseAnnotationScaleLayerName(name);
+    if (!parsed) continue;
+    const key = canonical(parsed.baseName);
+    const family = families.get(key) ?? [];
+    family.push({ name, factor: parsed.factor });
+    families.set(key, family);
+  }
+
+  const hidden = new Set<string>();
+  for (const family of families.values()) {
+    const distinctFactors = family.filter((entry, index, all) => (
+      all.findIndex((candidate) => approximatelyEqual(candidate.factor, entry.factor)) === index
+    ));
+    if (distinctFactors.length < 2) continue;
+    const selectedFactor = requestedFactors.find((requested) => (
+      distinctFactors.some((entry) => approximatelyEqual(entry.factor, requested))
+    ));
+    // If this family has no representation for the requested scale, retain it
+    // unchanged. Guessing would hide valid drawing content.
+    if (selectedFactor == null) continue;
+    for (const entry of family) {
+      if (!approximatelyEqual(entry.factor, selectedFactor)) hidden.add(entry.name);
+    }
+  }
+  return [...hidden].sort((left, right) => left.localeCompare(right));
 }
 
 function textValue(entity: MutableCadEntity): string {

@@ -159,10 +159,16 @@ function contextScaleMetadata(
   libredwg: RawAnnotationLibreDwg,
   data: number,
   types: readonly number[],
-): { count: number; defaultIds: Set<string>; referencedIds: Set<string> } {
+): {
+  count: number;
+  defaultIds: Set<string>;
+  referencedIds: Set<string>;
+  defaultReferenceCounts: Map<string, number>;
+} {
   let count = 0;
   const defaultIds = new Set<string>();
   const referencedIds = new Set<string>();
+  const defaultReferenceCounts = new Map<string, number>();
   for (const type of types) {
     const objects = objectsByType(libredwg, data, type);
     count += objects.length;
@@ -172,10 +178,13 @@ function contextScaleMetadata(
       if (!id) continue;
       referencedIds.add(id);
       const isDefault = safeRead(() => libredwg.dwg_dynapi_entity_data<unknown>(context, 'is_default'));
-      if (isDefault === true || isDefault === 1) defaultIds.add(id);
+      if (isDefault === true || isDefault === 1) {
+        defaultIds.add(id);
+        defaultReferenceCounts.set(id, (defaultReferenceCounts.get(id) ?? 0) + 1);
+      }
     }
   }
-  return { count, defaultIds, referencedIds };
+  return { count, defaultIds, referencedIds, defaultReferenceCounts };
 }
 
 /**
@@ -228,7 +237,13 @@ export function extractRawAnnotationScales(
     || left.ratio - right.ratio
     || left.name.localeCompare(right.name)
   ));
+  const dominantContextScaleId = [...contextMetadata.defaultReferenceCounts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? null;
   const saved = availableScales.find((scale) => scale.id === nativeSavedId)
+    // Old DWGs often have no global CANNOSCALE. In that case prefer the scale
+    // referenced by most object-default contexts instead of accidentally
+    // choosing the smallest numerical ratio among several defaults.
+    ?? availableScales.find((scale) => scale.id === dominantContextScaleId)
     ?? availableScales.find((scale) => scale.isDefault)
     ?? availableScales[0]
     ?? null;

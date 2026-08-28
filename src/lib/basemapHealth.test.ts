@@ -128,6 +128,46 @@ describe('BasemapHealthController', () => {
     controller.dispose();
   });
 
+  it('does not postpone the WMTS recovery probe when more WMS tiles finish', async () => {
+    const probeWmts = vi.fn().mockResolvedValue(true);
+    const controller = new BasemapHealthController({ probeWmts });
+    controller.sourceMounted(0);
+    vi.advanceTimersByTime(8_000);
+    controller.sourceMounted(1);
+    controller.tileLoadEnd(1);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    controller.tileLoadEnd(1);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(probeWmts).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot()).toMatchObject({ mode: 'wms', status: 'ready' });
+    controller.dispose();
+  });
+
+  it('keeps probing WMTS while the WMS fallback is unavailable', async () => {
+    const probeWmts = vi.fn().mockResolvedValue(true);
+    const controller = new BasemapHealthController({ probeWmts });
+    controller.sourceMounted(0);
+    vi.advanceTimersByTime(8_000);
+    controller.sourceMounted(1);
+    controller.tileLoadError(1);
+    controller.tileLoadError(1);
+    controller.tileLoadError(1);
+
+    expect(controller.getSnapshot()).toMatchObject({ mode: 'wms', status: 'unavailable' });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(probeWmts).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot()).toMatchObject({ mode: 'wms', status: 'unavailable' });
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(probeWmts).toHaveBeenCalledTimes(2);
+    expect(controller.getSnapshot()).toMatchObject({
+      mode: 'wmts', status: 'loading', generation: 2, transitionReason: 'wmts-recovered',
+    });
+    controller.dispose();
+  });
+
   it('pauses while hidden or offline and starts a fresh WMTS source on reconnect', () => {
     const controller = new BasemapHealthController();
     controller.sourceMounted(0);

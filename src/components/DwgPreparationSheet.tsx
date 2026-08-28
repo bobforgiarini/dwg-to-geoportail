@@ -63,6 +63,26 @@ function canonical(value: string): string {
   return value.trim().toLocaleLowerCase('en-US');
 }
 
+function canonicalProfileValues(values: readonly string[]): string[] {
+  return [...new Set(values.map(canonical))].sort((left, right) => left.localeCompare(right));
+}
+
+function profilesMatch(
+  profile: CadLoadProfile | null,
+  recommendedProfile: CadLoadProfile | undefined,
+): boolean {
+  if (!profile || !recommendedProfile) return true;
+  const sameValues = (left: readonly string[], right: readonly string[]) => {
+    const canonicalLeft = canonicalProfileValues(left);
+    const canonicalRight = canonicalProfileValues(right);
+    return canonicalLeft.length === canonicalRight.length
+      && canonicalLeft.every((value, index) => value === canonicalRight[index]);
+  };
+  return sameValues(profile.hiddenLayerIds, recommendedProfile.hiddenLayerIds)
+    && sameValues(profile.hiddenBlockNames, recommendedProfile.hiddenBlockNames)
+    && sameValues(profile.hiddenEntityCategories, recommendedProfile.hiddenEntityCategories);
+}
+
 function effectSelection(
   effect: DwgProfileEffect,
   profile: CadLoadProfile | null,
@@ -255,7 +275,6 @@ export function DwgPreparationSheet({
   const fixedEffects = effects.filter((effect) => matchesPolicy(effect, 'required'));
   const recommendedEffects = effects.filter((effect) => matchesPolicy(effect, 'recommended'));
   const manualEffects = effects.filter((effect) => matchesPolicy(effect, 'user'));
-  const boundaryEffects = effects.filter((effect) => effect.kind === 'boundary');
   const xrefEffects = effects.filter((effect) => effect.kind === 'xref');
   const annotation = report?.annotationScale;
   const selectedScale = annotationScaleId
@@ -265,6 +284,24 @@ export function DwgPreparationSheet({
     ?? '';
   const high = report?.risk.level === 'high';
   const locale = i18n.resolvedLanguage || i18n.language || 'de';
+  const reportScaleId = report?.annotationScale?.selectedScaleId
+    ?? report?.annotationScale?.savedScaleId
+    ?? null;
+  const hasCustomProfile = !profilesMatch(profile, report?.recommendedProfile);
+  const hasCustomPreparationSettings = (
+    annotationScaleId != null
+    && reportScaleId != null
+    && annotationScaleId !== reportScaleId
+  ) || (
+    spatialFilterEnabled != null
+    && report?.spatialFilter != null
+    && spatialFilterEnabled !== report.spatialFilter.enabled
+  );
+  const hasCustomSelection = hasCustomProfile || hasCustomPreparationSettings;
+  const sourceEntityCount = impact?.before.entityCount
+    ?? ((report?.entityCounts.modelEntities ?? 0) + (report?.entityCounts.paperSpaceEntities ?? 0));
+  const recommendedEntityCount = impact?.recommended.entityCount ?? sourceEntityCount;
+  const recommendedEstimatedCost = impact?.recommended.estimatedCost ?? estimated;
   const effectListProps = {
     objectLabel: (count: number) => t('preparation.effectObjectCount', { count }),
     costLabel: (cost: number) => t('preparation.effectEstimatedCost', { cost: cost.toLocaleString(locale) }),
@@ -324,22 +361,26 @@ export function DwgPreparationSheet({
 
       {report && (
         <dl className={styles.metrics}>
-          <div><dt>{t('preparation.entities')}</dt><dd>{report.entityCounts.modelEntities.toLocaleString(locale)}</dd></div>
-          <div><dt>{t('preparation.blocks')}</dt><dd>{report.reachableBlockCount.toLocaleString(locale)}</dd></div>
-          <div><dt>{t('preparation.layers')}</dt><dd>{report.layers.length.toLocaleString(locale)}</dd></div>
           <div>
-            <dt>{t('preparation.impactEntities')}</dt>
-            <dd>{impact
-              ? `${impact.before.entityCount.toLocaleString(locale)} → ${impact.recommended.entityCount.toLocaleString(locale)}`
-              : report.entityCounts.modelEntities.toLocaleString(locale)}</dd>
+            <dt>{t('preparation.sourceObjects')}</dt>
+            <dd>{sourceEntityCount.toLocaleString(locale)}</dd>
           </div>
           <div>
-            <dt>{t('preparation.impactEstimatedCost')}</dt>
-            <dd>≈ {impact
-              ? `${impact.before.estimatedCost.toLocaleString(locale)} → ${impact.recommended.estimatedCost.toLocaleString(locale)}`
-              : estimated.toLocaleString(locale)}</dd>
+            <dt>{t('preparation.recommendedObjects')}</dt>
+            <dd>{recommendedEntityCount.toLocaleString(locale)}</dd>
           </div>
-          <div><dt>{t('preparation.deviceBudget')}</dt><dd>≈ {budget.toLocaleString(locale)}</dd></div>
+          <div>
+            <dt>{t('preparation.drawingStructure')}</dt>
+            <dd>
+              {report.layers.length.toLocaleString(locale)} {t('preparation.layers')}
+              {' · '}
+              {report.reachableBlockCount.toLocaleString(locale)} {t('preparation.blocks')}
+            </dd>
+          </div>
+          <div>
+            <dt>{t('preparation.recommendedLoad')}</dt>
+            <dd>≈ {recommendedEstimatedCost.toLocaleString(locale)} / ≈ {budget.toLocaleString(locale)}</dd>
+          </div>
         </dl>
       )}
 
@@ -395,7 +436,9 @@ export function DwgPreparationSheet({
             >
               {annotation.availableScales.map((scale) => (
                 <option key={scale.id} value={scale.id}>
-                  {scale.name}{scale.id === annotation.savedScaleId ? ` · ${t('preparation.annotationSaved')}` : ''}
+                  {scale.name}{scale.id === annotation.savedScaleId
+                    ? ` · ${t(scale.source === 'saved' ? 'preparation.annotationSaved' : 'preparation.annotationRecommended')}`
+                    : ''}
                 </option>
               ))}
             </select>
@@ -405,31 +448,26 @@ export function DwgPreparationSheet({
       )}
 
       {report?.spatialFilter && (
-        <section className={styles.section} aria-labelledby="preparation-spatial-title">
-          <div className={styles.sectionHeading}>
+        <section className={`${styles.section} ${styles.spatialSection}`} aria-labelledby="preparation-spatial-title">
+          <label className={styles.spatialToggle}>
             <MapPinned size={17} aria-hidden="true" />
-            <h3 id="preparation-spatial-title">{t('preparation.spatialTitle')}</h3>
-          </div>
-          <label className={styles.toggleRow}>
             <span>
-              <strong>{t('preparation.spatialToggle')}</strong>
+              <strong id="preparation-spatial-title">{t('preparation.spatialTitle')}</strong>
               <small>{t('preparation.spatialBuffer', { meters: report.spatialFilter.bufferMeters.toLocaleString(locale) })}</small>
             </span>
             <input
               type="checkbox"
+              aria-label={t('preparation.spatialToggle')}
               checked={spatialEnabled}
               disabled={!onSpatialFilterChange}
               onChange={(event) => onSpatialFilterChange?.(event.currentTarget.checked)}
             />
           </label>
-          <div className={styles.compactMetrics}>
-            <span>{t('preparation.spatialRetained', { count: report.spatialFilter.retainedRootEntityCount })}</span>
-            <span>{t('preparation.spatialRemoved', { count: report.spatialFilter.removedRootEntityCount })}</span>
-            <span>{t('preparation.spatialUnknown', { count: report.spatialFilter.unknownRootEntityCount })}</span>
-          </div>
-          {boundaryEffects.length > 0 && (
-            <EffectList effects={boundaryEffects} ariaLabel={t('preparation.spatialEffects')} {...effectListProps} />
-          )}
+          <p className={styles.spatialSummary}>{t('preparation.spatialSummary', {
+            retained: report.spatialFilter.retainedRootEntityCount.toLocaleString(locale),
+            removed: report.spatialFilter.removedRootEntityCount.toLocaleString(locale),
+            unknown: report.spatialFilter.unknownRootEntityCount.toLocaleString(locale),
+          })}</p>
         </section>
       )}
 
@@ -479,12 +517,14 @@ export function DwgPreparationSheet({
       </section>
 
       <div className={styles.primaryActions}>
-        <button type="button" className={styles.recommended} onClick={onLoadRecommended}>
-          <ShieldCheck size={18} aria-hidden="true" />{t('preparation.loadRecommended')}
+        <button
+          type="button"
+          className={styles.recommended}
+          onClick={hasCustomSelection ? onApplySelection : onLoadRecommended}
+        >
+          <ShieldCheck size={18} aria-hidden="true" />
+          {t(hasCustomSelection ? 'preparation.loadSelection' : 'preparation.loadRecommended')}
         </button>
-        {(hiddenLayers > 0 || hiddenBlocks > 0) && (
-          <button type="button" onClick={onApplySelection}>{t('preparation.loadSelection')}</button>
-        )}
         <button type="button" className={styles.full} onClick={onLoadFull}>{t('preparation.loadFull')}</button>
         <button type="button" className={styles.cancel} onClick={onCancel}>{t('cancel')}</button>
       </div>

@@ -11,7 +11,10 @@ import {
   selectAnnotationScale,
   type RawAnnotationLibreDwg,
 } from '../cad/annotationScale';
-import { applyAnnotationScaleSelectionToDatabase } from '../cad/applyAnnotationScale';
+import {
+  annotationScaleLayerNamesToHide,
+  applyAnnotationScaleSelectionToDatabase,
+} from '../cad/applyAnnotationScale';
 import {
   extractDatabaseXrefs,
   resolveCadXrefBundleSequentially,
@@ -236,8 +239,15 @@ export async function runMlightDwgWorkerTask(
   const spatialReport = spatialReportWithState(spatialCandidate, spatialFilterEnabled);
   const spatialModel = spatialFilterEnabled ? spatialCandidate.model : resolved.database;
   applyAnnotationScaleSelectionToDatabase(spatialModel, annotationScale);
+  const scaleLayerIds = annotationScaleLayerNamesToHide(spatialModel, annotationScale);
+  const selectedProfile = profile ?? FULL_PROFILE;
+  const effectiveProfile: CadLoadProfile = scaleLayerIds.length ? {
+    ...selectedProfile,
+    mode: 'filtered',
+    hiddenLayerIds: [...new Set([...selectedProfile.hiddenLayerIds, ...scaleLayerIds])],
+  } : selectedProfile;
   return {
-    database: runtime.filter(spatialModel, profile ?? FULL_PROFILE),
+    database: runtime.filter(spatialModel, effectiveProfile),
     annotationScale,
     stats: {
       ...resolved.stats,

@@ -34,9 +34,9 @@
   background: #dce3e8;
 }
 
-.metrics div { display: flex; justify-content: space-between; gap: 8px; padding: 9px 10px; background: white; }
+.metrics div { display: grid; align-content: center; gap: 3px; min-height: 52px; padding: 8px 10px; background: white; }
 .metrics dt { color: #62717b; font-size: .7rem; }
-.metrics dd { margin: 0; color: #05273a; font-size: .74rem; font-weight: 700; }
+.metrics dd { margin: 0; color: #05273a; font-size: .76rem; font-weight: 700; }
 
 .section {
   margin: 0 0 10px;
@@ -141,30 +141,25 @@
   line-height: 1.35;
 }
 
-.toggleRow {
+.spatialSection { padding-block: 8px; }
+.spatialToggle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 44px;
+  gap: 8px;
+  min-height: 40px;
 }
-.toggleRow > span { display: grid; gap: 2px; }
-.toggleRow strong { color: #05273a; font-size: .72rem; }
-.toggleRow small { color: #70808a; font-size: .63rem; }
-.toggleRow input {
+.spatialToggle > svg { flex: 0 0 auto; }
+.spatialToggle > span { display: grid; min-width: 0; gap: 1px; }
+.spatialToggle strong { color: #05273a; font-size: .74rem; }
+.spatialToggle small { color: #70808a; font-size: .62rem; }
+.spatialToggle input {
   flex: 0 0 auto;
+  margin-left: auto;
   width: 22px;
   height: 22px;
   accent-color: #05273a;
 }
-.compactMetrics { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
-.compactMetrics span {
-  padding: 3px 6px;
-  border-radius: 999px;
-  background: #edf2f5;
-  color: #52616b;
-  font-size: .6rem;
-}
+.spatialSummary { margin: 3px 0 0 25px; color: #62717b; font-size: .62rem; line-height: 1.35; }
 
 .effectList {
   overflow: hidden;

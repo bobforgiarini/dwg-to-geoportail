@@ -115,6 +115,8 @@ describe('shared map UI', () => {
     const crosshair = container.querySelector('.map-center-crosshair');
     expect(crosshair).toHaveAttribute('aria-hidden', 'true');
     expect(crosshair?.querySelector('svg')).toBeInTheDocument();
+    expect(crosshair?.querySelector('circle')).not.toBeInTheDocument();
+    expect(crosshair?.querySelectorAll('path')).toHaveLength(2);
   });
 
   it('offers preparation settings without rendering the removed appearance profile', () => {

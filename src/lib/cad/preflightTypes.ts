@@ -133,6 +133,11 @@ export interface DwgProfileEffect {
 }
 
 export interface DwgProfileImpact {
+  /**
+   * `before` reconstructs the original drawing total, including root entities
+   * already removed by the optional spatial filter. The report's live
+   * `entityCounts` describe the model after that spatial filtering step.
+   */
   before: {
     entityCount: number;
     estimatedCost: number;

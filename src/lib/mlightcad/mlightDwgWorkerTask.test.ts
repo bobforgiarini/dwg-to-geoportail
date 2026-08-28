@@ -131,6 +131,48 @@ describe('MLightCAD DWG worker task', () => {
     expect(filter).toHaveBeenCalledWith(source, FULL_PROFILE);
   });
 
+  it('adds non-selected physical scale layers to the established model filter', async () => {
+    const source = database();
+    source.entities = [
+      { type: 'MULTILEADER', handle: 'A', layer: 'LABEL @ 1' },
+      { type: 'MULTILEADER', handle: 'B', layer: 'LABEL @ 0.5' },
+      { type: 'MULTILEADER', handle: 'C', layer: 'LABEL @ 0.25' },
+    ] as never;
+    source.tables.LAYER.entries = [
+      { name: 'LABEL @ 1' }, { name: 'LABEL @ 0.5' }, { name: 'LABEL @ 0.25' },
+    ] as never;
+    const filter = vi.fn((model: DwgDatabase) => model);
+
+    await runMlightDwgWorkerTask({
+      type: 'start', jobId: 'scale-layers', data: new ArrayBuffer(8),
+      options: { wasmBaseUrl: '/mlightcad-workers/0.3.0', canPrepare: true },
+    }, {
+      emitPreflight: vi.fn(), waitForDecision: vi.fn(),
+    }, {
+      parse: async () => ({
+        database: source,
+        stats: { unknownEntityCount: 0 },
+        annotationScale: {
+          mode: 'saved', savedScaleId: '500', selectedScaleId: '500',
+          availableScales: [{
+            id: '500', name: '1/500 Best', paperUnits: 1, drawingUnits: 0.5,
+            ratio: 0.5, source: 'context', isDefault: true,
+          }],
+          contextObjectCount: 1, failOpen: true,
+        },
+      }),
+      analyze: () => report(false), filter, normalize: vi.fn(),
+      inspectXrefs: () => [], spatialFilter: (model) => spatialResult(model),
+    });
+
+    expect(filter).toHaveBeenCalledWith(source, {
+      mode: 'filtered',
+      hiddenLayerIds: ['LABEL @ 0.25', 'LABEL @ 1'],
+      hiddenBlockNames: [],
+      hiddenEntityCategories: [],
+    });
+  });
+
   it('honors force-full when analysis itself cannot complete', async () => {
     const source = database();
     const filter = vi.fn((model: DwgDatabase) => model);

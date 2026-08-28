@@ -1,4 +1,4 @@
-# Architektur 0.5.0
+# Architektur 0.5.2
 
 ## Überblick
 
@@ -60,6 +60,8 @@ Fehlt `navigator.deviceMemory`, verwendet ein Mobilbrowser ein konservatives Bud
 
 `DwgPreflightReport` wird in Version 0.5.0 als Schema 2 erzeugt. Neben Dateimetadaten, DWG-Version, Layerstatistik, erreichbaren Blöcken, Objektzählungen, Risikogründen, Budget, Warnungen und dem empfohlenen Profil enthält er konkrete `DwgProfileEffect`-Einträge, `DwgProfileImpact`, Annotationsmaßstäbe, XRef-Status und den räumlichen Filterbericht. Echte Objektzahlen und gewichtete Performancekosten sind getrennte Größen. Schema-1-Berichte bleiben für ältere Sitzungsfixtures lesbar. Die App speichert den Bericht nur in der laufenden Sitzung.
 
+Der Vorbereitungssheet in 0.5.2 stellt diese Daten bewusst als Entscheidungsinformation statt als Rohstatistik dar. „Ausgangsobjekte“ verwendet den unmissverständlichen Wert `DwgProfileImpact.before`; „nach Empfehlung“ zeigt den erwarteten verbleibenden Wert. Layer und Blöcke werden als Strukturwerte zusammengefasst, während die gewichtete Performancegröße ausdrücklich als geschätzte Last beschriftet bleibt. Der Luxemburg-Filter erscheint als eine kompakte Zeile mit Schalter und einer einzigen Ergebniszusammenfassung. Eine goldene Hauptaktion vergleicht die aktuelle Auswahl kanonisch mit dem empfohlenen Profil: Ohne Änderung lädt sie die Empfehlung, nach einer Layer-, Block-, Maßstabs- oder Grenzfilteränderung lädt sie die Auswahl. Dadurch können nicht gleichzeitig zwei gleichrangige Ladeaktionen widersprüchliche Zustände anzeigen.
+
 ## Empfohlenes und benutzerdefiniertes Ladeprofil
 
 Das automatisch empfohlene Profil entfernt zunächst ausschließlich Inhalte, die in der Ausgangszeichnung bereits deaktiviert oder außerhalb des 2D-Modellbereichs liegen:
@@ -90,6 +92,10 @@ Der Worker liest `SCALE`, `CONTEXTDATAMANAGER` und bekannte `*OBJECTCONTEXTDATA`
 Die Zuordnung alternativer annotativer Darstellungen erfolgt ausschließlich bei eindeutigen Kontextinformationen. Ist die Eigentümer- oder Maßstabsbeziehung in der nativen Struktur nicht sicher ableitbar, arbeitet die Pipeline fail-open: Sie entfernt nichts und meldet die unvollständigen Kontextdaten. Damit wird keine gültige Geometrie heuristisch gelöscht, es können bei beschädigten Dateien aber weiterhin mehrere Darstellungen sichtbar bleiben. Leader-/MLeader-Führung und Text verwenden anschließend denselben Sichtbarkeitszustand.
 
 Version 0.5.1 wendet den fest gewählten Maßstabsfaktor zusätzlich auf eindeutig annotative Attribute an. Bei MLeader-Varianten entfernt die Nachbearbeitung nur dann Dubletten, wenn Typ, Layer, Inhalt und Führungspunkt dieselbe logische Beschriftung belegen und die Varianten unterschiedliche explizite Maßstabsfaktoren tragen. Die dem gewählten Maßstab nächste Variante bleibt erhalten; uneindeutige Gruppen bleiben unverändert. Der CAD-Drawer kann den Vorbereitungssheet nun auch nach einem automatischen Import explizit öffnen und lädt das CAD-Dokument nach bestätigten Änderungen mit erhaltener Kamera kontrolliert neu.
+
+Version 0.5.2 berücksichtigt zusätzlich eine in realen Bestandszeichnungen verwendete, nicht native Skalierungsform. Die Junglinster-DWG kennzeichnet ihre Varianten nicht als annotative MLeader-Kontexte, sondern verteilt sie auf physische Layerfamilien wie `BEST_SCHACHTNUMMER @ 1`, `@ 0.5` und `@ 0.25`. Der Worker erkennt diese Suffixe streng und gruppiert ausschließlich eindeutig verwandte Layer. Gibt es keinen global gespeicherten `CANNOSCALE`, wählt die Analyse den in den Objektkontexten am häufigsten referenzierten Maßstab; in dieser Datei ist das `1/1000 Best`. Eine manuelle Auswahl, beispielsweise `1/500 Best`, wird in exakte auszublendende Layernamen übersetzt und in das bestehende `CadLoadProfile` übernommen.
+
+Die eigentliche Entfernung übernimmt anschließend der vorhandene struktur-erhaltende Modellfilter. Er filtert Modellbereich und erreichbare Blockdefinitionen gemeinsam und bewahrt deren Referenzen. Die rohe LibreDWG-Datenbank wird nicht direkt mutiert; damit bleibt die MLightCAD-Konvertierung zyklus- und strukturverträglich und vermeidet den bei einem direkten Eingriff beobachteten rekursiven Stackoverflow. Falls eine Layerfamilie keine Variante für den gewählten Faktor besitzt oder nicht eindeutig gruppiert werden kann, bleibt sie fail-open vollständig erhalten.
 
 `CadFileBundle` hält die Hauptdatei und ergänzte XRef-Dateien nur als Browser-`File`-Objekte. Die Auflösung normalisiert Pfade auf den DWG-Basisnamen. Eindeutige Treffer werden sequenziell im selben Worker geöffnet; mehrdeutige Treffer bleiben bis zu einer expliziten Auswahl offen. Attachments dürfen weitere lokale Referenzen verfolgen, Overlays nicht. Ein Besuchspfad beendet Zyklen, fehlende oder ungültige Dateien erzeugen Status und Warnungen. Beim Zusammenführen werden Tabellen- und Blocknamen mit `XRefName|…` getrennt; vorhandene INSERT-Transformationen bleiben maßgeblich. XCLIP, Proxy-/Custom-Objekte und vollständige AutoCAD-XRef-Parität werden nicht zugesichert.
 
@@ -204,12 +210,12 @@ Der Wechsel folgt einer kontrollierten Zustandsmaschine:
 2. Nach drei aufeinanderfolgenden WMTS-Fehlern wird die WMTS-Quelle einmal neu aufgebaut.
 3. Acht Sekunden ohne erfolgreiche WMTS-Kachel schalten auf WMS.
 4. WMS erhält ebenfalls einen Versuch; nach zehn Sekunden ohne Erfolg wird `unavailable` gemeldet.
-5. Während WMS funktioniert, prüft die App WMTS periodisch ohne Cache. Erst zwei erfolgreiche Prüfungen in Folge wechseln zurück.
+5. Sobald WMS aktiv ist, startet unabhängig von eingehenden WMS-Kacheln ein WMTS-Probezyklus von 60 Sekunden. Er läuft auch im Zustand `unavailable` weiter. Erst zwei erfolgreiche Prüfungen in Folge wechseln zurück; ein fehlgeschlagener Probeversuch setzt die Erfolgsserie zurück.
 6. Offline-/Online-Ereignisse und verspätete Ereignisse alter Quellgenerationen werden gesondert behandelt.
 
 Die Satelliten-Statuskarte zeigt den gemeinsamen Zustand. Auch bei `offline` oder `unavailable` bleiben CAD, Layer, Blöcke, Auswahl, GPS-Zustand und die bewusst schwarze Kartenfläche bedienbar.
 
-Die optionalen PCN-Kataster-Layer `parcels` und `parcels_labels` liegen als zwei gemeinsame OpenLayers-Overlays oberhalb der Orthofoto-Basis und unter CAD sowie GPS. Sie verwenden denselben offiziellen WMTS-Endpunkt, PNG-Transparenz und das Matrix-Set `GLOBAL_WEBMERCATOR_4_V3`. Satellit und Kataster lassen sich unabhängig schalten; beide Zustände bleiben beim Viewerwechsel erhalten. Das feste rote Fadenkreuz ist ein reines, nicht interaktives DOM-Overlay am CSS-Viewportmittelpunkt. Es liegt oberhalb von Karte und CAD, aber unter Kartenaktionen, Site-Banner und Drawern. Die bereits nachlaufend aktualisierte LUREF-Statuskarte verwendet denselben Kartenmittelpunkt, ohne den synchronen MLightCAD-Kamera-Hotpath zu verändern.
+Die optionalen PCN-Kataster-Layer `parcels` und `parcels_labels` liegen als zwei gemeinsame OpenLayers-Overlays oberhalb der Orthofoto-Basis und unter CAD sowie GPS. Sie verwenden ausschließlich den offiziellen WMTS-Endpunkt, PNG-Transparenz und das Matrix-Set `GLOBAL_WEBMERCATOR_4_V3`; für diese beiden Overlays ist kein WMS-Fallback konfiguriert. Satellit und Kataster lassen sich unabhängig schalten; beide Zustände bleiben beim Viewerwechsel erhalten. Das feste rote Fadenkreuz ist ein reines, nicht interaktives DOM-Overlay aus einer horizontalen und einer vertikalen roten Linie mit 14 Pixel Kantenmaß am CSS-Viewportmittelpunkt. Es liegt oberhalb von Karte und CAD, aber unter Kartenaktionen, Site-Banner und Drawern. Die bereits nachlaufend aktualisierte LUREF-Statuskarte verwendet denselben Kartenmittelpunkt, ohne den synchronen MLightCAD-Kamera-Hotpath zu verändern.
 
 ## Statische und externe Ressourcen
 

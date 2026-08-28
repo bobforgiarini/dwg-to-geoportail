@@ -90,14 +90,19 @@ function renderSheet(overrides: Partial<React.ComponentProps<typeof DwgPreparati
 describe('DwgPreparationSheet schema 2', () => {
   afterEach(cleanup);
 
-  it('shows exact entity impact separately from estimated performance cost', () => {
-    renderSheet();
+  it('shows one unambiguous source count and a separate recommended result', () => {
+    const baseReport = report();
+    renderSheet({
+      report: report({
+        entityCounts: { ...baseReport.entityCounts, modelEntities: 988 },
+      }),
+    });
 
-    const entityImpact = screen.getByText('preparation.impactEntities').parentElement;
-    expect(entityImpact).not.toBeNull();
-    expect(within(entityImpact!).getByText('1,000 → 640')).toBeInTheDocument();
-    const costImpact = screen.getByText('preparation.impactEstimatedCost').parentElement;
-    expect(within(costImpact!).getByText('≈ 2,500 → 1,300')).toBeInTheDocument();
+    expect(screen.getByText('preparation.sourceObjects').parentElement).toHaveTextContent('1,000');
+    expect(screen.getByText('preparation.recommendedObjects').parentElement).toHaveTextContent('640');
+    expect(screen.queryByText('988')).not.toBeInTheDocument();
+    expect(screen.getByText('preparation.drawingStructure').parentElement).toHaveTextContent('1 preparation.blocks');
+    expect(screen.getByText('preparation.recommendedLoad').parentElement).toHaveTextContent('≈ 1,300 / ≈ 2,000');
   });
 
   it('groups fixed, recommended and manual effects using report-provided impact', () => {
@@ -106,9 +111,58 @@ describe('DwgPreparationSheet schema 2', () => {
     expect(within(screen.getByRole('list', { name: 'preparation.fixedTitle' })).getByText('Paper space')).toBeInTheDocument();
     expect(within(screen.getByRole('list', { name: 'preparation.recommendedTitle' })).getByText('Hidden layer')).toBeInTheDocument();
     expect(within(screen.getByRole('list', { name: 'preparation.manualTitle' })).getByText('Tree')).toBeInTheDocument();
-    expect(screen.getByRole('list', { name: 'preparation.spatialEffects' })).toHaveTextContent('Outside Luxembourg');
+    expect(screen.queryByRole('list', { name: 'preparation.spatialEffects' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Outside Luxembourg')).not.toBeInTheDocument();
+    expect(screen.getByText('preparation.spatialSummary')).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'preparation.xrefs.effects' })).toHaveTextContent('Survey base');
-    expect(screen.getAllByText('preparation.effectExcluded')).toHaveLength(5);
+    expect(screen.getAllByText('preparation.effectExcluded')).toHaveLength(4);
+  });
+
+  it('uses one gold recommended action while the profile matches canonically', () => {
+    const onLoadRecommended = vi.fn();
+    const onApplySelection = vi.fn();
+    renderSheet({
+      profile: {
+        ...profile,
+        hiddenLayerIds: ['hidden'],
+        hiddenBlockNames: ['survey BASE', 'tree'],
+      },
+      onLoadRecommended,
+      onApplySelection,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'preparation.loadRecommended' }));
+    expect(onLoadRecommended).toHaveBeenCalledOnce();
+    expect(onApplySelection).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'preparation.loadSelection' })).not.toBeInTheDocument();
+  });
+
+  it('turns the same gold action into load selection after a profile change', () => {
+    const onLoadRecommended = vi.fn();
+    const onApplySelection = vi.fn();
+    renderSheet({
+      profile: { ...profile, hiddenLayerIds: [...profile.hiddenLayerIds, 'CUSTOM'] },
+      onLoadRecommended,
+      onApplySelection,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'preparation.loadSelection' }));
+    expect(onApplySelection).toHaveBeenCalledOnce();
+    expect(onLoadRecommended).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'preparation.loadRecommended' })).not.toBeInTheDocument();
+  });
+
+  it('uses load selection after changing the scale or spatial-filter setting', () => {
+    const onApplySelection = vi.fn();
+    renderSheet({
+      annotationScaleId: 'scale-1000',
+      spatialFilterEnabled: false,
+      onApplySelection,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'preparation.loadSelection' }));
+    expect(onApplySelection).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: 'preparation.loadRecommended' })).not.toBeInTheDocument();
   });
 
   it('reports the main file and resolves ambiguous local XRef candidates', () => {
@@ -142,8 +196,9 @@ describe('DwgPreparationSheet schema 2', () => {
     const legacy = report({ schemaVersion: 1, effects: undefined, impact: undefined, annotationScale: undefined, externalReferences: undefined, spatialFilter: undefined });
     renderSheet({ report: legacy });
 
-    expect(screen.getByText('preparation.impactEntities').parentElement).toHaveTextContent('1,000');
-    expect(screen.getByText('preparation.impactEstimatedCost').parentElement).toHaveTextContent('≈ 2,500');
+    expect(screen.getByText('preparation.sourceObjects').parentElement).toHaveTextContent('1,020');
+    expect(screen.getByText('preparation.recommendedObjects').parentElement).toHaveTextContent('1,020');
+    expect(screen.getByText('preparation.recommendedLoad').parentElement).toHaveTextContent('≈ 2,500 / ≈ 2,000');
     expect(screen.getAllByText('preparation.noEffects')).toHaveLength(2);
     expect(screen.getByRole('button', { name: /preparation.chooseLayers/ })).toBeInTheDocument();
   });

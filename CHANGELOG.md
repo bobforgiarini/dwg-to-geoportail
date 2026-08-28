@@ -2,6 +2,29 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.5.2] – 2026-08-28
+
+### Behoben
+
+- die reale Junglinster-DWG erkennt nun ihre physischen Maßstab-Layerfamilien mit den Suffixen `@ 1`, `@ 0.5` und `@ 0.25`; die gewählte Darstellung wird über den vorhandenen struktur-erhaltenden Modellfilter statt über eine direkte Mutation der LibreDWG-Datenbank angewendet
+- bei fehlendem globalem `CANNOSCALE` wird der dominante Objektkontext als Empfehlung verwendet; für die Junglinster-Referenz wird dadurch automatisch `1/1000 Best` statt des zuvor zufällig sortierten `1/500 Best` gewählt
+- die manuelle Auswahl `1/500 Best` blendet nur die eindeutig zugehörigen Maßstabgeschwister aus und vermeidet den zuvor bei direkter Datenbankmutation möglichen MLightCAD-Stackoverflow
+- der WMTS-Wiederanlauf ist vom WMS-Kachellebenszyklus entkoppelt: Solange WMS oder der Zustand „nicht verfügbar“ aktiv ist, prüft die App WMTS alle 60 Sekunden und wechselt nach zwei erfolgreichen Prüfungen zurück
+
+### Geändert
+
+- das Kartenmittelpunkt-Symbol ist jetzt ein schlichtes rotes Zweilinienkreuz mit 14 Pixel Kantenmaß, ohne Kreis oder Zielmarkierung
+- Kataster wird in der Oberfläche ausdrücklich als `Kataster (WMTS)` bezeichnet; die offiziellen Layer `parcels` und `parcels_labels` besitzen bewusst keinen WMS-Fallback
+- der Vorbereitungssheet verwendet nur noch eine dynamische goldene Hauptaktion: unverändert „Empfohlen laden“, nach einer manuellen Änderung „Auswahl laden“
+- die Kennzahlen unterscheiden Ausgangsobjekte, erwartete Objekte nach Empfehlung und geschätzte Last klar voneinander; der Luxemburg-Abschnitt wurde zu einer kompakten, nicht redundanten Zusammenfassung verdichtet
+- Paket- und Kopfversion auf `0.5.2` angehoben
+
+### Prüfung
+
+- 48 Testdateien mit 243 bestandenen Tests sowie der TypeScript-/Vite-Produktionsbuild erfolgreich ausgeführt
+- private Junglinster-DWG mit 11,31 MB vollständig browserlokal importiert; automatische Auswahl `1/1000 Best` sowie manuelle `1/500`-Darstellung bei LUREF `86200 / 86311.948` mit genau einer sichtbaren Maßstabsvariante geprüft
+- Desktop- und Mobiloberfläche bei 1280 × 720 beziehungsweise 390 × 844 CSS-Pixeln mit DPR 1 gegen die fünf bereitgestellten Referenzbilder verglichen
+
 ## [0.5.1] – 2026-08-28
 
 ### Hinzugefügt

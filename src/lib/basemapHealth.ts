@@ -79,6 +79,7 @@ export class BasemapHealthController {
   private stallTimer: TimerHandle | null = null;
   private retryTimer: TimerHandle | null = null;
   private recoveryProbeTimer: TimerHandle | null = null;
+  private recoveryProbeInFlight = false;
 
   constructor(options: BasemapHealthControllerOptions = {}) {
     this.active = options.initialActive ?? true;
@@ -145,6 +146,7 @@ export class BasemapHealthController {
       this.update({ status: 'loading', transitionReason: 'source-mounted' });
     }
     this.scheduleStall(generation);
+    if (this.state.mode === 'wms') this.ensureRecoveryProbeScheduled();
   }
 
   tileLoadStart(generation: number): void {
@@ -162,7 +164,7 @@ export class BasemapHealthController {
     this.consecutiveErrors = 0;
     this.retryUsed[this.state.mode] = false;
     this.update({ status: 'ready', transitionReason: 'tile-loaded' });
-    if (this.state.mode === 'wms') this.scheduleRecoveryProbe();
+    if (this.state.mode === 'wms') this.ensureRecoveryProbeScheduled();
     else this.clearRecoveryProbe();
   }
 
@@ -237,8 +239,10 @@ export class BasemapHealthController {
   }
 
   private markUnavailable(reason: 'wms-stall' | 'wms-tile-errors' | 'unavailable'): void {
-    this.clearOperationTimers();
+    this.clearStallTimer();
+    this.clearRetryTimer();
     this.update({ status: 'unavailable', transitionReason: reason });
+    if (this.state.mode === 'wms') this.ensureRecoveryProbeScheduled();
   }
 
   private startGeneration(
@@ -258,14 +262,24 @@ export class BasemapHealthController {
       generation: this.state.generation + 1,
       transitionReason,
     });
+    if (mode === 'wms') this.ensureRecoveryProbeScheduled();
   }
 
-  private scheduleRecoveryProbe(): void {
-    this.clearRecoveryProbe();
+  private ensureRecoveryProbeScheduled(): void {
+    if (
+      this.recoveryProbeTimer
+      || this.recoveryProbeInFlight
+      || this.disposed
+      || !this.active
+      || !this.online
+      || this.state.mode !== 'wms'
+    ) return;
     const generation = this.state.generation;
     const token = this.asyncToken;
     this.recoveryProbeTimer = this.setTimer(() => {
       this.recoveryProbeTimer = null;
+      if (this.asyncToken !== token || !this.accepts(generation) || this.state.mode !== 'wms') return;
+      this.recoveryProbeInFlight = true;
       void this.runRecoveryProbe(generation, token);
     }, this.recoveryProbeDelayMs);
   }
@@ -277,14 +291,20 @@ export class BasemapHealthController {
     } catch {
       available = false;
     }
-    if (this.asyncToken !== token || !this.accepts(generation) || this.state.mode !== 'wms') return;
+    if (this.asyncToken !== token || !this.accepts(generation) || this.state.mode !== 'wms') {
+      this.recoveryProbeInFlight = false;
+      this.ensureRecoveryProbeScheduled();
+      return;
+    }
     this.recoveryProbeSuccesses = available ? this.recoveryProbeSuccesses + 1 : 0;
     if (this.recoveryProbeSuccesses >= 2) {
+      this.recoveryProbeInFlight = false;
       this.retryUsed.wmts = false;
       this.startGeneration('wmts', 'loading', 'wmts-recovered', false);
       return;
     }
-    this.scheduleRecoveryProbe();
+    this.recoveryProbeInFlight = false;
+    this.ensureRecoveryProbeScheduled();
   }
 
   private clearOperationTimers(): void {

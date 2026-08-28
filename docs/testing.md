@@ -1,10 +1,10 @@
-# Test- und Abnahmeplan 0.5.0
+# Test- und Abnahmeplan 0.5.2
 
 ## Grundsatz
 
 Automatisierte Tests prüfen Datenstrukturen, Filterung, Zustandsautomaten und Lebenszyklus. Sie ersetzen weder den visuellen Vergleich mit einer bekannten LUREF-DWG noch einen echten Speichertest in iOS Safari. Private DWG-Dateien bleiben außerhalb des Repositorys und werden nicht an einen externen Dienst übertragen.
 
-Die unten aufgeführten automatisierten und manuellen Prüfungen sind die Abnahmebasis für Version 0.5.0. Der vollständige Abschlusslauf umfasst 47 Vitest-Dateien mit 227 bestandenen Tests, einen fehlerfreien TypeScript-Projektbuild und einen erfolgreichen Vite-Produktionsbuild. Die reale Junglinster-Prüfung aus Version 0.4.1 bleibt mit ihren Messwerten als Performance-Referenz dokumentiert. Prüfungen mit privaten XRef-DWGs und auf echter iPhone-Hardware bleiben lokale Abnahmen.
+Die unten aufgeführten automatisierten und manuellen Prüfungen sind die Abnahmebasis für Version 0.5.2. Der vollständige Abschlusslauf umfasst 48 Vitest-Dateien mit 243 bestandenen Tests, einen fehlerfreien TypeScript-Projektbuild und einen erfolgreichen Vite-Produktionsbuild. Die private Junglinster-DWG wurde für 0.5.2 zusätzlich als reale Browserreferenz verwendet; sie bleibt außerhalb des Repositorys. Prüfungen mit privaten XRef-DWGs und auf echter iPhone-Hardware bleiben lokale Abnahmen.
 
 ## Automatisierte Prüfung
 
@@ -301,3 +301,37 @@ Nach einem späteren GitHub-Push übernimmt das vorhandene Git-basierte Netlify-
 - eindeutige annotative Attribut- und MLeader-Varianten folgen dem gewählten Maßstab; uneindeutige Kontextdaten bleiben fail-open vollständig erhalten
 - der MLightCAD-Hotpath bleibt `viewChanged → setCenter/setResolution → renderSync()` ohne zusätzliche React-, Worker- oder Katasterarbeit
 - Version `0.5.1` erscheint in Paketmetadaten und Kopfzeile; TypeScript, Vitest, Produktionsbuild und visuelle Desktop-/Mobilprüfung müssen erfolgreich sein
+
+## Abschlussprüfung 0.5.2
+
+### Maßstab-Layer und reale Junglinster-DWG
+
+- die 11,31-MB-Datei `2023- Bestandskanal_Junglinster.dwg` wurde ausschließlich browserlokal verarbeitet und erfolgreich bis zum gerenderten MLightCAD-Dokument importiert
+- die Datei verwendet für die problematischen MLeader-Beschriftungen keine nativen annotativen MLeader-Kontexte, sondern physische Layerfamilien mit `@ 1`, `@ 0.5` und `@ 0.25`
+- ohne globalen `CANNOSCALE` wird die Häufigkeit belastbarer Objektkontexte ausgewertet; `1/1000 Best` ist der dominante Kontext und wird automatisch empfohlen
+- eine manuelle Auswahl von `1/500 Best` übernimmt die entsprechenden Geschwisterlayer in den bestehenden Modellfilter; Modellbereich, Blockdefinitionen und Referenzen bleiben dabei strukturell erhalten
+- die direkte Mutation der LibreDWG-Entitätslisten wird nicht verwendet; der damit reproduzierbare MLightCAD-Stackoverflow tritt im Abschlusslauf nicht mehr auf
+- bei LUREF `86200 / 86311.948` wurde die Auswahl `1/500 Best` visuell geprüft: Die Maßstabbeschriftung liegt genau einmal vor, nicht gleichzeitig in mehreren Layermaßstäben
+- unvollständige Layerfamilien und nicht eindeutig zuordenbare Kontexte bleiben fail-open erhalten
+
+### Basemap, Kataster und Mittelpunkt
+
+- drei aufeinanderfolgende WMTS-Fehler erzeugen genau einen Retry; ein WMTS-Stall von acht Sekunden aktiviert WMS `ortho_latest`
+- der unabhängige 60-Sekunden-Zeitgeber wird nicht von erfolgreichen WMS-Kacheln zurückgesetzt und läuft auch bei `unavailable`; zwei erfolgreiche WMTS-Proben wechseln zurück zu `ortho_2025`
+- die Katasteranzeige verwendet ausschließlich die offiziellen WMTS-Layer `parcels` und `parcels_labels` und ist in DE/FR/EN als WMTS gekennzeichnet
+- das rote Mittelpunkt-Symbol misst 14 × 14 CSS-Pixel, besteht nur aus horizontaler und vertikaler Linie, ist `aria-hidden` und blockiert keine Karteninteraktion
+
+### Vorbereitungssheet und visuelle Prüfung
+
+- ohne benutzerseitige Änderung ist genau eine goldene Aktion „Empfohlen laden“ vorhanden; nach Layer-, Block-, Maßstabs- oder Grenzfilteränderung wird dieselbe Aktion zu „Auswahl laden“
+- Ausgangsobjekte und erwartete Objekte nach Empfehlung verwenden beide die Werte aus `DwgProfileImpact`; Layer-/Blockstruktur und geschätzte Performancekosten sind davon eindeutig getrennt
+- der Luxemburg-Filter zeigt Toleranz, Schalter und eine einzige kompakte Ergebniszusammenfassung ohne doppelte Ausschlusszeile
+- fünf bereitgestellte Source-Screenshots wurden mit Implementierungsscreenshots und vier gemeinsamen Vergleichsbildern unter `docs/qa/0.5.2/` geprüft
+- Desktop: 1280 × 720 CSS-Pixel, DPR 1; Mobile: 390 × 844 CSS-Pixel, DPR 1
+- geprüfte Zustände: MLightCAD-Karte mit realer Junglinster-DWG, Vorbereitungssheet, manuelle `1/500`-Darstellung und mobiler Kartenmittelpunkt
+
+### Automatisierter Abschluss
+
+- Vitest: 48 Dateien, 243 Tests, alle bestanden
+- TypeScript-/Vite-Produktionsbuild: erfolgreich
+- Produktionsassets einschließlich versioniertem LibreDWG-WASM und Workerpfad wurden erzeugt
