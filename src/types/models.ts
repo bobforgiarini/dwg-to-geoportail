@@ -41,6 +41,38 @@ export interface CadObjectDrawOrder {
   back: string[];
 }
 
+/** A two-dimensional coordinate in metres in Luxembourg's EPSG:2169 CRS. */
+export type LurefCoordinate = readonly [x: number, y: number];
+
+export type CadSnapKind =
+  | 'endpoint'
+  | 'vertex'
+  | 'intersection'
+  | 'midpoint'
+  | 'center'
+  | 'nearest';
+
+export interface MeasurementPoint {
+  coordinate: LurefCoordinate;
+  source: 'aim' | 'cad-snap';
+  snapKind?: CadSnapKind;
+}
+
+interface DistanceMeasurementBase {
+  /** CAD snapping is a session preference and survives closing a measurement. */
+  snapEnabled: boolean;
+}
+
+export type DistanceMeasurementState =
+  | (DistanceMeasurementBase & { phase: 'inactive' })
+  | (DistanceMeasurementBase & { phase: 'placing-first' })
+  | (DistanceMeasurementBase & { phase: 'placing-second'; firstPoint: MeasurementPoint })
+  | (DistanceMeasurementBase & {
+      phase: 'complete';
+      firstPoint: MeasurementPoint;
+      secondPoint: MeasurementPoint;
+    });
+
 export type LocationPermission = 'idle' | 'prompt' | 'granted' | 'denied' | 'unavailable';
 export type LocationFollowMode = 'off' | 'following' | 'paused';
 

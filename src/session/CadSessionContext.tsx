@@ -27,7 +27,20 @@ import {
   DEFAULT_CAD_APPEARANCE,
   type CadAppearanceSettings,
 } from '../lib/cad/appearance';
-import type { CadObjectDrawOrder, CadObjectDrawOrderTier } from '../types/models';
+import {
+  INITIAL_DISTANCE_MEASUREMENT_STATE,
+  cancelDistanceMeasurement,
+  commitDistanceMeasurementPoint,
+  restartDistanceMeasurement,
+  setDistanceMeasurementSnapEnabled,
+  startDistanceMeasurement,
+} from '../lib/measurement';
+import type {
+  CadObjectDrawOrder,
+  CadObjectDrawOrderTier,
+  DistanceMeasurementState,
+  MeasurementPoint,
+} from '../types/models';
 import {
   getViewerHref,
   navigateBrowserToViewer,
@@ -67,6 +80,8 @@ export interface CadSession {
   hiddenObjectIds: string[];
   /** Session-only front/back overrides shared by both CAD viewers. */
   objectDrawOrder: CadObjectDrawOrder;
+  /** One session-only 2D LUREF measurement shared by both viewer routes. */
+  distanceMeasurement: DistanceMeasurementState;
   /** Marker left by a previous hard tab termination; contains metadata only. */
   recoveryMarker: DwgImportRecoveryMarker | null;
   recoveryPreparationRequired: boolean;
@@ -99,6 +114,11 @@ export interface CadSessionContextValue extends CadSession {
   setObjectHidden: (objectId: string, hidden: boolean) => void;
   setObjectDrawOrder: (groupKey: string, tier: CadObjectDrawOrderTier) => void;
   restoreHiddenObjects: () => void;
+  startMeasurement: () => void;
+  commitMeasurementPoint: (point: MeasurementPoint) => void;
+  restartMeasurement: () => void;
+  cancelMeasurement: () => void;
+  setMeasurementSnapEnabled: (enabled: boolean) => void;
   clearRecoveryPreparationRequirement: () => void;
   reloadFile: () => void;
 }
@@ -143,6 +163,9 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
     front: [...EMPTY_CAD_OBJECT_DRAW_ORDER.front],
     back: [...EMPTY_CAD_OBJECT_DRAW_ORDER.back],
   }));
+  const [distanceMeasurement, setDistanceMeasurement] = useState<DistanceMeasurementState>(
+    () => ({ ...INITIAL_DISTANCE_MEASUREMENT_STATE }),
+  );
   const [recoveryMarker, setRecoveryMarker] = useState<DwgImportRecoveryMarker | null>(
     () => consumeDwgImportRecoveryMarker(),
   );
@@ -211,6 +234,7 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
     setCadAppearanceState(DEFAULT_CAD_APPEARANCE);
     setHiddenObjectIds([]);
     setObjectDrawOrderState({ front: [], back: [] });
+    setDistanceMeasurement({ ...INITIAL_DISTANCE_MEASUREMENT_STATE });
     setFileRevision((currentRevision) => currentRevision + 1);
   }, []);
 
@@ -227,6 +251,7 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
     setCadAppearanceState(DEFAULT_CAD_APPEARANCE);
     setHiddenObjectIds([]);
     setObjectDrawOrderState({ front: [], back: [] });
+    setDistanceMeasurement({ ...INITIAL_DISTANCE_MEASUREMENT_STATE });
     setFileRevision((currentRevision) => currentRevision + 1);
   }, []);
 
@@ -290,6 +315,21 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
   const setObjectDrawOrder = useCallback((groupKey: string, tier: CadObjectDrawOrderTier) => {
     setObjectDrawOrderState((current) => moveCadObjectDrawOrder(current, groupKey, tier));
   }, []);
+  const startMeasurement = useCallback(() => {
+    setDistanceMeasurement((current) => startDistanceMeasurement(current));
+  }, []);
+  const commitMeasurementPoint = useCallback((point: MeasurementPoint) => {
+    setDistanceMeasurement((current) => commitDistanceMeasurementPoint(current, point));
+  }, []);
+  const restartMeasurement = useCallback(() => {
+    setDistanceMeasurement((current) => restartDistanceMeasurement(current));
+  }, []);
+  const cancelMeasurement = useCallback(() => {
+    setDistanceMeasurement((current) => cancelDistanceMeasurement(current));
+  }, []);
+  const setMeasurementSnapEnabled = useCallback((enabled: boolean) => {
+    setDistanceMeasurement((current) => setDistanceMeasurementSnapEnabled(current, enabled));
+  }, []);
   const clearRecoveryPreparationRequirement = useCallback(
     () => setRecoveryPreparationRequired(false),
     [],
@@ -331,6 +371,7 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       cadAppearance,
       hiddenObjectIds,
       objectDrawOrder,
+      distanceMeasurement,
       recoveryMarker,
       recoveryPreparationRequired,
       setFile,
@@ -357,10 +398,15 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       setObjectHidden,
       setObjectDrawOrder,
       restoreHiddenObjects,
+      startMeasurement,
+      commitMeasurementPoint,
+      restartMeasurement,
+      cancelMeasurement,
+      setMeasurementSnapEnabled,
       clearRecoveryPreparationRequirement,
       reloadFile,
     }),
-    [activeViewer, addXrefFiles, annotationScaleId, basemapHealth, basemapHealthReporter, basemapVisible, cadAppearance, cadRenderQuality, cadTextVisible, cadastreVisible, clearFile, clearRecoveryPreparationRequirement, file, fileRevision, hiddenObjectIds, loadProfile, objectDrawOrder, preferredXrefFileIds, preflightReport, recoveryMarker, recoveryPreparationRequired, reloadFile, resetLoadProfile, restoreHiddenObjects, setBlockProfileVisible, setCadAppearance, setFile, setLayerProfileVisible, setLoadProfile, setObjectDrawOrder, setObjectHidden, setPreferredXrefFile, setViewer, spatialFilterEnabled, toggleBasemapVisible, toggleCadastreVisible, xrefFiles],
+    [activeViewer, addXrefFiles, annotationScaleId, basemapHealth, basemapHealthReporter, basemapVisible, cadAppearance, cadRenderQuality, cadTextVisible, cadastreVisible, cancelMeasurement, clearFile, clearRecoveryPreparationRequirement, commitMeasurementPoint, distanceMeasurement, file, fileRevision, hiddenObjectIds, loadProfile, objectDrawOrder, preferredXrefFileIds, preflightReport, recoveryMarker, recoveryPreparationRequired, reloadFile, resetLoadProfile, restartMeasurement, restoreHiddenObjects, setBlockProfileVisible, setCadAppearance, setFile, setLayerProfileVisible, setLoadProfile, setMeasurementSnapEnabled, setObjectDrawOrder, setObjectHidden, setPreferredXrefFile, setViewer, spatialFilterEnabled, startMeasurement, toggleBasemapVisible, toggleCadastreVisible, xrefFiles],
   );
 
   return <CadSessionContext.Provider value={value}>{children}</CadSessionContext.Provider>;

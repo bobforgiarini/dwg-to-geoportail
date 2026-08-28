@@ -101,6 +101,54 @@ describe('CadSessionProvider', () => {
     expect(result.current.objectDrawOrder).toEqual({ front: [], back: [] });
   });
 
+  it('shares one active LUREF measurement across viewer switches and CAD reloads', () => {
+    const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
+    act(() => result.current.setFile(new File(['drawing'], 'drawing.dwg')));
+
+    act(() => result.current.startMeasurement());
+    act(() => result.current.commitMeasurementPoint({
+      coordinate: [80_000, 70_000],
+      source: 'aim',
+    }));
+    act(() => result.current.setViewer('legacy'));
+    act(() => result.current.reloadFile());
+
+    expect(result.current.distanceMeasurement).toEqual({
+      phase: 'placing-second',
+      snapEnabled: true,
+      firstPoint: { coordinate: [80_000, 70_000], source: 'aim' },
+    });
+
+    act(() => result.current.commitMeasurementPoint({
+      coordinate: [80_003, 70_004],
+      source: 'cad-snap',
+      snapKind: 'endpoint',
+    }));
+    expect(result.current.distanceMeasurement.phase).toBe('complete');
+  });
+
+  it('keeps the snap preference when closing but resets measurements for a new DWG', () => {
+    const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
+    act(() => result.current.setMeasurementSnapEnabled(false));
+    act(() => result.current.startMeasurement());
+    act(() => result.current.commitMeasurementPoint({
+      coordinate: [81_000, 71_000],
+      source: 'aim',
+    }));
+    act(() => result.current.cancelMeasurement());
+
+    expect(result.current.distanceMeasurement).toEqual({
+      phase: 'inactive',
+      snapEnabled: false,
+    });
+
+    act(() => result.current.setFile(new File(['next'], 'next.dwg')));
+    expect(result.current.distanceMeasurement).toEqual({
+      phase: 'inactive',
+      snapEnabled: true,
+    });
+  });
+
   it('shares local XRefs, annotation scale and the Luxembourg filter across viewers and reloads', () => {
     const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
     const root = new File(['root'], 'root.dwg', { lastModified: 1 });

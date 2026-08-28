@@ -3,7 +3,7 @@ import type { CadOverlayLayer } from '../../types/models';
 import type { CadOverlayBlock } from '../cad/preflightTypes';
 import type { CadRenderQualityContext } from './renderQuality';
 import { AdapterEvent } from './types';
-import { Group } from 'three';
+import { Group, Raycaster } from 'three';
 
 const runtimeHarness = vi.hoisted(() => ({
   checkWebworkerReadiness: vi.fn(),
@@ -25,6 +25,16 @@ vi.mock('@mlightcad/data-model', () => ({
     instance: { register: vi.fn(), unregister: vi.fn() },
   },
   AcDbFileType: { DWG: 'dwg' },
+  AcDbOsnapMode: {
+    EndPoint: 1,
+    MidPoint: 2,
+    Center: 3,
+    Node: 4,
+    Quadrant: 5,
+    Intersection: 6,
+    Insertion: 7,
+    Nearest: 10,
+  },
   AcDbOpenDatabaseError: { throwOnWorkerParseFailure: vi.fn() },
   acdbCreateWorkerApi: vi.fn(),
   acdbHostApplicationServices: vi.fn(),
@@ -48,7 +58,13 @@ interface AdapterInternals {
   layers: CadOverlayLayer[];
   blocks: CadOverlayBlock[];
   directBlockObjectIds: Map<string, Set<string>>;
+  hiddenBlockObjectIds: Set<string>;
+  hiddenObjectIds: Set<string>;
   objectBlockPaths: Map<string, string[]>;
+  objectIdsByDrawOrderKey: Map<string, Set<string>>;
+  previewRaycaster: Raycaster;
+  textObjectIds: Set<string>;
+  textVisible: boolean;
   manager: unknown;
   view: unknown;
   bindDocument: (manager: unknown) => void;
@@ -60,6 +76,8 @@ interface AdapterInternals {
   configureTouchNavigation: (view: unknown) => void;
   hideEmbeddedCommandLine: () => void;
   describeObject: (id: string) => unknown;
+  measurementOverlay: Group | null;
+  snapPreview: unknown;
   renderQualityContext: CadRenderQualityContext;
 }
 
@@ -533,6 +551,312 @@ describe('MlightCadViewerAdapter controls', () => {
     expect(setVisible).toHaveBeenLastCalledWith('MULTILEADER-1', true);
   });
 
+  it('resolves the true canvas-center aim and applies visible CAD OSNAP within 18 CSS pixels', () => {
+    const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+    const canvas = document.createElement('canvas');
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      x: 20,
+      y: 30,
+      left: 20,
+      top: 30,
+      right: 340,
+      bottom: 670,
+      width: 320,
+      height: 640,
+      toJSON: () => ({}),
+    });
+    const screenToWorld = vi.fn(({ x, y }: { x: number; y: number }) => ({
+      x: 80_000 + x,
+      y: 100_000 + y,
+    }));
+    const resolve = vi.fn(() => ({
+      x: 80_159.5,
+      y: 100_319.75,
+      z: 0,
+      type: 2,
+    }));
+    internals(adapter).layers = [{ id: 'A', name: 'A', visible: true, featureCount: 1 }];
+    internals(adapter).manager = {
+      curDocument: {
+        database: {
+          tables: { blockTable: { getEntityById: () => ({ dxfTypeName: 'LINE', layer: 'A' }) } },
+          getObjectById: vi.fn(),
+        },
+      },
+    };
+    internals(adapter).view = {
+      canvas,
+      width: 999,
+      height: 999,
+      screenToWorld,
+      pick: vi.fn(() => [{ id: '42' }]),
+      getEntityVisible: vi.fn(() => true),
+      osnapResolver: { resolve },
+    };
+
+    expect(adapter.resolveAimPoint(false)).toEqual({
+      coordinate: [80_160, 100_320],
+      source: 'aim',
+    });
+    expect(screenToWorld).toHaveBeenLastCalledWith({ x: 160, y: 320 });
+    expect(adapter.resolveAimPoint(true)).toEqual({
+      coordinate: [80_159.5, 100_319.75],
+      source: 'cad-snap',
+      snapKind: 'midpoint',
+    });
+    expect(resolve).toHaveBeenCalledWith({
+      cursorWcs: { x: 80_160, y: 100_320 },
+      hitRadiusPx: 18,
+    });
+
+    internals(adapter).layers = [{ id: 'A', name: 'A', visible: false, featureCount: 1 }];
+    resolve.mockClear();
+    expect(adapter.resolveAimPoint(true)?.source).toBe('aim');
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('snaps reordered preview geometry and immediately restores its hidden original', () => {
+    const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+    const canvas = document.createElement('canvas');
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      x: 10,
+      y: 20,
+      left: 10,
+      top: 20,
+      right: 210,
+      bottom: 220,
+      width: 200,
+      height: 200,
+      toJSON: () => ({}),
+    });
+    const scene = new Group();
+    const subset = new Group();
+    subset.add(new Group());
+    const layer = {
+      name: 'A',
+      hasEntity: (id: string) => id === '42',
+      createPreviewSubset: () => subset,
+    };
+    let originalVisible = true;
+    const setEntitySceneVisible = vi.fn((_id: string, visible: boolean) => {
+      originalVisible = visible;
+    });
+    const resolve = vi.fn(() => ({ x: 99.5, y: 100, z: 0, type: 1 }));
+    const state = internals(adapter);
+    state.layers = [{ id: 'A', name: 'A', visible: true, featureCount: 1 }];
+    state.manager = {
+      curDocument: {
+        database: {
+          tables: { blockTable: { getEntityById: () => ({ objectId: '42', dxfTypeName: 'LINE', layer: 'A' }) } },
+          getObjectById: vi.fn(),
+        },
+      },
+    };
+    state.view = {
+      canvas,
+      width: 200,
+      height: 200,
+      center: { x: 100, y: 100 },
+      internalCamera: {},
+      screenToWorld: ({ x, y }: { x: number; y: number }) => ({ x, y }),
+      cadScene: {
+        hasEntity: () => true,
+        internalScene: scene,
+        modelSpaceLayout: { layers: new Map([['A', layer]]) },
+      },
+      selectionSet: { clear: vi.fn() },
+      setEntitySceneVisible,
+      getEntityVisible: vi.fn(() => originalVisible),
+      pick: vi.fn(() => (originalVisible ? [{ id: '42' }] : [])),
+      osnapResolver: { resolve },
+      isDirty: false,
+    };
+    state.objectIdsByDrawOrderKey.set('::42', new Set(['42']));
+    vi.spyOn(state.previewRaycaster, 'setFromCamera').mockImplementation(() => undefined);
+    vi.spyOn(state.previewRaycaster, 'intersectObject').mockImplementation((object) => (
+      object === subset ? ([{}] as never) : []
+    ));
+
+    expect(adapter.setObjectDrawOrder('::42', 'front')).toBe('applied');
+    expect(originalVisible).toBe(false);
+    setEntitySceneVisible.mockClear();
+
+    expect(adapter.resolveAimPoint(true)).toEqual({
+      coordinate: [99.5, 100],
+      source: 'cad-snap',
+      snapKind: 'endpoint',
+    });
+    expect(resolve).toHaveBeenCalledOnce();
+    expect(setEntitySceneVisible.mock.calls).toEqual([
+      ['42', true],
+      ['42', false],
+    ]);
+    expect(originalVisible).toBe(false);
+  });
+
+  it('does not reveal reordered snap candidates hidden by object, block, layer or text state', () => {
+    const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+    const canvas = document.createElement('canvas');
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      left: 0,
+      top: 0,
+      right: 100,
+      bottom: 100,
+      width: 100,
+      height: 100,
+      toJSON: () => ({}),
+    });
+    const scene = new Group();
+    const subset = new Group();
+    subset.add(new Group());
+    const setEntitySceneVisible = vi.fn();
+    const state = internals(adapter);
+    state.layers = [{ id: 'A', name: 'A', visible: true, featureCount: 1 }];
+    state.manager = {
+      curDocument: {
+        database: {
+          tables: { blockTable: { getEntityById: () => ({ objectId: '42', dxfTypeName: 'TEXT', layer: 'A' }) } },
+          getObjectById: vi.fn(),
+        },
+      },
+    };
+    state.view = {
+      canvas,
+      width: 100,
+      height: 100,
+      center: { x: 50, y: 50 },
+      internalCamera: {},
+      screenToWorld: ({ x, y }: { x: number; y: number }) => ({ x, y }),
+      cadScene: {
+        hasEntity: () => true,
+        internalScene: scene,
+        modelSpaceLayout: {
+          layers: new Map([['A', {
+            name: 'A',
+            hasEntity: () => true,
+            createPreviewSubset: () => subset,
+          }]]),
+        },
+      },
+      selectionSet: { clear: vi.fn() },
+      setEntitySceneVisible,
+      getEntityVisible: vi.fn(() => false),
+      pick: vi.fn(() => []),
+      osnapResolver: { resolve: vi.fn() },
+      isDirty: false,
+    };
+    state.objectIdsByDrawOrderKey.set('::42', new Set(['42']));
+    state.textObjectIds.add('42');
+    vi.spyOn(state.previewRaycaster, 'setFromCamera').mockImplementation(() => undefined);
+    vi.spyOn(state.previewRaycaster, 'intersectObject').mockReturnValue([{}] as never);
+    expect(adapter.setObjectDrawOrder('::42', 'front')).toBe('applied');
+
+    const verifyNotRevealed = () => {
+      setEntitySceneVisible.mockClear();
+      expect(adapter.resolveAimPoint(true)?.source).toBe('aim');
+      expect(setEntitySceneVisible).not.toHaveBeenCalledWith('42', true);
+    };
+
+    state.hiddenObjectIds.add('42');
+    verifyNotRevealed();
+    state.hiddenObjectIds.clear();
+    state.hiddenBlockObjectIds.add('42');
+    verifyNotRevealed();
+    state.hiddenBlockObjectIds.clear();
+    state.layers[0].visible = false;
+    verifyNotRevealed();
+    state.layers[0].visible = true;
+    state.textVisible = false;
+    verifyNotRevealed();
+  });
+
+  it('renders bounded measurement and snap overlays without attaching camera work', () => {
+    const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+    const scene = new Group();
+    const view = {
+      cadScene: { internalScene: scene },
+      isDirty: false,
+    };
+    internals(adapter).view = view;
+
+    adapter.setMeasurementOverlay([80_000, 100_000]);
+    expect(scene.children).toHaveLength(1);
+    expect(scene.getObjectByName('CadDistanceMeasurementPoints')).toBeTruthy();
+    expect(scene.getObjectByName('CadDistanceMeasurementLine')).toBeFalsy();
+
+    adapter.setMeasurementOverlay([80_000, 100_000], [80_003, 100_004]);
+    expect(scene.children).toHaveLength(1);
+    expect(scene.getObjectByName('CadDistanceMeasurementLine')).toBeTruthy();
+
+    adapter.setSnapPreview({
+      coordinate: [80_003, 100_004],
+      source: 'cad-snap',
+      snapKind: 'endpoint',
+    });
+    const preview = internals(adapter).snapPreview;
+    expect(scene.children).toHaveLength(2);
+    expect(scene.getObjectByName('CadDistanceSnapPreview')).toBeTruthy();
+
+    adapter.setSnapPreview({
+      coordinate: [80_004, 100_005],
+      source: 'cad-snap',
+      snapKind: 'intersection',
+    });
+    expect(internals(adapter).snapPreview).toBe(preview);
+    expect(scene.children).toHaveLength(2);
+
+    adapter.setSnapPreview(null);
+    adapter.setMeasurementOverlay(null);
+    expect(scene.children).toHaveLength(0);
+    expect(view.isDirty).toBe(true);
+  });
+
+  it('suppresses object selection while measurement capture is active and restores it afterwards', () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new MlightCadViewerAdapter(document.createElement('div'));
+      const canvas = document.createElement('canvas');
+      const view = {
+        canvas,
+        entitySelectionEnabled: true,
+        selectionBoxSize: 4,
+        selectionSet: {
+          count: 0,
+          has: vi.fn(() => false),
+          clear: vi.fn(),
+          events: {
+            selectionAdded: new AdapterEvent<{ ids: string[] }>(),
+            selectionRemoved: new AdapterEvent<{ ids: string[] }>(),
+          },
+        },
+        viewportToCanvas: ({ x, y }: { x: number; y: number }) => ({ x, y }),
+        screenToWorld: ({ x, y }: { x: number; y: number }) => ({ x, y }),
+        pick: vi.fn(() => []),
+        applySelection: vi.fn(),
+      };
+      internals(adapter).view = view;
+      internals(adapter).bindSelection(view);
+
+      adapter.setMeasurementCaptureActive(true);
+      expect(view.entitySelectionEnabled).toBe(false);
+      dispatchPointer(canvas, 'pointerdown', 50, 60);
+      dispatchPointer(canvas, 'pointerup', 50, 60);
+      vi.runAllTimers();
+      expect(view.pick).not.toHaveBeenCalled();
+
+      adapter.setMeasurementCaptureActive(false);
+      expect(view.entitySelectionEnabled).toBe(true);
+      dispatchPointer(canvas, 'pointerdown', 50, 60);
+      dispatchPointer(canvas, 'pointerup', 50, 60);
+      vi.runAllTimers();
+      expect(view.pick).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('emits a synchronized camera after programmatic center and fit operations', () => {
     vi.useFakeTimers();
     try {
@@ -693,10 +1017,12 @@ describe('MlightCadViewerAdapter controls', () => {
     const renderListsDispose = vi.fn();
     const managerDestroy = vi.fn().mockResolvedValue(undefined);
     const adapter = new MlightCadViewerAdapter(container);
+    const scene = new Group();
     internals(adapter).view = {
       selectionSet: { clear: vi.fn() },
       stopAnimationLoop,
       clear,
+      cadScene: { internalScene: scene },
       renderer: {
         dispose: rendererDispose,
         domElement: canvas,
@@ -709,6 +1035,9 @@ describe('MlightCadViewerAdapter controls', () => {
       },
     };
     internals(adapter).manager = { destroy: managerDestroy };
+    adapter.setMeasurementOverlay([80_000, 100_000], [80_003, 100_004]);
+    adapter.setSnapPreview({ coordinate: [80_003, 100_004], source: 'cad-snap', snapKind: 'endpoint' });
+    expect(scene.children).toHaveLength(2);
 
     await adapter.dispose();
 
@@ -720,6 +1049,7 @@ describe('MlightCadViewerAdapter controls', () => {
     expect(forceContextLoss).toHaveBeenCalledOnce();
     expect(managerDestroy).toHaveBeenCalledOnce();
     expect(rendererDispose).toHaveBeenCalledOnce();
+    expect(scene.children).toHaveLength(0);
     expect(container.childElementCount).toBe(0);
   });
 

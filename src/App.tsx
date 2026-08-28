@@ -7,6 +7,7 @@ import { BlockSheet, type BlockSheetItem } from './components/BlockSheet';
 import { createBlockSheetItems, createBlockSheetLabels } from './components/blockSheetModel';
 import { CadControlSheet } from './components/CadControlSheet';
 import { DwgPreparationSheet } from './components/DwgPreparationSheet';
+import { DistanceMeasurementSheet } from './components/DistanceMeasurementSheet';
 import { LayerSheet } from './components/LayerSheet';
 import { createLayerSheetItems, createLayerSheetLabels, isLayerHidden, layerIdentityMatches } from './components/layerSheetModel';
 import { MapActionControls } from './components/MapActionControls';
@@ -23,7 +24,7 @@ import { countHiddenCadObjects } from './lib/cad/visibility';
 import { isUnreadableFileError } from './lib/fileAccessError';
 import { DEFAULT_MLIGHTCAD_OPACITY } from './lib/mlightcad/opacity';
 import { useCadSession } from './session/CadSessionContext';
-import type { DwgImportResult, SelectedCadObject } from './types/models';
+import type { DwgImportResult, MeasurementPoint, SelectedCadObject } from './types/models';
 
 type ImportState = 'idle' | 'loading' | 'ready' | 'error' | 'cancelled';
 type DrawerState = 'blocks' | 'controls' | 'object' | 'prepare' | 'prepare-failed' | null;
@@ -48,9 +49,12 @@ export default function App() {
   const [progress, setProgress] = useState('');
   const [layerSheetMode, setLayerSheetMode] = useState<LayerSheetMode>(null);
   const [coordinate, setCoordinate] = useState<[number, number] | null>(null);
+  const [snapPreview, setSnapPreview] = useState<MeasurementPoint | null>(null);
   const [selection, setSelection] = useState<SelectedCadObject | null>(null);
   const [hiddenFeatureIds, setHiddenFeatureIds] = useState<Set<string>>(new Set());
-  const [drawerState, setDrawerState] = useState<DrawerState>(session.file ? null : 'controls');
+  const [drawerState, setDrawerState] = useState<DrawerState>(() => (
+    !session.file && session.distanceMeasurement.phase === 'inactive' ? 'controls' : null
+  ));
   const [cadOpacity, setCadOpacity] = useState(DEFAULT_MLIGHTCAD_OPACITY);
   const [preparationReport, setPreparationReport] = useState<DwgPreflightReport | null>(null);
   const [pendingProfile, setPendingProfile] = useState<CadLoadProfile | null>(null);
@@ -70,6 +74,7 @@ export default function App() {
   const abortController = useRef<AbortController | null>(null);
   const preparationResolver = useRef<((decision: DwgPreparationDecision) => void) | null>(null);
   const location = useLocationTracking();
+  const measurementActive = session.distanceMeasurement.phase !== 'inactive';
 
   useEffect(() => () => {
     const controller = abortController.current;
@@ -407,6 +412,7 @@ export default function App() {
   };
 
   const handleCadSelect = (nextSelection: SelectedCadObject | null) => {
+    if (measurementActive) return;
     setSelection(nextSelection);
     if (nextSelection) setDrawerState('object');
     else setDrawerState((current) => current === 'object' ? null : current);
@@ -420,6 +426,30 @@ export default function App() {
     if (location.state.follow === 'off') location.start();
     else if (location.state.follow === 'paused') location.resume();
     else location.stop();
+  };
+  const closeMeasurement = () => {
+    setSnapPreview(null);
+    session.cancelMeasurement();
+  };
+  const toggleMeasurement = () => {
+    if (measurementActive) {
+      closeMeasurement();
+      return;
+    }
+    setSelection(null);
+    setDrawerState(null);
+    setLayerSheetMode(null);
+    session.startMeasurement();
+  };
+  const setMeasurementPoint = () => {
+    const point = mapCanvas.current?.resolveAimPoint(session.distanceMeasurement.snapEnabled);
+    if (!point) return;
+    session.commitMeasurementPoint(point);
+    setSnapPreview(null);
+  };
+  const restartMeasurement = () => {
+    setSnapPreview(null);
+    session.restartMeasurement();
   };
   const layerSheetLayers = layerSheetMode === 'preparation'
     ? (preparationReport?.layers.map((layer) => ({
@@ -447,7 +477,7 @@ export default function App() {
   );
 
   return (
-    <main className={`app-shell ${drawerState || layerSheetMode ? 'drawer-open' : 'drawer-closed'}`}>
+    <main className={`app-shell ${drawerState || layerSheetMode || measurementActive ? 'drawer-open' : 'drawer-closed'}`}>
       <AppHeader />
       <MapCanvas
         ref={mapCanvas}
@@ -471,6 +501,10 @@ export default function App() {
         objectDrawOrder={session.objectDrawOrder}
         appearance={session.cadAppearance}
         fitOnDwgChange={!preserveViewOnImport}
+        distanceMeasurement={session.distanceMeasurement}
+        snapPreview={snapPreview}
+        measurementCaptureActive={measurementActive}
+        onSnapPreviewChange={setSnapPreview}
       />
 
       <MapCenterCrosshair />
@@ -492,14 +526,30 @@ export default function App() {
         blockCount={dwg?.blocks?.length ?? session.preflightReport?.blocks.length ?? 0}
         blocksOpen={drawerState === 'blocks'}
         cadControlsOpen={drawerState === 'controls'}
+        measurementActive={measurementActive}
         hiddenObjectCount={hiddenObjectCount}
         onLocation={locationAction}
         onFitDrawing={() => mapCanvas.current?.fitDrawing()}
-        onOpenLayers={() => { setDrawerState(null); setLayerSheetMode('loaded'); }}
-        onOpenBlocks={() => { setLayerSheetMode(null); setBlockReturnToPreparation(false); setDrawerState('blocks'); }}
+        onToggleMeasurement={toggleMeasurement}
+        onOpenLayers={() => { if (measurementActive) closeMeasurement(); setDrawerState(null); setLayerSheetMode('loaded'); }}
+        onOpenBlocks={() => { if (measurementActive) closeMeasurement(); setLayerSheetMode(null); setBlockReturnToPreparation(false); setDrawerState('blocks'); }}
         onToggleCadControls={() => {
+          if (measurementActive) closeMeasurement();
           setLayerSheetMode(null);
           setDrawerState((current) => current === 'controls' ? null : 'controls');
+        }}
+      />
+
+      <DistanceMeasurementSheet
+        open={measurementActive}
+        measurement={session.distanceMeasurement}
+        snapKind={snapPreview?.snapKind}
+        onClose={closeMeasurement}
+        onSetPoint={setMeasurementPoint}
+        onRestart={restartMeasurement}
+        onSnapEnabledChange={(enabled) => {
+          session.setMeasurementSnapEnabled(enabled);
+          if (!enabled) setSnapPreview(null);
         }}
       />
 

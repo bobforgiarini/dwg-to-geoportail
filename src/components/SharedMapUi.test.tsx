@@ -24,6 +24,7 @@ describe('shared map UI', () => {
     const onOpenLayers = vi.fn();
     const onOpenBlocks = vi.fn();
     const onToggleCadControls = vi.fn();
+    const onToggleMeasurement = vi.fn();
     const { container, getByRole } = render(
       <MapActionControls
         locationMode="paused"
@@ -32,12 +33,14 @@ describe('shared map UI', () => {
         blockCount={4}
         blocksOpen={false}
         cadControlsOpen
+        measurementActive={false}
         hiddenObjectCount={3}
         onLocation={onLocation}
         onFitDrawing={onFitDrawing}
         onOpenLayers={onOpenLayers}
         onOpenBlocks={onOpenBlocks}
         onToggleCadControls={onToggleCadControls}
+        onToggleMeasurement={onToggleMeasurement}
       />,
     );
 
@@ -49,10 +52,12 @@ describe('shared map UI', () => {
       i18n.t('openCadControls'),
     ]);
     expect(within(bottom).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
+      i18n.t('measurementOpen'),
       i18n.t('locationResume'),
       i18n.t('fitDrawing'),
     ]);
 
+    fireEvent.click(getByRole('button', { name: i18n.t('measurementOpen') }));
     fireEvent.click(getByRole('button', { name: i18n.t('locationResume') }));
     fireEvent.click(getByRole('button', { name: i18n.t('fitDrawing') }));
     fireEvent.click(getByRole('button', { name: i18n.t('layers') }));
@@ -63,6 +68,7 @@ describe('shared map UI', () => {
     expect(onOpenLayers).toHaveBeenCalledOnce();
     expect(onOpenBlocks).toHaveBeenCalledOnce();
     expect(onToggleCadControls).toHaveBeenCalledOnce();
+    expect(onToggleMeasurement).toHaveBeenCalledOnce();
   });
 
   it('toggles the basemap and presents LUREF coordinates and GPS accuracy', () => {
@@ -112,8 +118,9 @@ describe('shared map UI', () => {
 
   it('renders the fixed map-center crosshair as a non-interactive overlay', () => {
     const { container } = render(<MapCenterCrosshair />);
+    const overlay = container.querySelector('.map-viewport-overlay');
     const crosshair = container.querySelector('.map-center-crosshair');
-    expect(crosshair).toHaveAttribute('aria-hidden', 'true');
+    expect(overlay).toHaveAttribute('aria-hidden', 'true');
     expect(crosshair?.querySelector('svg')).toBeInTheDocument();
     expect(crosshair?.querySelector('circle')).not.toBeInTheDocument();
     expect(crosshair?.querySelectorAll('path')).toHaveLength(2);

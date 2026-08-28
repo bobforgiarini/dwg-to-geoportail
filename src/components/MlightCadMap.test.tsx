@@ -2,7 +2,7 @@ import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MlightCadViewerAdapter } from '../lib/mlightcad/MlightCadViewerAdapter';
 import type { MlightCadCamera } from '../lib/mlightcad/types';
-import type { LocationTrackingState } from '../types/models';
+import type { DistanceMeasurementState, LocationTrackingState } from '../types/models';
 import { MlightCadMap } from './MlightCadMap';
 
 const harness = vi.hoisted(() => {
@@ -151,6 +151,53 @@ describe('MlightCadMap interaction handover', () => {
 
     rerender(<MlightCadMap {...props} mlightControlsActive />);
     expect(harness.interaction.setActive).toHaveBeenLastCalledWith(false);
+  });
+
+  it('keeps the measurement overlay below the transparent CAD canvas when MLightCAD owns gestures', () => {
+    const measurement = {
+      phase: 'complete',
+      firstPoint: { coordinate: [80_000, 100_000], source: 'aim' },
+      secondPoint: { coordinate: [80_003, 100_004], source: 'cad-snap', snapKind: 'endpoint' },
+      snapEnabled: true,
+    } satisfies DistanceMeasurementState;
+
+    const props = {
+      adapter: null,
+      basemapHealth: { mode: 'wmts', status: 'ready', generation: 0, transitionReason: 'tile-loaded' } as const,
+      basemapHealthReporter: {
+        sourceMounted: vi.fn(), tileLoadStart: vi.fn(), tileLoadEnd: vi.fn(), tileLoadError: vi.fn(),
+      },
+      basemapVisible: true,
+      mlightControlsActive: true,
+      location: idleLocation,
+      onCoordinate: vi.fn(),
+      onManualMove: vi.fn(),
+      distanceMeasurement: measurement,
+      snapPreview: { coordinate: [80_002, 100_003], source: 'cad-snap', snapKind: 'nearest' } as const,
+    };
+    const { rerender } = render(<MlightCadMap
+      {...props}
+      cadOpacity={0}
+    />);
+
+    const measurementLayer = (harness.mapOptions.at(-1) as {
+      layers: Array<{
+        getSource: () => { getFeatures: () => Array<{ get: (key: string) => unknown }> };
+        getVisible: () => boolean;
+      }>;
+    }).layers[0];
+    const renderedKinds = measurementLayer.getSource().getFeatures().map((feature) => feature.get('kind'));
+
+    expect(measurementLayer.getVisible()).toBe(true);
+    expect(renderedKinds).toEqual([
+      'measurement-point',
+      'measurement-line',
+      'measurement-point',
+      'snap-preview',
+    ]);
+
+    rerender(<MlightCadMap {...props} cadOpacity={70} />);
+    expect(measurementLayer.getVisible()).toBe(false);
   });
 
   it('toggles only the current basemap layer', () => {

@@ -1,4 +1,4 @@
-# Architektur 0.5.2
+# Architektur 0.6.0
 
 ## Überblick
 
@@ -169,6 +169,28 @@ GPS wird zuerst nach LUREF transformiert. Marker, Genauigkeitskreis und eine aut
 
 Ohne bereites CAD-Dokument bedient OpenLayers die Karte. Nach `ready` übernimmt MLightCAD Pan und Zoom. Die MLightCAD-Ansicht bleibt nordfixiert; der drehbare Legacy-Viewer behält seinen Nordpfeil.
 
+## 2D-Distanzmessung und CAD-Snap
+
+Die Messung ist ein gemeinsamer sitzungsweiter Zustand in `CadSession`. Sie kennt die Phasen inaktiv, ersten Punkt setzen, zweiten Punkt setzen und abgeschlossen sowie die beiden optionalen `MeasurementPoint`-Werte und den CAD-Snap-Schalter. Der Zustand bleibt beim Wechsel zwischen `/` und `/openlayers` erhalten. Eine neu ausgewählte Haupt-DWG setzt eine laufende oder abgeschlossene Messung zurück; ein reiner Viewerwechsel tut dies nicht.
+
+Das rote Aim ist ein viewportfestes Overlay in der Mitte des tatsächlichen Karten- beziehungsweise CAD-Canvasbereichs. Auf Mobilgeräten beginnt dieser Bereich unterhalb des App-Headers; auf Desktop entspricht er dem gesamten Map-Viewport. Die angezeigten Mittelpunktkoordinaten und der gesetzte Messpunkt beziehen sich dadurch auf dieselbe Bildschirmposition. Pan, Pinch und Mausrad verändern nur Kamera und Aim-Koordinate. Ein Punkt wird ausschließlich über die mindestens 44 CSS-Pixel große Aktion im gemeinsamen Bottom-Sheet bestätigt.
+
+Die Distanz wird ohne CRS-Umweg euklidisch in `EPSG:2169` berechnet:
+
+`sqrt((x2 - x1)² + (y2 - y1)²)`
+
+Da LUREF Meter als Einheit verwendet, ist das Ergebnis direkt ein Meterwert. Die Oberfläche zeigt mindestens drei und höchstens vier Nachkommastellen. Der gemeinsame Sheet zeigt Punkt 1, Punkt 2, das Ergebnis, „Neue Messung“ und den CAD-Snap-Schalter. Der aktive `Ruler`-Schalter und der zugängliche Sheet-Griff beenden den Modus; währenddessen ist die normale CAD-Objektauswahl deaktiviert.
+
+### OpenLayers-Snap
+
+Der Legacy-Viewer ermittelt Kandidaten nur aus sichtbaren CAD-Features. Innerhalb eines Fangradius von 18 CSS-Pixeln werden Endpunkte, Stützpunkte, Schnittpunkte, Segmentmittelpunkte, Kreismittelpunkte und der geometrisch nächste Punkt ausgewertet. Zur Laufzeit sind die Kandidaten auf 48 Features und die untersuchten Linienabschnitte auf 512 Segmente begrenzt. Nach einer Bewegung wird die Fangvorschau erst nach 120 ms Leerlauf berechnet; während `pointerdrag` findet keine Snap-Suche statt. Die explizite Setzen-Aktion löst einmal synchron gegen die aktuelle Aim-Position auf.
+
+### MLightCAD-Snap
+
+Der Standardviewer verwendet den nativen MLightCAD-OSNAP ebenfalls mit 18 CSS-Pixeln Fangradius. Ein Visibility Gate verwirft Ergebnisse aus ausgeblendeten Layern, Blöcken, Texten oder Objekten. Punkt-, Linien- und Fangvorschau liegen als leichte, wiederverwendete Three.js-Geometrie über der CAD-Szene und werden beim Beenden, Viewerwechsel oder Dispose freigegeben.
+
+Der verbindliche Kamera-Hotpath bleibt unangetastet: `viewChanged → setCenter/setResolution → renderSync()` läuft synchron im selben Ereignis. Zwischen Kamerameldung und `renderSync()` erfolgen weder Snap-Berechnung noch React-State-Aktualisierung, Worker-Nachricht oder zusätzliche CRS-Transformation. Die nachlaufende Aim-/Snap-Vorschau ist davon getrennt; sie beeinflusst die Bildkopplung von CAD und Karte nicht.
+
 ## Adaptive MLightCAD-Canvas-Qualität
 
 Die Qualitätswahl steuert ausschließlich die Pixeldichte des transparenten MLightCAD-WebGL-Canvas. Geometrie, Weltkoordinaten, Kameraauflösung und CAD-/Kartenkopplung bleiben identisch; geändert wird nur, wie viele physische WebGL-Pixel für einen CSS-Pixel gerendert werden.
@@ -236,3 +258,4 @@ Nur statische App- und Viewerdateien werden gebaut und auf Netlify ausgeliefert.
 - „Vollständig laden“ kann trotz Warnung den Speicherrahmen eines Geräts überschreiten. Besonders iOS Safari kann einen Tab hart beenden, bevor JavaScript noch einen Fehlerdialog anzeigen kann.
 - Ein gefilterter Layer oder verschachtelter Block benötigt zum Wiedereinblenden einen erneuten CAD-Aufbau aus der lokal ausgewählten Originaldatei.
 - Preflight-Schätzungen sind absichtlich konservative Näherungen und kein garantierter Speicher- oder Laufzeitwert.
+- Die Distanzmessung ist auf die ebene 2D-LUREF-Geometrie beschränkt. Der leichte Snap berücksichtigt nur sichtbare, vom aktiven Viewer bereitgestellte CAD-Geometrie innerhalb von 18 CSS-Pixeln; er ersetzt keine vollständige CAD-Konstruktionsfanglogik.

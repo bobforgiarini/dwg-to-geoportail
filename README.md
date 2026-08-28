@@ -1,6 +1,6 @@
 # DWG to Geoportail
 
-Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Seit Version 0.4.0 ist der direkt gekoppelte MLightCAD-/Three.js-Viewer die Standardansicht. Version 0.5.0 ergänzt lokale XRefs, Annotationsmaßstäbe, einen konservativen Luxemburg-Filter, getrennte Füllungsdeckkraft und eine sitzungsweite CAD-Zeichenreihenfolge. Der bewährte Kamera- und Drawer-Hotpath bleibt unverändert; keine Datei wird allein aufgrund ihrer Größe blockiert.
+Mobile-first Webanwendung zum lokalen Anzeigen einer 2D-DWG mit absoluten LUREF-Koordinaten (`EPSG:2169`) über dem Geoportail-Orthofoto. Seit Version 0.4.0 ist der direkt gekoppelte MLightCAD-/Three.js-Viewer die Standardansicht. Version 0.5.0 ergänzte lokale XRefs, Annotationsmaßstäbe, einen konservativen Luxemburg-Filter, getrennte Füllungsdeckkraft und eine sitzungsweite CAD-Zeichenreihenfolge. Version 0.6.0 ergänzt eine touchgerechte 2D-Distanzmessung mit CAD-Snap. Der bewährte Kamera- und Drawer-Hotpath bleibt unverändert; keine Datei wird allein aufgrund ihrer Größe blockiert.
 
 ## Viewer und Routen
 
@@ -59,6 +59,9 @@ Der Umschalter im Kopfbereich verwendet die Browser-History. Die lokal ausgewäh
 - kompakte klickbare Satelliten-Statuskarte zum Ein- und Ausblenden der gemeinsamen Basiskarte sowie eigene GPS-Genauigkeitskarte
 - schwarzer neutraler Kartenhintergrund, wenn keine Geoportail-Kachel sichtbar ist
 - drehbare Karte mit Nordausrichtung im bestehenden Viewer; im nordfixierten MLightCAD-Viewer ist kein redundanter Nordpfeil sichtbar
+- 2D-Distanzmessung über das feste rote Aim im echten Karten- beziehungsweise CAD-Canvasbereich; Punkte werden ausschließlich mit der 44-Pixel-Aktion im Mess-Sheet gesetzt, niemals durch Pan oder Pinch
+- gemeinsames Mess-Sheet mit Punkt 1, Punkt 2, Distanz, „Neue Messung“ und schaltbarem CAD-Snap; beendet wird über den aktiven `Ruler`-Schalter oder den Sheet-Griff, Ergebnisse werden als euklidische LUREF-Distanz in Metern mit mindestens drei und höchstens vier Nachkommastellen angezeigt
+- leichter CAD-Snap im 18-Pixel-Fangradius: OpenLayers berücksichtigt End-, Stütz-, Schnitt-, Mittel-, Mittelpunkt- und Nächstpunkt sichtbarer CAD-Features, MLightCAD verwendet den nativen OSNAP ausschließlich für sichtbare CAD-Inhalte
 - mobile Oberfläche in Deutsch, Französisch und Englisch; offene MLightCAD-Hinweise wechseln ihre Sprache live mit
 - kompakter `ML`-/`OL`-Viewerwechsel neben der Sprachauswahl und aus den Paketmetadaten gelesene Version im App-Kopf
 - `site-info-banner` unten rechts mit „Powered by bf.lu“ und „© Map: geoportail.lu“
@@ -83,11 +86,11 @@ npm run build
 npm run preview
 ```
 
-Der vollständige automatisierte Prüfplan für Version 0.5.0 umfasst Schema-2-Berichte, Annotationserkennung, XRef-Auflösung, räumliche Grenzfälle, getrennte Deckkräfte, Zeichenreihenfolge und die unveränderte synchrone Kamerabrücke. Die reale Junglinster-Prüfung aus Version 0.4.1 mit 11,31 MB, 66.816 Objekten, 316 Layern und 1.097 Blöcken bleibt die lokale Performance-Referenz: Eine Layer-Umschaltung dauerte ungefähr 0,28 s, ein MLightCAD-Pan mit 30 Schritten ungefähr 0,30 s. Neue private XRef-Dateien bleiben ebenfalls außerhalb des Repositorys; Browser- und iPhone-Abnahme sind in [docs/testing.md](docs/testing.md) beschrieben.
+Der automatisierte Prüfplan für Version 0.6.0 ergänzt Zustandsübergänge der Messung, Meterberechnung und Formatierung, den gemeinsamen Routenstatus, Snap-Prioritäten und -Budgets sowie die unveränderte synchrone Kamerabrücke. Die reale Junglinster-Prüfung aus Version 0.4.1 mit 11,31 MB, 66.816 Objekten, 316 Layern und 1.097 Blöcken bleibt die lokale Performance-Referenz: Eine Layer-Umschaltung dauerte ungefähr 0,28 s, ein MLightCAD-Pan mit 30 Schritten ungefähr 0,30 s. Neue private XRef-Dateien bleiben ebenfalls außerhalb des Repositorys; weitergehende Browserabnahmen mit realer CAD-Geometrie und die noch ausstehende Hardware-Abnahme sind in [docs/testing.md](docs/testing.md) beschrieben.
 
 Der Build erzeugt die gemeinsame versionierte Laufzeit unter `dist/mlightcad-workers/0.3.0/`. Das ausgelieferte LibreDWG-WASM wird reproduzierbar auf 128 MiB Anfangsspeicher gepatcht und validiert; API, Emscripten-Laufzeit und WASM des gemeinsamen Workers werden als geprüfte relative Assetkette ausgeliefert. Der Versionspfad verhindert, dass ein langfristig gecachtes 0.2.x-WASM weiterverwendet wird. Die frühere, seit dem gemeinsamen Worker ungenutzte Flyfish-WASM-Kopie wird nicht mehr mit ausgeliefert. Eine reale DWG-Fixture ist nicht im Repository enthalten; die lokale Abnahme ist in [docs/testing.md](docs/testing.md) protokolliert.
 
-## Grenzen von Version 0.5.0
+## Grenzen von Version 0.6.0
 
 - Beide Viewer erwarten 2D-Modellbereichsdaten in absoluten LUREF-Meterkoordinaten; es gibt keine automatische Georeferenzierung.
 - Lokale XRefs werden bestmöglich ohne Upload aufgelöst und vor der Darstellung zusammengeführt. XCLIP, Proxy-/Custom-Objekte und vollständige AutoCAD-XRef-Parität gehören nicht zum abgenommenen Funktionsumfang.
@@ -101,8 +104,9 @@ Der Build erzeugt die gemeinsame versionierte Laufzeit unter `dist/mlightcad-wor
 - Die App ist kein CAD-Editor: Sie verändert oder schreibt keine DWG und erzeugt keinen optimierten DWG-Download.
 - Ein aus dem Preflight-Modell entfernter verschachtelter Block oder Layer muss aus der weiterhin lokal ausgewählten Originaldatei neu aufgebaut werden, bevor er wieder sichtbar ist.
 - MLightCAD lädt unterstützende CAD-/Schriftressourcen zur Laufzeit von der konfigurierten jsDelivr-Quelle; die DWG selbst wird nicht dorthin gesendet.
+- Die Messung ist eine ebene 2D-LUREF-Messung. Sie berücksichtigt weder Geländehöhen noch 3D-Geometrie; der leichte CAD-Snap ist auf sichtbare, vom jeweiligen Viewer verfügbare CAD-Geometrie und einen Fangradius von 18 CSS-Pixeln begrenzt.
 
-Weitere Informationen: [Architektur](docs/architecture.md), [Datenquellen](docs/data-sources.md), [Luxemburg-Filter](docs/luxembourg-boundary-filter.md), [Netlify](docs/netlify.md), [Tests](docs/testing.md) und [Release 0.5.0](docs/releases/0.5.0.md).
+Weitere Informationen: [Architektur](docs/architecture.md), [Datenquellen](docs/data-sources.md), [Luxemburg-Filter](docs/luxembourg-boundary-filter.md), [Netlify](docs/netlify.md), [Tests](docs/testing.md) und [Release 0.6.0](docs/releases/0.6.0.md).
 
 ## Lizenz und Quellcode
 

@@ -1,4 +1,4 @@
-import { Boxes, Focus, Layers3, LocateFixed, SlidersHorizontal, Square } from 'lucide-react';
+import { Boxes, Focus, Layers3, LocateFixed, Ruler, SlidersHorizontal, Square } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { LocationFollowMode } from '../types/models';
 
@@ -9,12 +9,14 @@ interface Props {
   blockCount: number;
   blocksOpen: boolean;
   cadControlsOpen: boolean;
+  measurementActive: boolean;
   hiddenObjectCount: number;
   onLocation: () => void;
   onFitDrawing: () => void;
   onOpenLayers: () => void;
   onOpenBlocks: () => void;
   onToggleCadControls: () => void;
+  onToggleMeasurement: () => void;
 }
 
 export function MapActionControls({
@@ -24,12 +26,14 @@ export function MapActionControls({
   blockCount,
   blocksOpen,
   cadControlsOpen,
+  measurementActive,
   hiddenObjectCount,
   onLocation,
   onFitDrawing,
   onOpenLayers,
   onOpenBlocks,
   onToggleCadControls,
+  onToggleMeasurement,
 }: Props) {
   const { t } = useTranslation();
   const locationLabel = locationMode === 'off'
@@ -75,6 +79,16 @@ export function MapActionControls({
       </div>
 
       <div className="map-action-group map-action-group-bottom">
+        <button
+          type="button"
+          className={measurementActive ? 'active' : ''}
+          onClick={onToggleMeasurement}
+          aria-pressed={measurementActive}
+          aria-label={t(measurementActive ? 'measurementClose' : 'measurementOpen')}
+          title={t(measurementActive ? 'measurementClose' : 'measurementOpen')}
+        >
+          <Ruler size={21} aria-hidden="true" />
+        </button>
         <button
           type="button"
           className={locationMode !== 'off' ? 'active' : ''}

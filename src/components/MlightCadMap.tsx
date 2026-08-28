@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
 import Feature from 'ol/Feature';
 import Map from 'ol/Map';
 import View from 'ol/View';
 import { defaults as defaultControls } from 'ol/control/defaults';
 import Circle from 'ol/geom/Circle';
+import LineString from 'ol/geom/LineString';
 import Point from 'ol/geom/Point';
 import TileLayer from 'ol/layer/Tile';
 import VectorLayer from 'ol/layer/Vector';
@@ -21,7 +22,11 @@ import type { BasemapHealthReporter, BasemapHealthState } from '../lib/basemapHe
 import { bindBasemapSourceHealth, createBasemapLayer, createCadastreLayers } from '../lib/geoportail';
 import { syncCadCameraToMap } from '../lib/mlightcad/cameraBridge';
 import type { MlightCadViewerAdapter } from '../lib/mlightcad/MlightCadViewerAdapter';
-import type { LocationTrackingState } from '../types/models';
+import type {
+  DistanceMeasurementState,
+  LocationTrackingState,
+  MeasurementPoint,
+} from '../types/models';
 
 interface Props {
   adapter: MlightCadViewerAdapter | null;
@@ -31,9 +36,16 @@ interface Props {
   cadastreVisible?: boolean;
   basemapSuspended?: boolean;
   mlightControlsActive: boolean;
+  cadOpacity?: number;
   location: LocationTrackingState;
   onCoordinate: (coordinate: [number, number]) => void;
   onManualMove: () => void;
+  distanceMeasurement?: DistanceMeasurementState;
+  snapPreview?: MeasurementPoint | null;
+}
+
+export interface MlightCadMapHandle {
+  resolveAimPoint: () => MeasurementPoint | null;
 }
 
 const MOBILE_TILE_CACHE_SIZE = 32;
@@ -47,7 +59,7 @@ export function isMemoryConstrainedMapRuntime(): boolean {
   return coarsePointer || mobileUserAgent;
 }
 
-export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, basemapVisible, cadastreVisible = false, basemapSuspended = false, mlightControlsActive, location, onCoordinate, onManualMove }: Props) {
+export const MlightCadMap = forwardRef<MlightCadMapHandle, Props>(function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, basemapVisible, cadastreVisible = false, basemapSuspended = false, mlightControlsActive, cadOpacity = 100, location, onCoordinate, onManualMove, distanceMeasurement, snapPreview = null }, ref) {
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const baseRef = useRef<TileLayer<WMTS | TileWMS> | null>(null);
@@ -62,6 +74,36 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
   basemapVisibleRef.current = basemapVisible;
   mlightControlsActiveRef.current = mlightControlsActive;
   const locationSource = useMemo(() => new VectorSource(), []);
+  const measurementSource = useMemo(() => new VectorSource(), []);
+  const measurementLayer = useMemo(() => new VectorLayer({
+    source: measurementSource,
+    zIndex: 15,
+    style: (feature) => {
+      const kind = feature.get('kind');
+      if (kind === 'measurement-line') {
+        return [
+          new Style({ stroke: new Stroke({ color: 'rgba(5,28,44,.9)', width: 5 }) }),
+          new Style({ stroke: new Stroke({ color: '#f1be88', width: 2.5 }) }),
+        ];
+      }
+      if (kind === 'snap-preview') {
+        return new Style({
+          image: new CircleStyle({
+            radius: 7,
+            fill: new Fill({ color: 'rgba(241,190,136,.16)' }),
+            stroke: new Stroke({ color: '#f1be88', width: 2 }),
+          }),
+        });
+      }
+      return new Style({
+        image: new CircleStyle({
+          radius: 5,
+          fill: new Fill({ color: '#f1be88' }),
+          stroke: new Stroke({ color: '#051c2c', width: 2 }),
+        }),
+      });
+    },
+  }), [measurementSource]);
   const locationLayer = useMemo(() => new VectorLayer({
     source: locationSource,
     zIndex: 20,
@@ -91,7 +133,7 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
       pixelRatio: memoryConstrained.current ? 1 : (window.devicePixelRatio || 1),
       controls: defaultControls({ attribution: false, rotate: false, zoom: false }),
       interactions,
-      layers: [locationLayer],
+      layers: [measurementLayer, locationLayer],
       view: new View({
         center,
         // Keep large/outlying CAD extents reachable. A zero minimum removes the
@@ -128,13 +170,60 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
       baseRef.current = null;
       cadastreRef.current = [];
     };
-  }, [locationLayer]);
+  }, [locationLayer, measurementLayer]);
+
+  useImperativeHandle(ref, () => ({
+    resolveAimPoint: () => {
+      const center = mapRef.current?.getView().getCenter();
+      if (!center || !Number.isFinite(center[0]) || !Number.isFinite(center[1])) return null;
+      return { coordinate: [center[0], center[1]], source: 'aim' };
+    },
+  }), []);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     map.getInteractions().forEach((interaction) => interaction.setActive(!mlightControlsActive));
-  }, [mlightControlsActive]);
+    // Normally the native WebGL overlay owns measurement rendering. At the
+    // 0 % Map preset that entire canvas is transparent, so OpenLayers supplies
+    // the same lightweight geometry underneath it instead.
+    measurementLayer.setVisible(!mlightControlsActive || cadOpacity <= 0);
+  }, [cadOpacity, measurementLayer, mlightControlsActive]);
+
+  useEffect(() => {
+    measurementSource.clear();
+    // Keep a lightweight fallback rendering ready in OpenLayers. It shares the
+    // same EPSG:2169 camera and adds no work to the CAD camera bridge.
+    if (!distanceMeasurement || distanceMeasurement.phase === 'inactive') return;
+    const firstPoint = distanceMeasurement.phase === 'placing-second' || distanceMeasurement.phase === 'complete'
+      ? distanceMeasurement.firstPoint
+      : null;
+    const secondPoint = distanceMeasurement.phase === 'complete' ? distanceMeasurement.secondPoint : null;
+    if (firstPoint) {
+      measurementSource.addFeature(new Feature({
+        geometry: new Point([...firstPoint.coordinate]),
+        kind: 'measurement-point',
+      }));
+    }
+    if (secondPoint && firstPoint) {
+      measurementSource.addFeatures([
+        new Feature({
+          geometry: new LineString([[...firstPoint.coordinate], [...secondPoint.coordinate]]),
+          kind: 'measurement-line',
+        }),
+        new Feature({
+          geometry: new Point([...secondPoint.coordinate]),
+          kind: 'measurement-point',
+        }),
+      ]);
+    }
+    if (snapPreview?.source === 'cad-snap') {
+      measurementSource.addFeature(new Feature({
+        geometry: new Point([...snapPreview.coordinate]),
+        kind: 'snap-preview',
+      }));
+    }
+  }, [distanceMeasurement, measurementSource, snapPreview]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -249,4 +338,4 @@ export function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, ba
   }, [location.follow, location.position, locationSource, mlightControlsActive]);
 
   return <div ref={target} className="map-canvas mlightcad-map-canvas" role="application" aria-label="Geoportail" />;
-}
+});

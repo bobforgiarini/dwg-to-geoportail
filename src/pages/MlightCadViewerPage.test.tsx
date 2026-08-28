@@ -1,7 +1,9 @@
 import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
-import { CadSessionProvider } from '../session/CadSessionContext';
+import { CadSessionProvider, useCadSession } from '../session/CadSessionContext';
+import type { MeasurementPoint } from '../types/models';
 import MlightCadViewerPage from './MlightCadViewerPage';
 
 const harness = vi.hoisted(() => {
@@ -16,13 +18,17 @@ const harness = vi.hoisted(() => {
     applyObjectDrawOrder: vi.fn(() => 'applied' as const),
     hiddenObjectCount: 0,
     restoreHiddenObjects: vi.fn(),
+    resolveAimPoint: vi.fn(() => ({ coordinate: [80_000, 100_000], source: 'aim' }) as MeasurementPoint),
     setAllLayersVisible: vi.fn(),
     setBlockVisible: vi.fn(() => false),
     setCamera: vi.fn(),
     setLayerVisible: vi.fn(),
     setOpacity: vi.fn(),
     setObjectDrawOrder: vi.fn(() => 'applied' as const),
+    setMeasurementCaptureActive: vi.fn(),
+    setMeasurementOverlay: vi.fn(),
     setRenderQuality: vi.fn(),
+    setSnapPreview: vi.fn(),
     setTextsVisible: vi.fn(),
   };
   return {
@@ -64,13 +70,17 @@ vi.mock('../hooks/useLocationTracking', () => ({
 vi.mock('../components/MlightCadMap', async () => {
   const React = await import('react');
   return {
-    MlightCadMap: (props: Record<string, unknown>) => {
+    MlightCadMap: React.forwardRef((_props: Record<string, unknown>, ref) => {
+      const props = _props;
       harness.mapProps(props);
+      React.useImperativeHandle(ref, () => ({
+        resolveAimPoint: () => ({ coordinate: [80_000, 100_000] as const, source: 'aim' as const }),
+      }));
       return React.createElement('div', {
         'data-testid': 'mlightcad-map',
         'data-controls-active': String(props.mlightControlsActive),
       });
-    },
+    }),
   };
 });
 
@@ -136,11 +146,30 @@ function renderPage() {
   );
 }
 
+function MeasuredMlightViewer() {
+  const session = useCadSession();
+  const [mounted, setMounted] = useState(false);
+  if (mounted) return <MlightCadViewerPage />;
+  return (
+    <button onClick={() => {
+      session.startMeasurement();
+      setMounted(true);
+    }}>
+      Mount measured MLightCAD
+    </button>
+  );
+}
+
 describe('MLightCAD viewer page integration', () => {
   beforeEach(async () => {
     await i18n.changeLanguage('de');
     window.history.replaceState(null, '', '/');
     vi.clearAllMocks();
+    harness.adapter.resolveAimPoint.mockReset();
+    harness.adapter.resolveAimPoint.mockReturnValue({
+      coordinate: [80_000, 100_000],
+      source: 'aim',
+    });
     Object.assign(harness.locationState, {
       permission: 'idle', position: null, accuracy: null, follow: 'off', error: null,
     });
@@ -157,11 +186,12 @@ describe('MLightCAD viewer page integration', () => {
       i18n.t('layers'),
       i18n.t('blocksTitle'),
       i18n.t('openCadControls'),
+      i18n.t('measurementOpen'),
       i18n.t('locationStart'),
       i18n.t('fitDrawing'),
     ]);
     expect(actionButtons[0]).toBeDisabled();
-    expect(actionButtons[4]).toBeDisabled();
+    expect(actionButtons[5]).toBeDisabled();
     expect(getByTestId('mlightcad-map')).toHaveAttribute('data-controls-active', 'false');
     expect(container.querySelector('.mlightcad-interaction-layer')).toHaveClass('openlayers-active');
     expect(getByRole('dialog', { name: i18n.t('cadControlsTitle') })).toBeInTheDocument();
@@ -226,6 +256,41 @@ describe('MLightCAD viewer page integration', () => {
     expect(harness.adapter.centerOn).not.toHaveBeenCalled();
 
     await waitFor(() => expect(harness.adapter.centerOn).toHaveBeenCalledOnce());
+  });
+
+  it('measures from the MLightCAD aim without enabling CAD selection', async () => {
+    harness.adapter.resolveAimPoint.mockReturnValue({ coordinate: [80_000, 100_000], source: 'aim' });
+    const { container, getByRole, getByText } = renderPage();
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [new File(['dwg'], 'measure.dwg')] } });
+    await waitFor(() => expect(getByRole('button', { name: i18n.t('fitDrawing') })).toBeEnabled());
+
+    fireEvent.click(getByRole('button', { name: i18n.t('measurementOpen') }));
+    await waitFor(() => expect(harness.adapter.setMeasurementCaptureActive).toHaveBeenCalledWith(true));
+    fireEvent.click(getByRole('button', { name: i18n.t('measurementSetFirstPoint') }));
+    harness.adapter.resolveAimPoint.mockReturnValue({
+      coordinate: [80_003, 100_004],
+      source: 'cad-snap',
+      snapKind: 'endpoint',
+    });
+    fireEvent.click(getByRole('button', { name: i18n.t('measurementSetSecondPoint') }));
+
+    expect(getByText('5,000 m')).toBeInTheDocument();
+    expect(harness.adapter.setMeasurementOverlay).toHaveBeenLastCalledWith(
+      [80_000, 100_000],
+      [80_003, 100_004],
+    );
+  });
+
+  it('does not cover a viewer-switched measurement with the empty CAD drawer', () => {
+    const { getByRole, queryByRole } = render(
+      <CadSessionProvider><MeasuredMlightViewer /></CadSessionProvider>,
+    );
+
+    fireEvent.click(getByRole('button', { name: 'Mount measured MLightCAD' }));
+
+    expect(getByRole('region', { name: i18n.t('measurementTitle') })).toBeInTheDocument();
+    expect(queryByRole('dialog', { name: i18n.t('cadControlsTitle') })).not.toBeInTheDocument();
   });
 
   it('groups layer changes into one reload and restores the CAD camera', async () => {

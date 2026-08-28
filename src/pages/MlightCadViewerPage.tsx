@@ -8,13 +8,14 @@ import { createBlockSheetItems, createBlockSheetLabels } from '../components/blo
 import { BottomSheet } from '../components/BottomSheet';
 import { CadControlSheet } from '../components/CadControlSheet';
 import { DwgPreparationSheet } from '../components/DwgPreparationSheet';
+import { DistanceMeasurementSheet } from '../components/DistanceMeasurementSheet';
 import { LayerSheet } from '../components/LayerSheet';
 import { createLayerSheetItems, createLayerSheetLabels, isLayerHidden, layerIdentityMatches, mergeLoadedLayerSheetLayers } from '../components/layerSheetModel';
 import { MapActionControls } from '../components/MapActionControls';
 import { MapCenterCrosshair } from '../components/MapCenterCrosshair';
 import { MapStatusBadges } from '../components/MapStatusBadges';
 import { MlightCadCanvas } from '../components/MlightCadCanvas';
-import { MlightCadMap } from '../components/MlightCadMap';
+import { MlightCadMap, type MlightCadMapHandle } from '../components/MlightCadMap';
 import { SelectionPanel } from '../components/SelectionPanel';
 import { SiteBanner } from '../components/SiteBanner';
 import { useLocationTracking } from '../hooks/useLocationTracking';
@@ -30,11 +31,12 @@ import type { MlightCadViewerAdapter } from '../lib/mlightcad/MlightCadViewerAda
 import { DEFAULT_MLIGHTCAD_OPACITY } from '../lib/mlightcad/opacity';
 import type { MlightCadCamera, MlightCadLoadOptions, MlightCadPreparationResult, MlightCadProgress, MlightCadReady } from '../lib/mlightcad/types';
 import { useCadSession } from '../session/CadSessionContext';
-import type { CadOverlayLayer, SelectedCadObject } from '../types/models';
+import type { CadOverlayLayer, MeasurementPoint, SelectedCadObject } from '../types/models';
 
 type ImportState = 'idle' | 'loading' | 'ready' | 'error' | 'cancelled';
 type DrawerState = 'blocks' | 'controls' | 'object' | 'prepare' | 'prepare-failed' | null;
 type LayerSheetMode = 'loaded' | 'preparation' | null;
+const MLIGHTCAD_SNAP_AFTER_COORDINATE_DELAY_MS = 20;
 
 function progressLabel(progress: MlightCadProgress, t: (key: string) => string): string {
   const phase = progress.detail === 'finalizing' ? t('mlightProgress.finalizing') : t(`mlightProgress.${progress.phase}`);
@@ -57,6 +59,8 @@ export default function MlightCadViewerPage() {
   const preflightReceived = useRef(false);
   const previousFile = useRef<File | null>(null);
   const latestCamera = useRef<MlightCadCamera | null>(null);
+  const mapCanvas = useRef<MlightCadMapHandle>(null);
+  const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cameraToRestore = useRef<MlightCadCamera | null>(null);
   const locallyAppliedDrawOrderAdapter = useRef<MlightCadViewerAdapter | null>(null);
   const [adapter, setAdapter] = useState<MlightCadViewerAdapter | null>(null);
@@ -69,9 +73,12 @@ export default function MlightCadViewerPage() {
   const [importState, setImportState] = useState<ImportState>(session.file ? 'loading' : 'idle');
   const [progress, setProgress] = useState<MlightCadProgress>({ phase: 'workers', percentage: null });
   const [messageKey, setMessageKey] = useState<string | null>(null);
-  const [drawerState, setDrawerState] = useState<DrawerState>(session.file ? null : 'controls');
+  const [drawerState, setDrawerState] = useState<DrawerState>(() => (
+    !session.file && session.distanceMeasurement.phase === 'inactive' ? 'controls' : null
+  ));
   const [layerSheetMode, setLayerSheetMode] = useState<LayerSheetMode>(null);
   const [coordinate, setCoordinate] = useState<[number, number] | null>(null);
+  const [snapPreview, setSnapPreview] = useState<MeasurementPoint | null>(null);
   const [preparationReport, setPreparationReport] = useState<DwgPreflightReport | null>(session.preflightReport);
   const [pendingProfile, setPendingProfile] = useState<CadLoadProfile | null>(null);
   const [blockReturnToPreparation, setBlockReturnToPreparation] = useState(false);
@@ -85,6 +92,7 @@ export default function MlightCadViewerPage() {
   }, [basemapSuspended, session.setBasemapHealthSuspended]);
   const [forceFullAttempt, setForceFullAttempt] = useState(false);
   const location = useLocationTracking();
+  const measurementActive = session.distanceMeasurement.phase !== 'inactive';
 
   useEffect(() => {
     if (session.recoveryMarker) setMessageKey('importRecovery');
@@ -149,6 +157,55 @@ export default function MlightCadViewerPage() {
       setDrawOrderMessageKey('drawOrderUnavailable');
     }
   }, [adapter, importState, session.objectDrawOrder]);
+
+  useEffect(() => {
+    if (!adapter || importState !== 'ready') return;
+    adapter.setMeasurementCaptureActive(measurementActive);
+    return () => adapter.setMeasurementCaptureActive(false);
+  }, [adapter, importState, measurementActive]);
+
+  useEffect(() => {
+    if (!adapter || importState !== 'ready') return;
+    const measurement = session.distanceMeasurement;
+    const first = measurement.phase === 'placing-second' || measurement.phase === 'complete'
+      ? measurement.firstPoint.coordinate
+      : null;
+    const second = measurement.phase === 'complete'
+      ? measurement.secondPoint.coordinate
+      : null;
+    adapter.setMeasurementOverlay(first, second);
+  }, [adapter, importState, session.distanceMeasurement]);
+
+  useEffect(() => {
+    if (snapPreviewTimer.current !== null) {
+      clearTimeout(snapPreviewTimer.current);
+      snapPreviewTimer.current = null;
+    }
+    if (
+      !adapter
+      || importState !== 'ready'
+      || !measurementActive
+      || session.distanceMeasurement.phase === 'complete'
+      || !session.distanceMeasurement.snapEnabled
+    ) {
+      setSnapPreview(null);
+      adapter?.setSnapPreview(null);
+      return;
+    }
+    // `coordinate` is published only after camera movement settles. Native
+    // OSNAP therefore never enters the synchronous CAD -> map camera hotpath.
+    snapPreviewTimer.current = setTimeout(() => {
+      snapPreviewTimer.current = null;
+      const candidate = adapter.resolveAimPoint(true);
+      const nextPreview = candidate?.source === 'cad-snap' ? candidate : null;
+      setSnapPreview(nextPreview);
+      adapter.setSnapPreview(nextPreview);
+    }, MLIGHTCAD_SNAP_AFTER_COORDINATE_DELAY_MS);
+    return () => {
+      if (snapPreviewTimer.current !== null) clearTimeout(snapPreviewTimer.current);
+      snapPreviewTimer.current = null;
+    };
+  }, [adapter, coordinate, importState, measurementActive, session.distanceMeasurement.phase, session.distanceMeasurement.snapEnabled]);
 
   useEffect(() => {
     if (!adapter || importState !== 'ready' || location.state.follow !== 'following' || !location.state.position) return;
@@ -252,6 +309,7 @@ export default function MlightCadViewerPage() {
   };
 
   const handleSelection = (next: SelectedCadObject | null) => {
+    if (measurementActive) return;
     setSelection(next); setDrawOrderMessageKey(null); if (next) setDrawerState('object'); else setDrawerState((current) => current === 'object' ? null : current);
   };
   const closeSelection = () => { adapter?.clearSelection(); setSelection(null); setDrawerState(null); };
@@ -380,6 +438,39 @@ export default function MlightCadViewerPage() {
   const locationAction = () => {
     if (location.state.follow === 'off') location.start(); else if (location.state.follow === 'paused') location.resume(); else location.stop();
   };
+  const clearSnapPreview = () => {
+    if (snapPreviewTimer.current !== null) clearTimeout(snapPreviewTimer.current);
+    snapPreviewTimer.current = null;
+    setSnapPreview(null);
+    adapter?.setSnapPreview(null);
+  };
+  const closeMeasurement = () => {
+    clearSnapPreview();
+    session.cancelMeasurement();
+  };
+  const toggleMeasurement = () => {
+    if (measurementActive) {
+      closeMeasurement();
+      return;
+    }
+    adapter?.clearSelection();
+    setSelection(null);
+    setDrawerState(null);
+    setLayerSheetMode(null);
+    session.startMeasurement();
+  };
+  const setMeasurementPoint = () => {
+    const point = adapter && importState === 'ready'
+      ? adapter.resolveAimPoint(session.distanceMeasurement.snapEnabled)
+      : mapCanvas.current?.resolveAimPoint() ?? null;
+    if (!point) return;
+    session.commitMeasurementPoint(point);
+    clearSnapPreview();
+  };
+  const restartMeasurement = () => {
+    clearSnapPreview();
+    session.restartMeasurement();
+  };
 
   const layerSheetLayers = useMemo(() => layerSheetMode === 'preparation'
     ? (preparationReport?.layers.map((layer) => ({ id: layer.id, name: layer.name, visible: !(pendingProfile?.hiddenLayerIds.includes(layer.id) ?? false), featureCount: layer.expandedEntityCount })) ?? [])
@@ -422,14 +513,17 @@ export default function MlightCadViewerPage() {
   const mlightControlsActive = Boolean(adapter && importState === 'ready');
 
   return (
-    <main className={`app-shell mlightcad-page ${drawerState || layerSheetMode ? 'drawer-open' : 'drawer-closed'}`}>
+    <main className={`app-shell mlightcad-page ${drawerState || layerSheetMode || measurementActive ? 'drawer-open' : 'drawer-closed'}`}>
       <AppHeader />
-      <MlightCadMap adapter={importState === 'ready' ? adapter : null} basemapHealth={session.basemapHealth} basemapHealthReporter={session.basemapHealthReporter}
+      <MlightCadMap ref={mapCanvas} adapter={importState === 'ready' ? adapter : null} basemapHealth={session.basemapHealth} basemapHealthReporter={session.basemapHealthReporter}
         basemapVisible={session.basemapVisible} cadastreVisible={session.cadastreVisible} basemapSuspended={basemapSuspended} mlightControlsActive={mlightControlsActive}
-        location={location.state} onCoordinate={setCoordinate} onManualMove={location.pause} />
+        cadOpacity={opacity}
+        location={location.state} onCoordinate={setCoordinate} onManualMove={location.pause}
+        distanceMeasurement={session.distanceMeasurement} snapPreview={snapPreview} />
       <div className={`mlightcad-interaction-layer ${mlightControlsActive ? 'mlightcad-active' : 'openlayers-active'}`}
-        onPointerDown={() => { pointerActive.current = true; }} onPointerMove={() => { if (pointerActive.current) location.pause(); }}
-        onPointerUp={() => { pointerActive.current = false; }} onPointerCancel={() => { pointerActive.current = false; }} onWheel={location.pause}>
+        onPointerDown={() => { pointerActive.current = true; if (measurementActive) clearSnapPreview(); }} onPointerMove={() => { if (pointerActive.current) location.pause(); }}
+        onPointerUp={() => { pointerActive.current = false; }} onPointerCancel={() => { pointerActive.current = false; }}
+        onWheel={() => { if (measurementActive) clearSnapPreview(); location.pause(); }}>
         <MlightCadCanvas file={session.file} fileRevision={session.fileRevision} opacity={opacity} renderQuality={session.cadRenderQuality} appearance={session.cadAppearance} loadOptions={loadOptions}
           onAdapterChange={setAdapter} onError={handleError} onLayers={setLayers} onBlocks={setBlocks} onPreflight={handlePreflight}
           onCamera={(camera) => { latestCamera.current = camera; }} onProgress={handleProgress} onReady={handleReady} onSelection={handleSelection} />
@@ -442,10 +536,20 @@ export default function MlightCadViewerPage() {
         onToggleCadastre={session.toggleCadastreVisible} />
       <MapActionControls locationMode={location.state.follow} fitDisabled={!adapter || importState !== 'ready'} layerCount={layerSheetItems.length}
         blockCount={displayedBlocks.length} blocksOpen={drawerState === 'blocks'} cadControlsOpen={drawerState === 'controls'}
-        hiddenObjectCount={session.hiddenObjectIds.length} onLocation={locationAction} onFitDrawing={() => adapter?.fitDrawing()}
-        onOpenLayers={() => { setDrawerState(null); setLayerSheetMode('loaded'); }}
-        onOpenBlocks={() => { setLayerSheetMode(null); setBlockReturnToPreparation(false); setDrawerState('blocks'); }}
-        onToggleCadControls={() => { setLayerSheetMode(null); setDrawerState((current) => current === 'controls' ? null : 'controls'); }} />
+        measurementActive={measurementActive}
+        hiddenObjectCount={session.hiddenObjectIds.length} onLocation={() => { if (measurementActive) clearSnapPreview(); locationAction(); }}
+        onFitDrawing={() => { if (measurementActive) clearSnapPreview(); adapter?.fitDrawing(); }}
+        onToggleMeasurement={toggleMeasurement}
+        onOpenLayers={() => { if (measurementActive) closeMeasurement(); setDrawerState(null); setLayerSheetMode('loaded'); }}
+        onOpenBlocks={() => { if (measurementActive) closeMeasurement(); setLayerSheetMode(null); setBlockReturnToPreparation(false); setDrawerState('blocks'); }}
+        onToggleCadControls={() => { if (measurementActive) closeMeasurement(); setLayerSheetMode(null); setDrawerState((current) => current === 'controls' ? null : 'controls'); }} />
+
+      <DistanceMeasurementSheet open={measurementActive} measurement={session.distanceMeasurement}
+        snapKind={snapPreview?.snapKind} onClose={closeMeasurement} onSetPoint={setMeasurementPoint}
+        onRestart={restartMeasurement} onSnapEnabledChange={(enabled) => {
+          session.setMeasurementSnapEnabled(enabled);
+          if (!enabled) clearSnapPreview();
+        }} />
 
       <BottomSheet open={drawerState === 'object'} modal className="control-sheet object" ariaLabel={t('objectDetails')}
         closeLabel={t('closeDrawer')} onClose={closeSelection}>

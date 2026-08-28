@@ -2,6 +2,30 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.6.0] – 2026-08-28
+
+### Hinzugefügt
+
+- touchgerechte 2D-Distanzmessung für beide Viewer ergänzt; der `Ruler`-Button öffnet einen gemeinsamen Bottom-Sheet mit Punkt 1, Punkt 2, Ergebnis, „Neue Messung“ und CAD-Snap-Schalter; beendet wird über den aktiven `Ruler`-Schalter oder den Sheet-Griff
+- das feste rote Aim liegt exakt in der Mitte des tatsächlich nutzbaren Karten- beziehungsweise CAD-Canvasbereichs; ein Punkt wird ausschließlich über die mindestens 44 Pixel große Aktion gesetzt, niemals durch Pan, Pinch oder einen Karten-Tap
+- euklidische Distanzberechnung direkt in LUREF `EPSG:2169`; Meterwerte werden mit mindestens drei und höchstens vier Nachkommastellen ausgegeben
+- OpenLayers-Snap für Endpunkt, Stützpunkt, Schnittpunkt, Mittelpunkt, Kreismittelpunkt und Nächstpunkt innerhalb von 18 CSS-Pixeln ergänzt; berücksichtigt werden nur sichtbare CAD-Features, begrenzt auf 48 Kandidaten und 512 Geometriesegmente
+- MLightCAD-Snap über den nativen OSNAP mit 18 CSS-Pixeln Fangradius und Sichtbarkeitsprüfung ergänzt; Messlinie, Punkte und Fangvorschau werden als leichte Three.js-Geometrie dargestellt
+
+### Geändert
+
+- Messphase, gesetzte LUREF-Punkte und Snap-Schalter liegen im gemeinsamen Sitzungskontext und bleiben beim Wechsel zwischen `/` und `/openlayers` erhalten; eine neue Haupt-DWG setzt die Messung zurück
+- die normale CAD-Objektauswahl ist während des Messmodus deaktiviert, damit ein explizites Setzen nicht gleichzeitig ein Objekt auswählt
+- die Snap-Vorschau wird erst 120 ms nach Bewegungsende berechnet; der synchrone MLightCAD-Kamera-Hotpath enthält weiterhin keine Snap-, React-, Worker- oder zusätzliche Projektionsarbeit
+- Paket- und Kopfversion auf `0.6.0` angehoben
+
+### Prüfung
+
+- automatisierte Prüfungen für Messzustand, Formatierung, Snap-Prioritäten und -Grenzen, Sichtbarkeitsfilter, beide Vieweradapter sowie den unveränderten Kamera-Hotpath ergänzt
+- Abschlusslauf mit 52 Testdateien und 280 bestandenen Tests sowie erfolgreichem TypeScript-/Vite-Produktionsbuild durchgeführt
+- Produktionsvorschau bei 390 × 844 CSS-Pixeln ohne DWG geprüft: Aim, nicht modales Mess-Sheet, Kartenbewegung, Zwei-Punkt-Messung und erhaltener Zustand beim Wechsel zwischen `/` und `/openlayers` funktionieren ohne Browserfehler
+- manuelle Abnahme auf echter iPhone-Hardware bleibt getrennt im Prüfplan aufgeführt und wird nicht durch responsive Desktop-Prüfungen ersetzt
+
 ## [0.5.2] – 2026-08-28
 
 ### Behoben

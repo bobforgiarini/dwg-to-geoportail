@@ -10,16 +10,32 @@ import {
 import {
   AcDbDatabaseConverterManager,
   AcDbFileType,
+  AcDbOsnapMode,
   acdbHostApplicationServices,
   type AcDbEntity,
   type AcDbProgressdEventArgs,
 } from '@mlightcad/data-model';
 import { disposePreviewSubset } from '@mlightcad/three-renderer';
-import { Group, Raycaster, Vector2, type Material, type Object3D } from 'three';
+import {
+  BufferGeometry,
+  Group,
+  Line as ThreeLine,
+  LineBasicMaterial,
+  Points,
+  PointsMaterial,
+  Raycaster,
+  Vector2,
+  Vector3,
+  type Material,
+  type Object3D,
+} from 'three';
 import type {
+  CadSnapKind,
   CadObjectDrawOrder,
   CadObjectDrawOrderTier,
   CadOverlayLayer,
+  LurefCoordinate,
+  MeasurementPoint,
   SelectedCadObject,
 } from '../../types/models';
 import type { CadLoadProfile, CadOverlayBlock, DwgPreflightReport } from '../cad/preflightTypes';
@@ -59,6 +75,7 @@ const LARGE_DWG_BYTES = 10 * 1024 * 1024;
 const DEFAULT_MINIMUM_CHUNK_SIZE = 1_000;
 const LOW_MEMORY_MINIMUM_CHUNK_SIZE = 100;
 const MOBILE_SELECTION_RADIUS_PX = 12;
+const MEASUREMENT_SNAP_RADIUS_PX = 18;
 const TAP_MOVE_TOLERANCE_PX = 10;
 const MOBILE_TOUCH_ZOOM_SPEED = 2.25;
 const FIT_CAMERA_SYNC_DELAY_MS = 350;
@@ -68,6 +85,10 @@ const DESKTOP_REORDER_ACTION_BUDGET = 256;
 const DESKTOP_REORDER_TOTAL_BUDGET = 512;
 const REORDER_RENDER_TIER = 9_000;
 const REORDER_RANK_STEP = 256;
+const REORDER_SNAP_CANDIDATE_LIMIT = 32;
+const MEASUREMENT_RENDER_ORDER = 20_000;
+const MEASUREMENT_COLOR = 0xf3b66f;
+const SNAP_PREVIEW_COLOR = 0xffc76f;
 
 export type MlightCadDrawOrderResult = 'applied' | 'budget-exceeded' | 'not-found';
 
@@ -120,7 +141,41 @@ interface ReorderPreview {
   root: Group;
   objectIds: string[];
   fragmentCount: number;
-  subsets: Array<{ root: Group; layerId: string }>;
+  subsets: Array<{ root: Group; layerId: string; objectId: string }>;
+}
+
+interface SnapPickResult {
+  id: string;
+}
+
+function snapKindFromOsnapMode(mode: AcDbOsnapMode): CadSnapKind {
+  switch (mode) {
+    case AcDbOsnapMode.EndPoint:
+      return 'endpoint';
+    case AcDbOsnapMode.Node:
+    case AcDbOsnapMode.Insertion:
+      return 'vertex';
+    case AcDbOsnapMode.Intersection:
+      return 'intersection';
+    case AcDbOsnapMode.MidPoint:
+      return 'midpoint';
+    case AcDbOsnapMode.Center:
+      return 'center';
+    case AcDbOsnapMode.Quadrant:
+    case AcDbOsnapMode.Nearest:
+    default:
+      return 'nearest';
+  }
+}
+
+function disposeLocalOverlay(root: Object3D | null): void {
+  if (!root) return;
+  root.removeFromParent();
+  root.traverse((object) => {
+    const geometry = (object as Object3D & { geometry?: BufferGeometry }).geometry;
+    geometry?.dispose();
+    for (const material of drawableMaterials(object)) material.dispose();
+  });
 }
 
 function drawableMaterials(object: Object3D): Material[] {
@@ -242,6 +297,9 @@ export class MlightCadViewerAdapter {
   private readonly textObjectIds = new Set<string>();
   private readonly textSceneObjects = new Map<string, Set<RenderedSceneNode>>();
   private readonly cameraSyncTimers = new Set<ReturnType<typeof setTimeout>>();
+  private measurementOverlay: Group | null = null;
+  private snapPreview: Points | null = null;
+  private measurementCaptureActive = false;
   private textVisible = true;
   private opacity = 100;
   private appearance: CadAppearanceSettings = { ...DEFAULT_CAD_APPEARANCE };
@@ -494,6 +552,171 @@ export class MlightCadViewerAdapter {
     this.emitCamera();
   }
 
+  /**
+   * Resolves the fixed viewport aim in drawing metres. OSNAP is deliberately
+   * invoked only by the caller (after movement has settled or on capture), so
+   * the 0.2.4 camera bridge remains free of picking and React state work.
+   */
+  resolveAimPoint(snapEnabled = true): MeasurementPoint | null {
+    const view = this.view;
+    if (!view) return null;
+    const rect = view.canvas.getBoundingClientRect();
+    const width = rect.width || view.width || view.canvas.clientWidth || view.canvas.width;
+    const height = rect.height || view.height || view.canvas.clientHeight || view.canvas.height;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+    const world = view.screenToWorld({ x: width / 2, y: height / 2 });
+    if (!Number.isFinite(world.x) || !Number.isFinite(world.y)) return null;
+    const aim: MeasurementPoint = {
+      coordinate: [world.x, world.y],
+      source: 'aim',
+    };
+    if (!snapEnabled) {
+      view.osnapResolver?.clearAcquiredCenters?.();
+      return aim;
+    }
+
+    const temporarilyVisibleReorderedIds: string[] = [];
+    try {
+      const reorderedCandidates = this.pickReorderSnapCandidates(view, {
+        x: rect.left + width / 2,
+        y: rect.top + height / 2,
+      });
+      for (const objectId of reorderedCandidates) {
+        // MLightCAD's native OSNAP resolves database entities through the
+        // original CAD scene. Reorder previews are render-only clones, so make
+        // only the hit originals visible for this synchronous query.
+        view.setEntitySceneVisible(objectId, true);
+        temporarilyVisibleReorderedIds.push(objectId);
+      }
+      const temporarilyVisibleReorderedSet = new Set(temporarilyVisibleReorderedIds);
+      // The renderer pick is the visibility gate. This prevents the native
+      // resolver's database queries from snapping to objects hidden by the app.
+      const visiblePick = (view.pick(world, MEASUREMENT_SNAP_RADIUS_PX) as SnapPickResult[])
+        .some(({ id }) => this.isSnapObjectVisible(id, temporarilyVisibleReorderedSet));
+      if (!visiblePick) return aim;
+      view.osnapResolver?.clearAcquiredCenters?.();
+      const snap = view.osnapResolver.resolve({
+        cursorWcs: world,
+        hitRadiusPx: MEASUREMENT_SNAP_RADIUS_PX,
+      });
+      if (!snap || !Number.isFinite(snap.x) || !Number.isFinite(snap.y)) return aim;
+      return {
+        coordinate: [snap.x, snap.y],
+        source: 'cad-snap',
+        snapKind: snapKindFromOsnapMode(snap.type),
+      };
+    } catch {
+      // Progressive drawing or disposal can briefly invalidate a scene query.
+      // Capturing the exact aim remains safe and deterministic in that window.
+      return aim;
+    } finally {
+      // Reordered originals must remain render-hidden; their preview clones are
+      // the only persistent representation. Restoration is synchronous and
+      // does not add work to the camera bridge or retain scene resources.
+      for (const objectId of temporarilyVisibleReorderedIds) this.applyObjectVisibility(objectId);
+    }
+  }
+
+  /** Renders at most two captured points and their connecting 2D segment. */
+  setMeasurementOverlay(
+    first: LurefCoordinate | null = null,
+    second: LurefCoordinate | null = null,
+  ): void {
+    const view = this.view;
+    disposeLocalOverlay(this.measurementOverlay);
+    this.measurementOverlay = null;
+    if (!view || !first) {
+      if (view) view.isDirty = true;
+      return;
+    }
+
+    const root = new Group();
+    root.name = 'CadDistanceMeasurement';
+    const points = second ? [first, second] : [first];
+    const markerGeometry = new BufferGeometry().setFromPoints(
+      points.map(([x, y]) => new Vector3(x, y, 0)),
+    );
+    const markerMaterial = new PointsMaterial({
+      color: MEASUREMENT_COLOR,
+      depthTest: false,
+      depthWrite: false,
+      size: 8,
+      sizeAttenuation: false,
+    });
+    const markers = new Points(markerGeometry, markerMaterial);
+    markers.name = 'CadDistanceMeasurementPoints';
+    markers.renderOrder = MEASUREMENT_RENDER_ORDER + 1;
+    root.add(markers);
+
+    if (second) {
+      const lineGeometry = new BufferGeometry().setFromPoints([
+        new Vector3(first[0], first[1], 0),
+        new Vector3(second[0], second[1], 0),
+      ]);
+      const lineMaterial = new LineBasicMaterial({
+        color: MEASUREMENT_COLOR,
+        depthTest: false,
+        depthWrite: false,
+        transparent: true,
+        opacity: 1,
+      });
+      const line = new ThreeLine(lineGeometry, lineMaterial);
+      line.name = 'CadDistanceMeasurementLine';
+      line.renderOrder = MEASUREMENT_RENDER_ORDER;
+      root.add(line);
+    }
+
+    view.cadScene.internalScene.add(root);
+    this.measurementOverlay = root;
+    view.isDirty = true;
+  }
+
+  /** Updates the lightweight fixed-size marker for the current CAD snap. */
+  setSnapPreview(point: MeasurementPoint | null = null): void {
+    const view = this.view;
+    if (!view || point?.source !== 'cad-snap') {
+      if (!this.snapPreview) return;
+      disposeLocalOverlay(this.snapPreview);
+      this.snapPreview = null;
+      if (view) view.isDirty = true;
+      return;
+    }
+
+    const [x, y] = point.coordinate;
+    if (!this.snapPreview) {
+      const geometry = new BufferGeometry().setFromPoints([new Vector3(x, y, 0)]);
+      const material = new PointsMaterial({
+        color: SNAP_PREVIEW_COLOR,
+        depthTest: false,
+        depthWrite: false,
+        size: 11,
+        sizeAttenuation: false,
+      });
+      this.snapPreview = new Points(geometry, material);
+      this.snapPreview.name = 'CadDistanceSnapPreview';
+      this.snapPreview.renderOrder = MEASUREMENT_RENDER_ORDER + 2;
+      view.cadScene.internalScene.add(this.snapPreview);
+    } else {
+      const position = this.snapPreview.geometry.getAttribute('position');
+      position.setXYZ(0, x, y, 0);
+      position.needsUpdate = true;
+    }
+    view.isDirty = true;
+  }
+
+  /** Keeps PAN gestures active while suppressing normal CAD object selection. */
+  setMeasurementCaptureActive(active: boolean): void {
+    this.measurementCaptureActive = active;
+    const view = this.view;
+    if (!view) return;
+    view.osnapResolver?.clearAcquiredCenters?.();
+    view.entitySelectionEnabled = !active;
+    if (active) {
+      view.selectionSet.clear();
+      this.events.selection.dispatch(null);
+    }
+  }
+
   setOpacity(value: number): void {
     this.opacity = normalizeCadOpacity(value);
     this.container.style.removeProperty('opacity');
@@ -711,7 +934,12 @@ export class MlightCadViewerAdapter {
 
       const renderer = view?.renderer;
       runCleanup(() => view?.selectionSet.clear());
+      runCleanup(() => view?.osnapResolver?.clearAcquiredCenters?.());
       runCleanup(() => this.fillOpacityController.restore());
+      runCleanup(() => disposeLocalOverlay(this.snapPreview));
+      this.snapPreview = null;
+      runCleanup(() => disposeLocalOverlay(this.measurementOverlay));
+      this.measurementOverlay = null;
       runCleanup(() => this.disposeReorderPreviews());
       runCleanup(() => view?.stopAnimationLoop());
       runCleanup(() => renderer?.internalRenderer.setAnimationLoop(null));
@@ -741,6 +969,7 @@ export class MlightCadViewerAdapter {
       this.drawOrder = { front: [], back: [] };
       this.textObjectIds.clear();
       this.textSceneObjects.clear();
+      this.measurementCaptureActive = false;
       this.layers = [];
       this.blocks = [];
       this.preflight = null;
@@ -867,12 +1096,16 @@ export class MlightCadViewerAdapter {
   }
 
   private bindSelection(view: AcTrView2d): void {
-    view.entitySelectionEnabled = true;
+    view.entitySelectionEnabled = !this.measurementCaptureActive;
     // cad-simple-viewer 1.6.3 performs its built-in selection through
     // mouse events only. A larger radius also makes thin CAD lines usable as
     // touch targets without changing their rendered line weight.
     view.selectionBoxSize = MOBILE_SELECTION_RADIUS_PX;
     const added = ({ ids }: { ids: string[] }) => {
+      if (this.measurementCaptureActive) {
+        view.selectionSet.clear();
+        return;
+      }
       const objectId = ids.at(-1);
       this.events.selection.dispatch(objectId ? this.describeObject(objectId) : null);
     };
@@ -891,6 +1124,10 @@ export class MlightCadViewerAdapter {
     } | null = null;
     let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
     const onPointerDown = (event: PointerEvent) => {
+      if (this.measurementCaptureActive) {
+        tap = null;
+        return;
+      }
       if (event.isPrimary === false) {
         tap = null;
         return;
@@ -927,7 +1164,7 @@ export class MlightCadViewerAdapter {
       // remains owned by MLightCAD; this only fills the mobile pointer gap.
       fallbackTimer = setTimeout(() => {
         fallbackTimer = null;
-        if (this.disposed || this.view !== view) return;
+        if (this.disposed || this.view !== view || this.measurementCaptureActive) return;
         const frontPreviewId = this.pickReorderPreview(view, clientPoint, 'front');
         if (frontPreviewId) {
           const selected = this.describeObject(frontPreviewId);
@@ -1099,7 +1336,7 @@ export class MlightCadViewerAdapter {
           return 'budget-exceeded';
         }
         fragmentCount += added;
-        subsets.push({ root: subset, layerId: layer.name });
+        subsets.push({ root: subset, layerId: layer.name, objectId });
         root.add(subset);
       }
     }
@@ -1157,6 +1394,24 @@ export class MlightCadViewerAdapter {
       && (this.textVisible || !this.textObjectIds.has(objectId));
   }
 
+  private isSnapObjectVisible(
+    objectId: string,
+    temporarilyVisibleReorderedIds?: ReadonlySet<string>,
+  ): boolean {
+    if (
+      this.hiddenObjectIds.has(objectId)
+      || this.hiddenBlockObjectIds.has(objectId)
+      || (this.reorderedObjectIds.has(objectId) && !temporarilyVisibleReorderedIds?.has(objectId))
+    ) return false;
+    if (this.view?.getEntityVisible?.(objectId) === false) return false;
+
+    const entity = this.manager?.curDocument.database.tables.blockTable.getEntityById(objectId)
+      ?? this.manager?.curDocument.database.getObjectById(objectId);
+    if (!isCadEntity(entity)) return true;
+    if (this.layers.find((layer) => layer.id === entity.layer)?.visible === false) return false;
+    return this.textVisible || !TEXT_CONTROLLED_ENTITY_TYPES.has(entity.dxfTypeName.toUpperCase());
+  }
+
   private refreshReorderPreviewVisibility(groupKey: string): void {
     const preview = this.reorderPreviews.get(groupKey);
     if (!preview) return;
@@ -1181,6 +1436,43 @@ export class MlightCadViewerAdapter {
     }
     this.reorderPreviews.clear();
     this.reorderedObjectIds.clear();
+  }
+
+  private pickReorderSnapCandidates(
+    view: AcTrView2d,
+    clientPoint: { x: number; y: number },
+  ): string[] {
+    if (this.reorderPreviews.size === 0) return [];
+    const rect = view.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return [];
+    this.previewPointer.set(
+      ((clientPoint.x - rect.left) / rect.width) * 2 - 1,
+      -((clientPoint.y - rect.top) / rect.height) * 2 + 1,
+    );
+    const threshold = readCadCamera(view).resolution * MEASUREMENT_SNAP_RADIUS_PX;
+    this.previewRaycaster.params.Line = { threshold };
+    this.previewRaycaster.params.Points = { threshold };
+    this.previewRaycaster.setFromCamera(this.previewPointer, view.internalCamera);
+
+    const candidates: string[] = [];
+    const seen = new Set<string>();
+    const keys = [...this.drawOrder.front].reverse().concat(this.drawOrder.back);
+    for (const groupKey of keys) {
+      const preview = this.reorderPreviews.get(groupKey);
+      if (!preview?.root.visible) continue;
+      for (const subset of preview.subsets) {
+        if (
+          seen.has(subset.objectId)
+          || !subset.root.visible
+          || !this.previewObjectVisible(subset.objectId)
+        ) continue;
+        if (this.previewRaycaster.intersectObject(subset.root, true).length === 0) continue;
+        seen.add(subset.objectId);
+        candidates.push(subset.objectId);
+        if (candidates.length >= REORDER_SNAP_CANDIDATE_LIMIT) return candidates;
+      }
+    }
+    return candidates;
   }
 
   private pickReorderPreview(

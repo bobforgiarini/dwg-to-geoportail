@@ -418,6 +418,10 @@ export function convertCadDocument(document: CadDocument): CadConversionResult {
     }
     if (coordinateInExtent(authoredCenter, PLAUSIBLE_LUREF_BOUNDS)) extendExtent(plausibleLurefExtent, authoredExtent);
     geometry.transform(LUREF_CODE, WEB_MERCATOR_CODE);
+    const authoredSnapCenter = entity.center ? apply(parentMatrix, entity.center) : null;
+    const cadSnapCenter = authoredSnapCenter
+      ? new Point(authoredSnapCenter).transform(LUREF_CODE, WEB_MERCATOR_CODE).getCoordinates()
+      : undefined;
     const feature = new Feature({ geometry });
     const featureId = `${entity.handle ?? entity.id ?? entity.type}-${features.length}`;
     const objectKey = createCadObjectKey(String(entity.handle ?? entity.id ?? featureId), stack);
@@ -445,6 +449,7 @@ export function convertCadDocument(document: CadDocument): CadConversionResult {
       isCadText: isCadAnnotation,
       isLurefNational: coordinateInExtent(authoredCenter, NATIONAL_LUREF_BOUNDS),
       blockPath: [...stack],
+      cadSnapCenter,
     });
     features.push(feature);
     layerCounts.set(layerId, (layerCounts.get(layerId) ?? 0) + 1);

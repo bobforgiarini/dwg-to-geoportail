@@ -5,8 +5,13 @@ import i18n from './i18n';
 import App from './App';
 import type { DwgPreflightReport } from './lib/cad/preflightTypes';
 import { CadSessionProvider, useCadSession } from './session/CadSessionContext';
+import type { MeasurementPoint } from './types/models';
 
 const fitDrawing = vi.hoisted(() => vi.fn());
+const resolveAimPoint = vi.hoisted(() => vi.fn(() => ({
+  coordinate: [80_000, 100_000] as const,
+  source: 'aim' as const,
+}) as MeasurementPoint));
 const mapCanvasProps = vi.hoisted(() => vi.fn());
 const importDwg = vi.hoisted(() => vi.fn());
 
@@ -15,7 +20,7 @@ vi.mock('./components/MapCanvas', async () => {
   return {
     MapCanvas: React.forwardRef((props: Record<string, unknown>, ref) => {
       mapCanvasProps(props);
-      React.useImperativeHandle(ref, () => ({ fitDrawing }));
+      React.useImperativeHandle(ref, () => ({ fitDrawing, resolveAimPoint }));
       return React.createElement('div', { 'data-testid': 'legacy-map' });
     }),
   };
@@ -83,6 +88,20 @@ function DeferredLegacyViewer() {
   );
 }
 
+function MeasuredLegacyViewer() {
+  const session = useCadSession();
+  const [mounted, setMounted] = useState(false);
+  if (mounted) return <App />;
+  return (
+    <button onClick={() => {
+      session.startMeasurement();
+      setMounted(true);
+    }}>
+      Mount measured legacy
+    </button>
+  );
+}
+
 function PreparedLegacyViewer() {
   const session = useCadSession();
   const [mounted, setMounted] = useState(false);
@@ -108,6 +127,11 @@ describe('legacy viewer controls', () => {
     await i18n.changeLanguage('de');
     window.history.replaceState(null, '', '/');
     fitDrawing.mockClear();
+    resolveAimPoint.mockReset();
+    resolveAimPoint.mockImplementation(() => ({
+      coordinate: [80_000, 100_000] as const,
+      source: 'aim' as const,
+    }));
     mapCanvasProps.mockClear();
     importDwg.mockReset();
     importDwg.mockImplementation(async (file: File) => ({
@@ -132,6 +156,7 @@ describe('legacy viewer controls', () => {
       i18n.t('layers'),
       i18n.t('blocksTitle'),
       i18n.t('openCadControls'),
+      i18n.t('measurementOpen'),
       i18n.t('locationStart'),
       i18n.t('fitDrawing'),
     ]);
@@ -161,6 +186,26 @@ describe('legacy viewer controls', () => {
     await waitFor(() => expect(mapCanvasProps).toHaveBeenLastCalledWith(expect.objectContaining({ cadOpacity: 0 })));
   });
 
+  it('captures two aim points through the explicit measurement actions', async () => {
+    resolveAimPoint
+      .mockReturnValueOnce({ coordinate: [80_000, 100_000], source: 'aim' })
+      .mockReturnValueOnce({ coordinate: [80_003, 100_004], source: 'cad-snap', snapKind: 'endpoint' });
+    const { getByRole, getByText } = renderApp();
+
+    fireEvent.click(getByRole('button', { name: i18n.t('measurementOpen') }));
+    expect(getByRole('region', { name: i18n.t('measurementTitle') })).toBeInTheDocument();
+    fireEvent.click(getByRole('button', { name: i18n.t('measurementSetFirstPoint') }));
+    fireEvent.click(getByRole('button', { name: i18n.t('measurementSetSecondPoint') }));
+
+    expect(resolveAimPoint).toHaveBeenNthCalledWith(1, true);
+    expect(resolveAimPoint).toHaveBeenNthCalledWith(2, true);
+    expect(getByText('5,000 m')).toBeInTheDocument();
+    expect(mapCanvasProps).toHaveBeenLastCalledWith(expect.objectContaining({
+      measurementCaptureActive: true,
+      distanceMeasurement: expect.objectContaining({ phase: 'complete' }),
+    }));
+  });
+
   it('starts closed when mounting with an existing session file', async () => {
     const { getByRole, queryByRole } = render(
       <CadSessionProvider><DeferredLegacyViewer /></CadSessionProvider>,
@@ -170,6 +215,17 @@ describe('legacy viewer controls', () => {
 
     expect(queryByRole('dialog', { name: i18n.t('cadControlsTitle') })).not.toBeInTheDocument();
     await waitFor(() => expect(importDwg).toHaveBeenCalledOnce());
+    expect(queryByRole('dialog', { name: i18n.t('cadControlsTitle') })).not.toBeInTheDocument();
+  });
+
+  it('does not cover a viewer-switched measurement with the empty CAD drawer', () => {
+    const { getByRole, queryByRole } = render(
+      <CadSessionProvider><MeasuredLegacyViewer /></CadSessionProvider>,
+    );
+
+    fireEvent.click(getByRole('button', { name: 'Mount measured legacy' }));
+
+    expect(getByRole('region', { name: i18n.t('measurementTitle') })).toBeInTheDocument();
     expect(queryByRole('dialog', { name: i18n.t('cadControlsTitle') })).not.toBeInTheDocument();
   });
 

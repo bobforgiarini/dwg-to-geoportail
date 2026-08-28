@@ -1,10 +1,10 @@
-# Test- und Abnahmeplan 0.5.2
+# Test- und Abnahmeplan 0.6.0
 
 ## Grundsatz
 
 Automatisierte Tests prüfen Datenstrukturen, Filterung, Zustandsautomaten und Lebenszyklus. Sie ersetzen weder den visuellen Vergleich mit einer bekannten LUREF-DWG noch einen echten Speichertest in iOS Safari. Private DWG-Dateien bleiben außerhalb des Repositorys und werden nicht an einen externen Dienst übertragen.
 
-Die unten aufgeführten automatisierten und manuellen Prüfungen sind die Abnahmebasis für Version 0.5.2. Der vollständige Abschlusslauf umfasst 48 Vitest-Dateien mit 243 bestandenen Tests, einen fehlerfreien TypeScript-Projektbuild und einen erfolgreichen Vite-Produktionsbuild. Die private Junglinster-DWG wurde für 0.5.2 zusätzlich als reale Browserreferenz verwendet; sie bleibt außerhalb des Repositorys. Prüfungen mit privaten XRef-DWGs und auf echter iPhone-Hardware bleiben lokale Abnahmen.
+Die unten aufgeführten automatisierten und manuellen Prüfungen sind die Abnahmebasis für Version 0.6.0. Der bestätigte Abschlusslauf umfasst 52 Vitest-Dateien mit 280 bestandenen Tests sowie einen erfolgreichen TypeScript-/Vite-Produktionsbuild. Die private Junglinster-DWG bleibt außerhalb des Repositorys. Prüfungen mit privaten XRef-DWGs und auf echter iPhone-Hardware bleiben lokale Abnahmen.
 
 ## Automatisierte Prüfung
 
@@ -76,7 +76,7 @@ Zusätzlich wird geprüft:
 - `/` löst MLightCAD als Standard-Viewer auf; `/openlayers` öffnet ausschließlich die OpenLayers-Legacy-Ansicht
 - der Viewer-Umschalter schreibt die jeweils kanonische Route in die Browser-History und bewahrt dabei die lokale Dateisitzung
 - die bisherige Route `/mlightcad` bleibt ein kompatibler MLightCAD-Einstieg; unbekannte SPA-Pfade fallen auf den Standard-Viewer zurück
-- die Version im App-Kopf entspricht `package.json` und zeigt für diesen Release `0.5.0`
+- die Version im App-Kopf entspricht `package.json` und zeigt für diesen Release `0.6.0`
 
 ### Layer- und Block-Drawer
 
@@ -141,6 +141,21 @@ Zusätzlich wird geprüft:
 - wiederholte erfolgreiche Kachelabschlüsse im bereits erreichten Zustand `ready` benachrichtigen React nicht erneut
 - GPS zentriert zuerst die CAD-Kamera, anschließend folgt OpenLayers ohne Animation
 - beim Pan, Pinch, Mausrad, Einpassen und tiefen Zoom bleibt die Abweichung zwischen CAD und Orthofoto bei einer bekannten Referenz unter zwei CSS-Pixeln
+
+### 2D-Distanzmessung und CAD-Snap
+
+- die Phasen inaktiv, ersten Punkt setzen, zweiten Punkt setzen und abgeschlossen besitzen eindeutige Zustandsübergänge; „Neue Messung“ verwirft beide Punkte, „Beenden“ beendet den Modus
+- die euklidische Distanz wird aus zwei LUREF-Koordinaten direkt in Metern berechnet; Ausgabe und Rundungsgrenzen verwenden mindestens drei und höchstens vier Nachkommastellen
+- Messphase, beide Punkte und Snap-Schalter bleiben beim Wechsel zwischen `/` und `/openlayers` erhalten; eine neue Haupt-DWG setzt sie zurück
+- das rote Aim liegt auf Desktop und Mobilgerät im Zentrum des echten Karten-/Canvasbereichs und stimmt mit der aktuellen LUREF-Mittelpunktkoordinate überein
+- Pan, Pinch, Mausrad, ein kurzer Kartentipp und CAD-Auswahl setzen keinen Messpunkt; nur die mindestens 44 CSS-Pixel große Aktion im Bottom-Sheet bestätigt den aktuellen Aim-Punkt
+- das Bottom-Sheet zeigt Punkt 1, Punkt 2, Ergebnis, „Neue Messung“ und den CAD-Snap-Schalter vollständig in DE, FR und EN; der aktive `Ruler`-Schalter und der zugängliche Griff beenden den Messmodus
+- OpenLayers berücksichtigt nur sichtbare CAD-Features und priorisiert gültige End-, Stütz-, Schnitt-, Mittel-, Mittelpunkt- und Nächstpunkte innerhalb von 18 CSS-Pixeln
+- OpenLayers untersucht höchstens 48 Kandidaten und 512 Geometriesegmente; während `pointerdrag` läuft keine Snap-Suche und die Vorschau startet erst 120 ms nach Bewegungsende
+- MLightCAD verwendet den nativen OSNAP mit 18 CSS-Pixeln Fangradius; Ergebnisse aus ausgeblendeten Layern, Blöcken, Texten oder Objekten werden verworfen
+- Messlinie, Punkte und Fangvorschau der MLightCAD-Ansicht verwenden leichte Three.js-Geometrie und werden beim Beenden, Viewerwechsel und Dispose vollständig freigegeben
+- während des Messmodus ist die normale CAD-Objektauswahl in beiden Viewern deaktiviert
+- 240 MLightCAD-Kameraereignisse erzeugen weiterhin 240 synchrone `setCenter`-/`setResolution`-/`renderSync()`-Folgen; dazwischen darf keine Snap-, React-, Worker- oder zusätzliche CRS-Arbeit auftreten
 
 ### Adaptive MLightCAD-Canvas-Qualität
 
@@ -279,6 +294,21 @@ Ein erfolgreicher Lauf auf einem einzelnen Desktop belegt keine iPhone-Kompatibi
 - fünf Imports und fünf Viewerwechsel mit Browser-Speicherwerkzeugen beobachten; Worker, Canvas und WebGL-Kontexte müssen nach Dispose auf den Sollzustand zurückfallen
 - Standortberechtigung erlaubt und abgelehnt sowie pausierte Folge und Wiederaufnahme prüfen
 
+### Manuelle Distanzmessung 0.6.0
+
+Diese Schritte sind auf Desktop-Chrome, einem schmalen responsiven Viewport und anschließend auf echter Mobilhardware auszuführen. Eine responsive Desktop-Prüfung darf nicht als iPhone-Abnahme verbucht werden.
+
+1. Ohne DWG den Messmodus öffnen, Karte unter dem festen Aim verschieben und zwei Punkte ausschließlich über „Punkt setzen“ bestätigen.
+2. Die angezeigte Distanz gegen zwei bekannte LUREF-Punkte prüfen; Einheit und Ausgabe müssen Meter mit drei bis vier Nachkommastellen sein.
+3. Eine CAD-Datei laden und nacheinander Endpunkt, Stützpunkt, Schnittpunkt, Segmentmittelpunkt, Kreismittelpunkt und Nächstpunkt im OpenLayers-Viewer anvisieren.
+4. Dieselbe Datei im MLightCAD-Viewer öffnen und den nativen Snap an sichtbarer Geometrie sowie die Ablehnung eines ausgeblendeten Layers oder Objekts prüfen.
+5. Den CAD-Snap ausschalten; der gesetzte Punkt muss anschließend exakt der Aim-/Kartenmittelpunktkoordinate entsprechen.
+6. Während aktivem Messmodus Pan, Pinch, Mausrad und kurze Taps ausführen. Keine dieser Gesten darf einen Punkt setzen oder ein CAD-Objekt auswählen.
+7. Nach dem ersten Punkt die Route wechseln; Messphase, Punkt und Snap-Schalter müssen erhalten bleiben. Danach eine neue Haupt-DWG auswählen und den vollständigen Reset prüfen.
+8. „Neue Messung“ nach einem vollständigen Ergebnis verwenden und direkt neu messen; `Ruler`-Schalter, Griff und ein anderer Kartenmodus müssen die Messoberfläche sauber schließen. Ein Außentipp bleibt der Kartenbedienung vorbehalten und darf das nicht modale Mess-Sheet nicht schließen.
+9. Bei geöffnetem Mess-Sheet Pan und Pinch auf einem echten Touchgerät prüfen; die mindestens 44 CSS-Pixel große Setzen-Aktion muss zuverlässig bedienbar sein, ohne die Karte unbeabsichtigt zu bewegen.
+10. Mit Browser-Performancewerkzeugen prüfen, dass reine MLightCAD-Bewegung keine Snap-Suche, React-Zustandsaktualisierung oder Worker-Nachricht in den synchronen Kamera-Hotpath einfügt.
+
 ## Nicht Teil der Abnahme
 
 - Bearbeiten oder Neuschreiben einer DWG
@@ -288,7 +318,7 @@ Ein erfolgreicher Lauf auf einem einzelnen Desktop belegt keine iPhone-Kompatibi
 - vollständige XCLIP-, Proxy-/Custom-Entity- oder AutoCAD-XRef-Parität
 - vollständige Schrifterkennung über die vom Renderer gemeldeten `missedFonts` hinaus
 
-Nach einem späteren GitHub-Push übernimmt das vorhandene Git-basierte Netlify-Projekt Build und Bereitstellung der aktuellen Version. Push und Deploy gehören nicht zu diesem Implementierungsschritt; die dortigen Ergebnisse und die manuelle Routenabnahme sind bis dahin ausstehend.
+Nach einem späteren GitHub-Push übernimmt das vorhandene Git-basierte Netlify-Projekt Build und Bereitstellung der aktuellen Version. Push und Deploy gehören nicht zu diesem Implementierungsschritt; Netlify sowie die weitergehende manuelle CAD- und Hardware-Abnahme bleiben bis dahin ausstehend.
 
 ## Ergänzende Abnahme für 0.5.1
 
