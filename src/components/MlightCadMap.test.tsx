@@ -25,9 +25,10 @@ const harness = vi.hoisted(() => {
   }> = [];
   const basemapOptions: unknown[] = [];
   const mapOptions: unknown[] = [];
+  const mapListeners: Array<globalThis.Map<string, Set<(event?: unknown) => void>>> = [];
   const viewOptions: unknown[] = [];
   const viewports: HTMLDivElement[] = [];
-  return { addLayer, basemapOptions, basemaps, interaction, mapOptions, removeLayer, renderSync, view, viewOptions, viewports };
+  return { addLayer, basemapOptions, basemaps, interaction, mapListeners, mapOptions, removeLayer, renderSync, view, viewOptions, viewports };
 });
 
 vi.mock('ol/interaction/defaults', () => ({
@@ -45,7 +46,8 @@ vi.mock('ol/Map', () => ({
   default: vi.fn(function Map(options: unknown) {
     harness.mapOptions.push(options);
     const viewport = document.createElement('div');
-    const listeners = new globalThis.Map<string, Set<() => void>>();
+    const listeners = new globalThis.Map<string, Set<(event?: unknown) => void>>();
+    harness.mapListeners.push(listeners);
     harness.viewports.push(viewport);
     return {
       getInteractions: () => ({ forEach: (callback: (interaction: typeof harness.interaction) => void) => callback(harness.interaction) }),
@@ -53,8 +55,8 @@ vi.mock('ol/Map', () => ({
       getView: () => harness.view,
       getViewport: () => viewport,
       addLayer: harness.addLayer,
-      on: vi.fn((event: string, listener: () => void) => {
-        const eventListeners = listeners.get(event) ?? new Set<() => void>();
+      on: vi.fn((event: string, listener: (event?: unknown) => void) => {
+        const eventListeners = listeners.get(event) ?? new Set<(event?: unknown) => void>();
         eventListeners.add(listener);
         listeners.set(event, eventListeners);
       }),
@@ -108,6 +110,7 @@ describe('MlightCadMap interaction handover', () => {
     harness.basemaps.length = 0;
     harness.basemapOptions.length = 0;
     harness.mapOptions.length = 0;
+    harness.mapListeners.length = 0;
     harness.viewOptions.length = 0;
     harness.viewports.length = 0;
     harness.interaction.setActive.mockClear();
@@ -151,6 +154,54 @@ describe('MlightCadMap interaction handover', () => {
 
     rerender(<MlightCadMap {...props} mlightControlsActive />);
     expect(harness.interaction.setActive).toHaveBeenLastCalledWith(false);
+  });
+
+  it('captures desktop map clicks without CAD but ignores touch input', () => {
+    const previous = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn((query: string) => ({ matches: query.includes('hover: hover') })),
+    });
+    try {
+      const onDesktopMeasurementPointCapture = vi.fn();
+      const measurement = {
+        phase: 'placing-first',
+        snapEnabled: true,
+      } satisfies DistanceMeasurementState;
+      render(<MlightCadMap
+        adapter={null}
+        basemapHealth={{ mode: 'wmts', status: 'ready', generation: 0, transitionReason: 'tile-loaded' }}
+        basemapHealthReporter={{
+          sourceMounted: vi.fn(), tileLoadStart: vi.fn(), tileLoadEnd: vi.fn(), tileLoadError: vi.fn(),
+        }}
+        basemapVisible
+        mlightControlsActive={false}
+        location={idleLocation}
+        onCoordinate={vi.fn()}
+        onManualMove={vi.fn()}
+        distanceMeasurement={measurement}
+        onDesktopMeasurementPointCapture={onDesktopMeasurementPointCapture}
+      />);
+      const clickListeners = harness.mapListeners.at(-1)?.get('singleclick');
+
+      clickListeners?.forEach((listener) => listener({
+        coordinate: [80_001, 100_002],
+        originalEvent: { pointerType: 'touch' },
+      }));
+      expect(onDesktopMeasurementPointCapture).not.toHaveBeenCalled();
+
+      clickListeners?.forEach((listener) => listener({
+        coordinate: [80_001, 100_002],
+        originalEvent: { pointerType: 'mouse' },
+      }));
+      expect(onDesktopMeasurementPointCapture).toHaveBeenCalledWith({
+        coordinate: [80_001, 100_002],
+        source: 'aim',
+      });
+    } finally {
+      if (previous) Object.defineProperty(window, 'matchMedia', previous);
+      else Reflect.deleteProperty(window, 'matchMedia');
+    }
   });
 
   it('keeps the measurement overlay below the transparent CAD canvas when MLightCAD owns gestures', () => {

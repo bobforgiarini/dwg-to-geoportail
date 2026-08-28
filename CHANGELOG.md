@@ -2,6 +2,21 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.6.1] – 2026-08-28
+
+### Geändert
+
+- Messoberfläche auf denselben gemeinsamen Bottom-Sheet wie Layer und Blöcke vereinheitlicht und mobil auf CAD-Snap, Punktaktion und Ergebnis reduziert
+- sichtbare Überschrift, Anleitung, Punktkoordinaten und Snap-Detailtext entfernt; vertikale Abstände, Safe-Area-Padding und Aktionszeile verhindern einen abgeschnittenen unteren Button
+- Desktop-Messung in beiden Viewern um direkte Mausklick-Punktwahl und eine CAD-Snap-Vorschau beim Hover ergänzt
+- Touchbedienung bleibt strikt beim festen Aim mit expliziter 44-Pixel-Punktaktion; Touch-Taps, Pan und Pinch setzen weiterhin keinen Punkt
+- Paket- und Kopfversion auf `0.6.1` angehoben
+
+### Prüfung
+
+- Regressionstests für kompakten Sheet, Desktop-Hover/-Klick, Touch-Sperre, sichtbarkeitsgefiltertes Snap und MLightCAD-Screenkoordinaten ergänzt
+- Abschlusslauf mit 52 Testdateien und 288 bestandenen Tests sowie erfolgreichem TypeScript-/Vite-Produktionsbuild durchgeführt
+
 ## [0.6.0] – 2026-08-28
 
 ### Hinzugefügt

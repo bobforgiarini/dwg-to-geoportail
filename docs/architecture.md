@@ -1,4 +1,4 @@
-# Architektur 0.6.0
+# Architektur 0.6.1
 
 ## Überblick
 
@@ -173,21 +173,21 @@ Ohne bereites CAD-Dokument bedient OpenLayers die Karte. Nach `ready` übernimmt
 
 Die Messung ist ein gemeinsamer sitzungsweiter Zustand in `CadSession`. Sie kennt die Phasen inaktiv, ersten Punkt setzen, zweiten Punkt setzen und abgeschlossen sowie die beiden optionalen `MeasurementPoint`-Werte und den CAD-Snap-Schalter. Der Zustand bleibt beim Wechsel zwischen `/` und `/openlayers` erhalten. Eine neu ausgewählte Haupt-DWG setzt eine laufende oder abgeschlossene Messung zurück; ein reiner Viewerwechsel tut dies nicht.
 
-Das rote Aim ist ein viewportfestes Overlay in der Mitte des tatsächlichen Karten- beziehungsweise CAD-Canvasbereichs. Auf Mobilgeräten beginnt dieser Bereich unterhalb des App-Headers; auf Desktop entspricht er dem gesamten Map-Viewport. Die angezeigten Mittelpunktkoordinaten und der gesetzte Messpunkt beziehen sich dadurch auf dieselbe Bildschirmposition. Pan, Pinch und Mausrad verändern nur Kamera und Aim-Koordinate. Ein Punkt wird ausschließlich über die mindestens 44 CSS-Pixel große Aktion im gemeinsamen Bottom-Sheet bestätigt.
+Das rote Aim ist ein viewportfestes Overlay in der Mitte des tatsächlichen Karten- beziehungsweise CAD-Canvasbereichs. Auf Mobilgeräten beginnt dieser Bereich unterhalb des App-Headers; auf Desktop entspricht er dem gesamten Map-Viewport. Die angezeigten Mittelpunktkoordinaten und der gesetzte mobile Messpunkt beziehen sich dadurch auf dieselbe Bildschirmposition. Touchbedienung bestätigt einen Punkt ausschließlich über die mindestens 44 CSS-Pixel große Aktion im gemeinsamen Bottom-Sheet; ein Tap, Pan oder Pinch setzt niemals direkt einen Punkt. Auf Desktop kann zusätzlich mit einer feinen Maus direkt in Karte oder CAD geklickt werden.
 
 Die Distanz wird ohne CRS-Umweg euklidisch in `EPSG:2169` berechnet:
 
 `sqrt((x2 - x1)² + (y2 - y1)²)`
 
-Da LUREF Meter als Einheit verwendet, ist das Ergebnis direkt ein Meterwert. Die Oberfläche zeigt mindestens drei und höchstens vier Nachkommastellen. Der gemeinsame Sheet zeigt Punkt 1, Punkt 2, das Ergebnis, „Neue Messung“ und den CAD-Snap-Schalter. Der aktive `Ruler`-Schalter und der zugängliche Sheet-Griff beenden den Modus; währenddessen ist die normale CAD-Objektauswahl deaktiviert.
+Da LUREF Meter als Einheit verwendet, ist das Ergebnis direkt ein Meterwert. Die Oberfläche zeigt mindestens drei und höchstens vier Nachkommastellen. Der gemeinsame Sheet verwendet dieselbe `BottomSheet`-Basis wie Layer und Blöcke und enthält ohne sichtbaren Titel oder Anleitung nur CAD-Snap, die aktuelle Punktaktion und nach Abschluss das Ergebnis. Der aktive `Ruler`-Schalter und der zugängliche Sheet-Griff beenden den Modus; währenddessen ist die normale CAD-Objektauswahl deaktiviert.
 
 ### OpenLayers-Snap
 
-Der Legacy-Viewer ermittelt Kandidaten nur aus sichtbaren CAD-Features. Innerhalb eines Fangradius von 18 CSS-Pixeln werden Endpunkte, Stützpunkte, Schnittpunkte, Segmentmittelpunkte, Kreismittelpunkte und der geometrisch nächste Punkt ausgewertet. Zur Laufzeit sind die Kandidaten auf 48 Features und die untersuchten Linienabschnitte auf 512 Segmente begrenzt. Nach einer Bewegung wird die Fangvorschau erst nach 120 ms Leerlauf berechnet; während `pointerdrag` findet keine Snap-Suche statt. Die explizite Setzen-Aktion löst einmal synchron gegen die aktuelle Aim-Position auf.
+Der Legacy-Viewer ermittelt Kandidaten nur aus sichtbaren CAD-Features. Innerhalb eines Fangradius von 18 CSS-Pixeln werden Endpunkte, Stützpunkte, Schnittpunkte, Segmentmittelpunkte, Kreismittelpunkte und der geometrisch nächste Punkt ausgewertet. Zur Laufzeit sind die Kandidaten auf 48 Features und die untersuchten Linienabschnitte auf 512 Segmente begrenzt. Mobil wird die Fangvorschau erst 120 ms nach Bewegungsende gegen das Aim berechnet; während `pointerdrag` findet keine Snap-Suche statt. Auf Desktop löst ein Fine-Pointer-Hover höchstens einmal pro Animationsframe gegen die Mausposition auf und ein Mausklick übernimmt dort den nächsten Messpunkt.
 
 ### MLightCAD-Snap
 
-Der Standardviewer verwendet den nativen MLightCAD-OSNAP ebenfalls mit 18 CSS-Pixeln Fangradius. Ein Visibility Gate verwirft Ergebnisse aus ausgeblendeten Layern, Blöcken, Texten oder Objekten. Punkt-, Linien- und Fangvorschau liegen als leichte, wiederverwendete Three.js-Geometrie über der CAD-Szene und werden beim Beenden, Viewerwechsel oder Dispose freigegeben.
+Der Standardviewer verwendet den nativen MLightCAD-OSNAP ebenfalls mit 18 CSS-Pixeln Fangradius. Ein Visibility Gate verwirft Ergebnisse aus ausgeblendeten Layern, Blöcken, Texten oder Objekten. Mobil wird die feste Aim-Position verwendet. Auf Desktop transformiert `resolveScreenPoint` ausschließlich bei Mouse-Hover oder Klick die konkrete Canvasposition; eine kurze Begrenzung auf 40 ms verhindert unnötige OSNAP-Abfragen. Punkt-, Linien- und Fangvorschau liegen als leichte, wiederverwendete Three.js-Geometrie über der CAD-Szene und werden beim Beenden, Viewerwechsel oder Dispose freigegeben.
 
 Der verbindliche Kamera-Hotpath bleibt unangetastet: `viewChanged → setCenter/setResolution → renderSync()` läuft synchron im selben Ereignis. Zwischen Kamerameldung und `renderSync()` erfolgen weder Snap-Berechnung noch React-State-Aktualisierung, Worker-Nachricht oder zusätzliche CRS-Transformation. Die nachlaufende Aim-/Snap-Vorschau ist davon getrennt; sie beeinflusst die Bildkopplung von CAD und Karte nicht.
 

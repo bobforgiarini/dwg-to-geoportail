@@ -58,6 +58,7 @@ interface Props {
   snapPreview?: MeasurementPoint | null;
   measurementCaptureActive?: boolean;
   onSnapPreviewChange?: (point: MeasurementPoint | null) => void;
+  onMeasurementPointCapture?: (point: MeasurementPoint) => void;
 }
 
 export interface MapCanvasHandle {
@@ -65,7 +66,7 @@ export interface MapCanvasHandle {
   resolveAimPoint: (snapEnabled?: boolean) => MeasurementPoint | null;
 }
 
-export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({ dwg, visibleLayers, location, basemapHealth, basemapHealthReporter, basemapVisible, cadastreVisible = false, basemapSuspended = false, onManualMove, onCoordinate, hiddenFeatureIds, hiddenObjectKeys, hiddenBlockNames, selectedFeatureId, onCadSelect, cadTextVisible, cadOpacity, objectDrawOrder, appearance, fitOnDwgChange = true, distanceMeasurement, snapPreview = null, measurementCaptureActive = false, onSnapPreviewChange }, ref) {
+export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({ dwg, visibleLayers, location, basemapHealth, basemapHealthReporter, basemapVisible, cadastreVisible = false, basemapSuspended = false, onManualMove, onCoordinate, hiddenFeatureIds, hiddenObjectKeys, hiddenBlockNames, selectedFeatureId, onCadSelect, cadTextVisible, cadOpacity, objectDrawOrder, appearance, fitOnDwgChange = true, distanceMeasurement, snapPreview = null, measurementCaptureActive = false, onSnapPreviewChange, onMeasurementPointCapture }, ref) {
   const { t, i18n } = useTranslation();
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
@@ -88,7 +89,14 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
   const distanceMeasurementRef = useRef(distanceMeasurement);
   const measurementCaptureActiveRef = useRef(measurementCaptureActive);
   const onSnapPreviewChangeRef = useRef(onSnapPreviewChange);
+  const onMeasurementPointCaptureRef = useRef(onMeasurementPointCapture);
   const snapPreviewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const snapPreviewFrameRef = useRef<number | null>(null);
+  const desktopFinePointerRef = useRef(
+    typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia('(hover: hover) and (pointer: fine)').matches,
+  );
   const [rotation, setRotation] = useState(0);
   visibleRef.current = visibleLayers;
   hiddenRef.current = hiddenFeatureIds;
@@ -102,6 +110,7 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
   distanceMeasurementRef.current = distanceMeasurement;
   measurementCaptureActiveRef.current = measurementCaptureActive;
   onSnapPreviewChangeRef.current = onSnapPreviewChange;
+  onMeasurementPointCaptureRef.current = onMeasurementPointCapture;
   basemapVisibleRef.current = basemapVisible;
 
   const cadLayer = useMemo(() => new VectorLayer({
@@ -170,21 +179,20 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
     return !hiddenRef.current.has(featureId) && !hiddenObjectKeysRef.current.has(objectKey);
   }, []);
 
-  const resolveAimPoint = useCallback((snapEnabled = distanceMeasurementRef.current?.snapEnabled ?? true): MeasurementPoint | null => {
+  const resolveMapPoint = useCallback((aim: Coordinate, snapEnabled: boolean): MeasurementPoint | null => {
     const map = mapRef.current;
-    const center = map?.getView().getCenter();
     const resolution = map?.getView().getResolution();
-    if (!map || !center || !resolution) return null;
+    if (!map || !resolution) return null;
     const tolerance = resolution * 18;
     const result = resolveOpenLayersAim({
-      aim: center,
+      aim,
       resolution,
       snapEnabled,
       features: cadSource.getFeaturesInExtent([
-        center[0] - tolerance,
-        center[1] - tolerance,
-        center[0] + tolerance,
-        center[1] + tolerance,
+        aim[0] - tolerance,
+        aim[1] - tolerance,
+        aim[0] + tolerance,
+        aim[1] + tolerance,
       ]) as Array<Feature<Geometry>>,
       isFeatureVisible,
     });
@@ -195,8 +203,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
     };
   }, [cadSource, isFeatureVisible]);
 
+  const resolveAimPoint = useCallback((snapEnabled = distanceMeasurementRef.current?.snapEnabled ?? true): MeasurementPoint | null => {
+    const center = mapRef.current?.getView().getCenter();
+    return center ? resolveMapPoint(center, snapEnabled) : null;
+  }, [resolveMapPoint]);
+
   const resolveAimPointRef = useRef(resolveAimPoint);
   resolveAimPointRef.current = resolveAimPoint;
+  const resolveMapPointRef = useRef(resolveMapPoint);
+  resolveMapPointRef.current = resolveMapPoint;
 
   useImperativeHandle(ref, () => ({ fitDrawing, resolveAimPoint }), [fitDrawing, resolveAimPoint]);
 
@@ -259,10 +274,15 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
       if (snapPreviewTimerRef.current !== null) clearTimeout(snapPreviewTimerRef.current);
       snapPreviewTimerRef.current = null;
     };
+    const clearSnapPreviewFrame = () => {
+      if (snapPreviewFrameRef.current !== null) cancelAnimationFrame(snapPreviewFrameRef.current);
+      snapPreviewFrameRef.current = null;
+    };
     const scheduleSnapPreview = () => {
       clearSnapPreviewTimer();
       if (
-        !measurementCaptureActiveRef.current
+        desktopFinePointerRef.current
+        || !measurementCaptureActiveRef.current
         || !distanceMeasurementRef.current?.snapEnabled
         || distanceMeasurementRef.current.phase === 'complete'
       ) {
@@ -281,15 +301,59 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
     };
     const handleMoveStart = () => {
       clearSnapPreviewTimer();
+      clearSnapPreviewFrame();
+      onSnapPreviewChangeRef.current?.(null);
+    };
+    const isMousePointer = (event?: Event): boolean => (
+      !event || !('pointerType' in event) || (event as PointerEvent).pointerType === 'mouse'
+    );
+    const handlePointerMove = (event: { coordinate: Coordinate; dragging?: boolean; originalEvent: Event }) => {
+      if (
+        !desktopFinePointerRef.current
+        || !measurementCaptureActiveRef.current
+        || !distanceMeasurementRef.current?.snapEnabled
+        || distanceMeasurementRef.current.phase === 'complete'
+        || event.dragging
+        || !isMousePointer(event.originalEvent)
+      ) return;
+      clearSnapPreviewFrame();
+      const coordinate = [...event.coordinate];
+      snapPreviewFrameRef.current = requestAnimationFrame(() => {
+        snapPreviewFrameRef.current = null;
+        const point = resolveMapPointRef.current(coordinate, true);
+        onSnapPreviewChangeRef.current?.(point?.source === 'cad-snap' ? point : null);
+      });
+    };
+    const clearDesktopHoverPreview = () => {
+      if (!desktopFinePointerRef.current) return;
+      clearSnapPreviewFrame();
       onSnapPreviewChangeRef.current?.(null);
     };
     const viewport = map.getViewport();
     map.on('moveend', updateCoordinate);
     map.on('movestart', handleMoveStart);
     map.on('pointerdrag', onManualMove);
+    map.on('pointermove', handlePointerMove);
     viewport.addEventListener('wheel', onManualMove, { passive: true });
+    viewport.addEventListener('pointerleave', clearDesktopHoverPreview);
     map.on('singleclick', (event) => {
-      if (measurementCaptureActiveRef.current) return;
+      if (measurementCaptureActiveRef.current) {
+        if (
+          desktopFinePointerRef.current
+          && distanceMeasurementRef.current?.phase !== 'complete'
+          && isMousePointer(event.originalEvent)
+        ) {
+          const point = resolveMapPointRef.current(
+            event.coordinate,
+            distanceMeasurementRef.current?.snapEnabled ?? true,
+          );
+          if (point) {
+            onMeasurementPointCaptureRef.current?.(point);
+            clearDesktopHoverPreview();
+          }
+        }
+        return;
+      }
       const feature = map.forEachFeatureAtPixel(event.pixel, (candidate) => candidate, {
         hitTolerance: 8,
         layerFilter: (layer) => layer === cadLayer,
@@ -317,8 +381,11 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
       map.un('moveend', updateCoordinate);
       map.un('movestart', handleMoveStart);
       map.un('pointerdrag', onManualMove);
+      map.un('pointermove', handlePointerMove);
       viewport.removeEventListener('wheel', onManualMove);
+      viewport.removeEventListener('pointerleave', clearDesktopHoverPreview);
       clearSnapPreviewTimer();
+      clearSnapPreviewFrame();
       map.getView().un('change:rotation', updateRotation);
       map.setTarget(undefined);
       mapRef.current = null;
@@ -329,7 +396,8 @@ export const MapCanvas = forwardRef<MapCanvasHandle, Props>(function MapCanvas({
     if (snapPreviewTimerRef.current !== null) clearTimeout(snapPreviewTimerRef.current);
     snapPreviewTimerRef.current = null;
     if (
-      !measurementCaptureActive
+      desktopFinePointerRef.current
+      || !measurementCaptureActive
       || !distanceMeasurement?.snapEnabled
       || distanceMeasurement.phase === 'complete'
     ) {

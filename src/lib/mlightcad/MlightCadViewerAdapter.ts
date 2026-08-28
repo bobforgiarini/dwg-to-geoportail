@@ -566,6 +566,40 @@ export class MlightCadViewerAdapter {
     if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
     const world = view.screenToWorld({ x: width / 2, y: height / 2 });
     if (!Number.isFinite(world.x) || !Number.isFinite(world.y)) return null;
+    return this.resolveMeasurementPoint(view, world, {
+      x: rect.left + width / 2,
+      y: rect.top + height / 2,
+    }, snapEnabled);
+  }
+
+  /**
+   * Resolves a desktop mouse position in drawing metres. Callers gate this to
+   * fine pointers; mobile capture remains tied exclusively to the fixed aim.
+   */
+  resolveScreenPoint(
+    clientPoint: { x: number; y: number },
+    snapEnabled = true,
+  ): MeasurementPoint | null {
+    const view = this.view;
+    if (!view) return null;
+    const rect = view.canvas.getBoundingClientRect();
+    const width = rect.width || view.width || view.canvas.clientWidth || view.canvas.width;
+    const height = rect.height || view.height || view.canvas.clientHeight || view.canvas.height;
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+    const localX = clientPoint.x - rect.left;
+    const localY = clientPoint.y - rect.top;
+    if (localX < 0 || localY < 0 || localX > width || localY > height) return null;
+    const world = view.screenToWorld({ x: localX, y: localY });
+    if (!Number.isFinite(world.x) || !Number.isFinite(world.y)) return null;
+    return this.resolveMeasurementPoint(view, world, clientPoint, snapEnabled);
+  }
+
+  private resolveMeasurementPoint(
+    view: AcTrView2d,
+    world: { x: number; y: number },
+    clientPoint: { x: number; y: number },
+    snapEnabled: boolean,
+  ): MeasurementPoint {
     const aim: MeasurementPoint = {
       coordinate: [world.x, world.y],
       source: 'aim',
@@ -577,10 +611,7 @@ export class MlightCadViewerAdapter {
 
     const temporarilyVisibleReorderedIds: string[] = [];
     try {
-      const reorderedCandidates = this.pickReorderSnapCandidates(view, {
-        x: rect.left + width / 2,
-        y: rect.top + height / 2,
-      });
+      const reorderedCandidates = this.pickReorderSnapCandidates(view, clientPoint);
       for (const objectId of reorderedCandidates) {
         // MLightCAD's native OSNAP resolves database entities through the
         // original CAD scene. Reorder previews are render-only clones, so make

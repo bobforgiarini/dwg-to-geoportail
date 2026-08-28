@@ -69,12 +69,11 @@ describe('DistanceMeasurementSheet', () => {
     );
 
     expect(screen.getByText('5,000 m')).toBeInTheDocument();
-    expect(screen.getByText('80000,000 / 70000,000')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: i18n.t('measurementNew') }));
     expect(onRestart).toHaveBeenCalledOnce();
   });
 
-  it('toggles CAD snapping and reports the current snap candidate', () => {
+  it('toggles CAD snapping without adding snap-detail copy to the compact sheet', () => {
     const onSnapEnabledChange = vi.fn();
     renderSheet(
       { phase: 'placing-first', snapEnabled: true },
@@ -83,12 +82,35 @@ describe('DistanceMeasurementSheet', () => {
 
     const snapButton = screen.getByRole('button', { name: i18n.t('measurementCadSnap') });
     expect(snapButton).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText(i18n.t('measurementSnapFound', {
+    expect(snapButton).toHaveAttribute('data-snap-kind', 'intersection');
+    expect(screen.queryByText(i18n.t('measurementSnapFound', {
       kind: i18n.t('measurementSnapIntersection'),
-    }))).toBeInTheDocument();
+    }))).not.toBeInTheDocument();
 
     fireEvent.click(snapButton);
     expect(onSnapEnabledChange).toHaveBeenCalledWith(false);
+  });
+
+  it('contains only snap, point action and the completed result', () => {
+    renderSheet({ phase: 'placing-first', snapEnabled: true });
+
+    expect(screen.queryByText(i18n.t('measurementTitle'))).not.toBeInTheDocument();
+    expect(screen.queryByText(i18n.t('measurementAimFirst'))).not.toBeInTheDocument();
+    expect(screen.queryByText(i18n.t('measurementPointOne'))).not.toBeInTheDocument();
+    expect(screen.queryByText(i18n.t('measurementDistance'))).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(3);
+  });
+
+  it.each([
+    ['de', 'CAD-Snap', 'Punkt 1 setzen'],
+    ['fr', 'Accrochage CAO', 'Définir le point 1'],
+    ['en', 'CAD snap', 'Set point 1'],
+  ])('uses the shared translations for compact controls in %s', async (language, snapLabel, pointLabel) => {
+    await i18n.changeLanguage(language);
+    renderSheet({ phase: 'placing-first', snapEnabled: true });
+
+    expect(screen.getByRole('button', { name: snapLabel })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: pointLabel })).toBeInTheDocument();
   });
 
   it('uses the shared handle to close the compact sheet', () => {

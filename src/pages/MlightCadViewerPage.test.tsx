@@ -19,6 +19,7 @@ const harness = vi.hoisted(() => {
     hiddenObjectCount: 0,
     restoreHiddenObjects: vi.fn(),
     resolveAimPoint: vi.fn(() => ({ coordinate: [80_000, 100_000], source: 'aim' }) as MeasurementPoint),
+    resolveScreenPoint: vi.fn(() => ({ coordinate: [80_000, 100_000], source: 'aim' }) as MeasurementPoint),
     setAllLayersVisible: vi.fn(),
     setBlockVisible: vi.fn(() => false),
     setCamera: vi.fn(),
@@ -170,12 +171,20 @@ describe('MLightCAD viewer page integration', () => {
       coordinate: [80_000, 100_000],
       source: 'aim',
     });
+    harness.adapter.resolveScreenPoint.mockReset();
+    harness.adapter.resolveScreenPoint.mockReturnValue({
+      coordinate: [80_000, 100_000],
+      source: 'aim',
+    });
     Object.assign(harness.locationState, {
       permission: 'idle', position: null, accuracy: null, follow: 'off', error: null,
     });
   });
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
 
   it('shares the compact controls and hands gestures from OpenLayers to MLightCAD after loading', async () => {
     const { container, getByLabelText, getByRole, getByTestId, queryByRole } = renderPage();
@@ -280,6 +289,53 @@ describe('MLightCAD viewer page integration', () => {
       [80_000, 100_000],
       [80_003, 100_004],
     );
+  });
+
+  it('captures desktop mouse clicks with hover snap while touch remains aim-only', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: true,
+      media: '(hover: hover) and (pointer: fine)',
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })));
+    harness.adapter.resolveScreenPoint.mockReturnValue({
+      coordinate: [80_000, 100_000],
+      source: 'cad-snap',
+      snapKind: 'endpoint',
+    });
+    const { container, getByRole, getByText } = renderPage();
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, { target: { files: [new File(['dwg'], 'desktop-measure.dwg')] } });
+    await waitFor(() => expect(getByRole('button', { name: i18n.t('fitDrawing') })).toBeEnabled());
+    fireEvent.click(getByRole('button', { name: i18n.t('measurementOpen') }));
+    const interaction = container.querySelector('.mlightcad-interaction-layer') as HTMLElement;
+
+    fireEvent.pointerDown(interaction, { pointerType: 'touch', pointerId: 1, button: 0, clientX: 90, clientY: 110 });
+    fireEvent.pointerUp(interaction, { pointerType: 'touch', pointerId: 1, button: 0, clientX: 90, clientY: 110 });
+    expect(harness.adapter.resolveScreenPoint).not.toHaveBeenCalled();
+    expect(getByRole('button', { name: i18n.t('measurementSetFirstPoint') })).toBeInTheDocument();
+
+    fireEvent.pointerMove(interaction, { pointerType: 'mouse', pointerId: 2, clientX: 100, clientY: 120 });
+    await waitFor(() => expect(harness.adapter.setSnapPreview).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'cad-snap',
+      snapKind: 'endpoint',
+    })));
+
+    fireEvent.pointerDown(interaction, { pointerType: 'mouse', pointerId: 2, button: 0, clientX: 100, clientY: 120 });
+    fireEvent.pointerUp(interaction, { pointerType: 'mouse', pointerId: 2, button: 0, clientX: 100, clientY: 120 });
+    expect(getByRole('button', { name: i18n.t('measurementSetSecondPoint') })).toBeInTheDocument();
+
+    harness.adapter.resolveScreenPoint.mockReturnValue({
+      coordinate: [80_003, 100_004],
+      source: 'aim',
+    });
+    fireEvent.pointerDown(interaction, { pointerType: 'mouse', pointerId: 3, button: 0, clientX: 130, clientY: 150 });
+    fireEvent.pointerUp(interaction, { pointerType: 'mouse', pointerId: 3, button: 0, clientX: 130, clientY: 150 });
+    expect(getByText('5,000 m')).toBeInTheDocument();
   });
 
   it('does not cover a viewer-switched measurement with the empty CAD drawer', () => {

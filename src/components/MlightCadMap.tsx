@@ -42,6 +42,7 @@ interface Props {
   onManualMove: () => void;
   distanceMeasurement?: DistanceMeasurementState;
   snapPreview?: MeasurementPoint | null;
+  onDesktopMeasurementPointCapture?: (point: MeasurementPoint) => void;
 }
 
 export interface MlightCadMapHandle {
@@ -59,7 +60,7 @@ export function isMemoryConstrainedMapRuntime(): boolean {
   return coarsePointer || mobileUserAgent;
 }
 
-export const MlightCadMap = forwardRef<MlightCadMapHandle, Props>(function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, basemapVisible, cadastreVisible = false, basemapSuspended = false, mlightControlsActive, cadOpacity = 100, location, onCoordinate, onManualMove, distanceMeasurement, snapPreview = null }, ref) {
+export const MlightCadMap = forwardRef<MlightCadMapHandle, Props>(function MlightCadMap({ adapter, basemapHealth, basemapHealthReporter, basemapVisible, cadastreVisible = false, basemapSuspended = false, mlightControlsActive, cadOpacity = 100, location, onCoordinate, onManualMove, distanceMeasurement, snapPreview = null, onDesktopMeasurementPointCapture }, ref) {
   const target = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const baseRef = useRef<TileLayer<WMTS | TileWMS> | null>(null);
@@ -67,10 +68,18 @@ export const MlightCadMap = forwardRef<MlightCadMapHandle, Props>(function Mligh
   const basemapVisibleRef = useRef(basemapVisible);
   const mlightControlsActiveRef = useRef(mlightControlsActive);
   const memoryConstrained = useRef(isMemoryConstrainedMapRuntime());
+  const desktopFinePointer = useRef(
+    typeof window.matchMedia === 'function'
+      && window.matchMedia('(hover: hover) and (pointer: fine)').matches,
+  );
   const onCoordinateRef = useRef(onCoordinate);
   const onManualMoveRef = useRef(onManualMove);
+  const distanceMeasurementRef = useRef(distanceMeasurement);
+  const onDesktopMeasurementPointCaptureRef = useRef(onDesktopMeasurementPointCapture);
   onCoordinateRef.current = onCoordinate;
   onManualMoveRef.current = onManualMove;
+  distanceMeasurementRef.current = distanceMeasurement;
+  onDesktopMeasurementPointCaptureRef.current = onDesktopMeasurementPointCapture;
   basemapVisibleRef.current = basemapVisible;
   mlightControlsActiveRef.current = mlightControlsActive;
   const locationSource = useMemo(() => new VectorSource(), []);
@@ -155,8 +164,30 @@ export const MlightCadMap = forwardRef<MlightCadMapHandle, Props>(function Mligh
     };
     const handlePointerDrag = () => onManualMoveRef.current();
     const handleWheel = () => onManualMoveRef.current();
+    const handleDesktopMeasurementClick = (event: {
+      coordinate: number[];
+      originalEvent?: Event & { pointerType?: string };
+    }) => {
+      const measurement = distanceMeasurementRef.current;
+      const pointerType = event.originalEvent?.pointerType ?? 'mouse';
+      if (
+        !desktopFinePointer.current
+        || pointerType !== 'mouse'
+        || mlightControlsActiveRef.current
+        || !measurement
+        || measurement.phase === 'inactive'
+        || measurement.phase === 'complete'
+      ) return;
+      const [x, y] = event.coordinate;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      onDesktopMeasurementPointCaptureRef.current?.({
+        coordinate: [x, y],
+        source: 'aim',
+      });
+    };
     map.on('moveend', updateCoordinate);
     map.on('pointerdrag', handlePointerDrag);
+    map.on('singleclick', handleDesktopMeasurementClick);
     map.getViewport().addEventListener('wheel', handleWheel, { passive: true });
     interactions.forEach((interaction) => interaction.setActive(!mlightControlsActive));
     mapRef.current = map;
@@ -164,6 +195,7 @@ export const MlightCadMap = forwardRef<MlightCadMapHandle, Props>(function Mligh
     return () => {
       map.un('moveend', updateCoordinate);
       map.un('pointerdrag', handlePointerDrag);
+      map.un('singleclick', handleDesktopMeasurementClick);
       map.getViewport().removeEventListener('wheel', handleWheel);
       map.setTarget(undefined);
       mapRef.current = null;

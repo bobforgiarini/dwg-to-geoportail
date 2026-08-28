@@ -444,6 +444,9 @@ export default function App() {
   const setMeasurementPoint = () => {
     const point = mapCanvas.current?.resolveAimPoint(session.distanceMeasurement.snapEnabled);
     if (!point) return;
+    captureMeasurementPoint(point);
+  };
+  const captureMeasurementPoint = (point: MeasurementPoint) => {
     session.commitMeasurementPoint(point);
     setSnapPreview(null);
   };
@@ -505,6 +508,7 @@ export default function App() {
         snapPreview={snapPreview}
         measurementCaptureActive={measurementActive}
         onSnapPreviewChange={setSnapPreview}
+        onMeasurementPointCapture={captureMeasurementPoint}
       />
 
       <MapCenterCrosshair />

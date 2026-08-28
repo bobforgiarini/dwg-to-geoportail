@@ -599,6 +599,12 @@ describe('MlightCadViewerAdapter controls', () => {
       source: 'aim',
     });
     expect(screenToWorld).toHaveBeenLastCalledWith({ x: 160, y: 320 });
+    expect(adapter.resolveScreenPoint({ x: 100, y: 230 }, false)).toEqual({
+      coordinate: [80_080, 100_200],
+      source: 'aim',
+    });
+    expect(screenToWorld).toHaveBeenLastCalledWith({ x: 80, y: 200 });
+    expect(adapter.resolveScreenPoint({ x: 19, y: 230 }, false)).toBeNull();
     expect(adapter.resolveAimPoint(true)).toEqual({
       coordinate: [80_159.5, 100_319.75],
       source: 'cad-snap',

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { LocateFixed } from 'lucide-react';
 import { transform } from 'ol/proj';
 import { useTranslation } from 'react-i18next';
@@ -37,6 +37,14 @@ type ImportState = 'idle' | 'loading' | 'ready' | 'error' | 'cancelled';
 type DrawerState = 'blocks' | 'controls' | 'object' | 'prepare' | 'prepare-failed' | null;
 type LayerSheetMode = 'loaded' | 'preparation' | null;
 const MLIGHTCAD_SNAP_AFTER_COORDINATE_DELAY_MS = 20;
+const DESKTOP_HOVER_SNAP_DELAY_MS = 40;
+const DESKTOP_CLICK_MOVE_TOLERANCE_PX = 5;
+
+function isDesktopMeasurementPointer(event: ReactPointerEvent<HTMLElement>): boolean {
+  return event.pointerType === 'mouse'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+}
 
 function progressLabel(progress: MlightCadProgress, t: (key: string) => string): string {
   const phase = progress.detail === 'finalizing' ? t('mlightProgress.finalizing') : t(`mlightProgress.${progress.phase}`);
@@ -54,6 +62,10 @@ export default function MlightCadViewerPage() {
   const fileInput = useRef<HTMLInputElement>(null);
   const xrefInput = useRef<HTMLInputElement>(null);
   const pointerActive = useRef(false);
+  const desktopFinePointer = useRef(
+    typeof window.matchMedia === 'function'
+      && window.matchMedia('(hover: hover) and (pointer: fine)').matches,
+  );
   const preparationResolver = useRef<((decision: MlightCadPreparationResult) => void) | null>(null);
   const activeImportMarker = useRef<DwgImportRecoveryMarker | null>(null);
   const preflightReceived = useRef(false);
@@ -61,6 +73,14 @@ export default function MlightCadViewerPage() {
   const latestCamera = useRef<MlightCadCamera | null>(null);
   const mapCanvas = useRef<MlightCadMapHandle>(null);
   const snapPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const desktopHoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const desktopHoverPoint = useRef<{ x: number; y: number } | null>(null);
+  const desktopMeasurementPointer = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    moved: boolean;
+  } | null>(null);
   const cameraToRestore = useRef<MlightCadCamera | null>(null);
   const locallyAppliedDrawOrderAdapter = useRef<MlightCadViewerAdapter | null>(null);
   const [adapter, setAdapter] = useState<MlightCadViewerAdapter | null>(null);
@@ -101,6 +121,10 @@ export default function MlightCadViewerPage() {
   useEffect(() => () => {
     clearDwgImportMarker(activeImportMarker.current);
     activeImportMarker.current = null;
+    if (desktopHoverTimer.current !== null) clearTimeout(desktopHoverTimer.current);
+    desktopHoverTimer.current = null;
+    desktopHoverPoint.current = null;
+    desktopMeasurementPointer.current = null;
   }, []);
 
   useEffect(() => {
@@ -184,6 +208,7 @@ export default function MlightCadViewerPage() {
     if (
       !adapter
       || importState !== 'ready'
+      || desktopFinePointer.current
       || !measurementActive
       || session.distanceMeasurement.phase === 'complete'
       || !session.distanceMeasurement.snapEnabled
@@ -441,6 +466,9 @@ export default function MlightCadViewerPage() {
   const clearSnapPreview = () => {
     if (snapPreviewTimer.current !== null) clearTimeout(snapPreviewTimer.current);
     snapPreviewTimer.current = null;
+    if (desktopHoverTimer.current !== null) clearTimeout(desktopHoverTimer.current);
+    desktopHoverTimer.current = null;
+    desktopHoverPoint.current = null;
     setSnapPreview(null);
     adapter?.setSnapPreview(null);
   };
@@ -470,6 +498,81 @@ export default function MlightCadViewerPage() {
   const restartMeasurement = () => {
     clearSnapPreview();
     session.restartMeasurement();
+  };
+  const scheduleDesktopHoverSnap = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (
+      !isDesktopMeasurementPointer(event)
+      || pointerActive.current
+      || !measurementActive
+      || session.distanceMeasurement.phase === 'complete'
+      || !session.distanceMeasurement.snapEnabled
+      || !adapter
+      || importState !== 'ready'
+    ) return;
+    desktopHoverPoint.current = { x: event.clientX, y: event.clientY };
+    if (desktopHoverTimer.current !== null) return;
+    desktopHoverTimer.current = setTimeout(() => {
+      desktopHoverTimer.current = null;
+      const clientPoint = desktopHoverPoint.current;
+      if (!clientPoint) return;
+      const point = adapter.resolveScreenPoint(clientPoint, true);
+      const nextPreview = point?.source === 'cad-snap' ? point : null;
+      setSnapPreview(nextPreview);
+      adapter.setSnapPreview(nextPreview);
+    }, DESKTOP_HOVER_SNAP_DELAY_MS);
+  };
+  const handleCadPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    pointerActive.current = true;
+    if (measurementActive) clearSnapPreview();
+    desktopMeasurementPointer.current = measurementActive
+      && session.distanceMeasurement.phase !== 'complete'
+      && event.button === 0
+      && isDesktopMeasurementPointer(event)
+      ? {
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          moved: false,
+        }
+      : null;
+  };
+  const handleCadPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const capture = desktopMeasurementPointer.current;
+    if (capture?.pointerId === event.pointerId) {
+      const dx = event.clientX - capture.startX;
+      const dy = event.clientY - capture.startY;
+      if (dx * dx + dy * dy > DESKTOP_CLICK_MOVE_TOLERANCE_PX ** 2) capture.moved = true;
+    }
+    if (pointerActive.current) {
+      location.pause();
+      return;
+    }
+    scheduleDesktopHoverSnap(event);
+  };
+  const handleCadPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const capture = desktopMeasurementPointer.current;
+    desktopMeasurementPointer.current = null;
+    pointerActive.current = false;
+    if (
+      !capture
+      || capture.pointerId !== event.pointerId
+      || capture.moved
+      || !measurementActive
+      || session.distanceMeasurement.phase === 'complete'
+      || !adapter
+      || importState !== 'ready'
+    ) return;
+    const point = adapter.resolveScreenPoint(
+      { x: event.clientX, y: event.clientY },
+      session.distanceMeasurement.snapEnabled,
+    );
+    if (!point) return;
+    session.commitMeasurementPoint(point);
+    clearSnapPreview();
+  };
+  const handleCadPointerCancel = () => {
+    pointerActive.current = false;
+    desktopMeasurementPointer.current = null;
   };
 
   const layerSheetLayers = useMemo(() => layerSheetMode === 'preparation'
@@ -519,10 +622,15 @@ export default function MlightCadViewerPage() {
         basemapVisible={session.basemapVisible} cadastreVisible={session.cadastreVisible} basemapSuspended={basemapSuspended} mlightControlsActive={mlightControlsActive}
         cadOpacity={opacity}
         location={location.state} onCoordinate={setCoordinate} onManualMove={location.pause}
-        distanceMeasurement={session.distanceMeasurement} snapPreview={snapPreview} />
+        distanceMeasurement={session.distanceMeasurement} snapPreview={snapPreview}
+        onDesktopMeasurementPointCapture={(point) => {
+          session.commitMeasurementPoint(point);
+          clearSnapPreview();
+        }} />
       <div className={`mlightcad-interaction-layer ${mlightControlsActive ? 'mlightcad-active' : 'openlayers-active'}`}
-        onPointerDown={() => { pointerActive.current = true; if (measurementActive) clearSnapPreview(); }} onPointerMove={() => { if (pointerActive.current) location.pause(); }}
-        onPointerUp={() => { pointerActive.current = false; }} onPointerCancel={() => { pointerActive.current = false; }}
+        onPointerDown={handleCadPointerDown} onPointerMove={handleCadPointerMove}
+        onPointerUp={handleCadPointerUp} onPointerCancel={handleCadPointerCancel}
+        onPointerLeave={(event) => { if (isDesktopMeasurementPointer(event) && !pointerActive.current) clearSnapPreview(); }}
         onWheel={() => { if (measurementActive) clearSnapPreview(); location.pause(); }}>
         <MlightCadCanvas file={session.file} fileRevision={session.fileRevision} opacity={opacity} renderQuality={session.cadRenderQuality} appearance={session.cadAppearance} loadOptions={loadOptions}
           onAdapterChange={setAdapter} onError={handleError} onLayers={setLayers} onBlocks={setBlocks} onPreflight={handlePreflight}
