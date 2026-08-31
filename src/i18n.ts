@@ -22,6 +22,7 @@ export const resources = {
     mapActions: 'Kartenaktionen', fitDrawing: 'Zeichnung einpassen',
     mapContext: {
       title: 'Kartenposition', copyCoordinates: 'LUREF-Koordinaten {{coordinate}} kopieren', copied: 'Koordinaten kopiert', copyFailed: 'Koordinaten konnten nicht kopiert werden.',
+      positionHere: 'Position von hier (Gold)', positionCenter: 'Position von der Mitte (Rot)', back: 'Zurück',
       geoportail: 'Geoportail öffnen', googleMaps: 'Google Maps öffnen', appleMaps: 'Apple Karten öffnen', googleStreetView: 'Google Street View öffnen',
     },
     confirmation: {
@@ -110,6 +111,7 @@ export const resources = {
     mapActions: 'Actions de la carte', fitDrawing: 'Ajuster le dessin',
     mapContext: {
       title: 'Position sur la carte', copyCoordinates: 'Copier les coordonnées LUREF {{coordinate}}', copied: 'Coordonnées copiées', copyFailed: 'Les coordonnées n’ont pas pu être copiées.',
+      positionHere: 'Position ici (doré)', positionCenter: 'Position du centre (rouge)', back: 'Retour',
       geoportail: 'Ouvrir Geoportail', googleMaps: 'Ouvrir Google Maps', appleMaps: 'Ouvrir Plans', googleStreetView: 'Ouvrir Google Street View',
     },
     confirmation: {
@@ -198,6 +200,7 @@ export const resources = {
     mapActions: 'Map actions', fitDrawing: 'Fit drawing',
     mapContext: {
       title: 'Map location', copyCoordinates: 'Copy LUREF coordinates {{coordinate}}', copied: 'Coordinates copied', copyFailed: 'The coordinates could not be copied.',
+      positionHere: 'Position here (gold)', positionCenter: 'Position from center (red)', back: 'Back',
       geoportail: 'Open Geoportail', googleMaps: 'Open Google Maps', appleMaps: 'Open Apple Maps', googleStreetView: 'Open Google Street View',
     },
     confirmation: {

@@ -37,6 +37,7 @@ const harness = vi.hoisted(() => {
     canvasProps: vi.fn(),
     layers,
     mapProps: vi.fn(),
+    resolveAimPoint: vi.fn(() => ({ coordinate: [80_000, 100_000] as const, source: 'aim' as const })),
     resolveScreenCoordinate: vi.fn(() => [80_000.125, 100_000.875] as [number, number]),
     location: {
       pause: vi.fn(),
@@ -72,7 +73,7 @@ vi.mock('../components/MlightCadMap', async () => {
       const props = _props;
       harness.mapProps(props);
       React.useImperativeHandle(ref, () => ({
-        resolveAimPoint: () => ({ coordinate: [80_000, 100_000] as const, source: 'aim' as const }),
+        resolveAimPoint: harness.resolveAimPoint,
         resolveScreenCoordinate: harness.resolveScreenCoordinate,
       }));
       return React.createElement('div', {
@@ -195,6 +196,8 @@ describe('MLightCAD viewer page integration', () => {
     });
     harness.resolveScreenCoordinate.mockReset();
     harness.resolveScreenCoordinate.mockReturnValue([80_000.125, 100_000.875]);
+    harness.resolveAimPoint.mockReset();
+    harness.resolveAimPoint.mockReturnValue({ coordinate: [80_000, 100_000], source: 'aim' });
     Object.assign(harness.locationState, {
       permission: 'idle', position: null, accuracy: null, follow: 'off', error: null,
     });
@@ -213,7 +216,7 @@ describe('MLightCAD viewer page integration', () => {
     expect(actionButtons.map((button) => button.getAttribute('aria-label'))).toEqual([
       i18n.t('layers'),
       i18n.t('blocksTitle'),
-      i18n.t('dwgControlsTitle'),
+      i18n.t('cadSettingsTitle'),
       i18n.t('measurementOpen'),
       i18n.t('locationStart'),
       i18n.t('fitDrawing'),
@@ -443,7 +446,7 @@ describe('MLightCAD viewer page integration', () => {
     await waitFor(() => expect(harness.adapter.applyObjectDrawOrder).not.toHaveBeenCalled());
   });
 
-  it('opens the desktop position menu at the precise map or CAD point and removes its target on close', async () => {
+  it('lets desktop choose the clicked or red-center position and return to the quick choice', async () => {
     stubFinePointer();
     const { container, getByRole, getByText, queryByRole } = renderPage();
     closeInitialDwgSheet(container);
@@ -452,9 +455,24 @@ describe('MLightCAD viewer page integration', () => {
     fireEvent.contextMenu(map, { clientX: 120, clientY: 160 });
 
     expect(harness.resolveScreenCoordinate).toHaveBeenCalledWith({ x: 120, y: 160 });
+    expect(harness.resolveAimPoint).toHaveBeenCalledOnce();
     expect(getByRole('menu', { name: i18n.t('mapContext.title') })).toBeInTheDocument();
+    expect(getByRole('menuitem', { name: i18n.t('mapContext.positionHere') })).toBeInTheDocument();
+    expect(getByRole('menuitem', { name: i18n.t('mapContext.positionCenter') })).toBeInTheDocument();
+    expect(queryByRole('menuitem', { name: /LUREF/i })).not.toBeInTheDocument();
+    expect(container.querySelector('.map-context-target-cross')).not.toBeInTheDocument();
+
+    fireEvent.click(getByRole('menuitem', { name: i18n.t('mapContext.positionHere') }));
     expect(getByText('80000.13, 100000.88')).toBeInTheDocument();
     expect(container.querySelector('.map-context-target-cross')).toHaveStyle({ left: '120px', top: '160px' });
+
+    fireEvent.click(getByRole('menuitem', { name: i18n.t('mapContext.back') }));
+    expect(getByRole('menuitem', { name: i18n.t('mapContext.positionCenter') })).toBeInTheDocument();
+    expect(container.querySelector('.map-context-target-cross')).not.toBeInTheDocument();
+
+    fireEvent.click(getByRole('menuitem', { name: i18n.t('mapContext.positionCenter') }));
+    expect(getByText('80000.00, 100000.00')).toBeInTheDocument();
+    expect(container.querySelector('.map-context-target-cross')).not.toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(queryByRole('menu', { name: i18n.t('mapContext.title') })).not.toBeInTheDocument();
@@ -466,16 +484,19 @@ describe('MLightCAD viewer page integration', () => {
     closeInitialDwgSheet(container);
     harness.adapter.resolveScreenPoint.mockClear();
     harness.adapter.resolveScreenPoint.mockReturnValue({ coordinate: [81_000.5, 101_000.25], source: 'aim' });
+    harness.adapter.resolveAimPoint.mockReturnValue({ coordinate: [82_000.75, 102_000.5], source: 'aim' });
     harness.resolveScreenCoordinate.mockClear();
 
     fireEvent.contextMenu(map, { clientX: 130, clientY: 170 });
 
     expect(harness.adapter.resolveScreenPoint).toHaveBeenCalledWith({ x: 130, y: 170 }, false);
+    expect(harness.adapter.resolveAimPoint).toHaveBeenCalledWith(false);
     expect(harness.resolveScreenCoordinate).not.toHaveBeenCalled();
+    fireEvent.click(getByRole('menuitem', { name: i18n.t('mapContext.positionHere') }));
     expect(getByText('81000.50, 101000.25')).toBeInTheDocument();
   });
 
-  it('opens the mobile position sheet only after an unmoved single-finger long press', () => {
+  it('opens mobile at the fixed red-center position without a gold marker', () => {
     vi.useFakeTimers();
     stubFinePointer(false);
     try {
@@ -489,7 +510,12 @@ describe('MLightCAD viewer page integration', () => {
       act(() => vi.advanceTimersByTime(1));
 
       expect(getByRole('dialog', { name: i18n.t('mapContext.title') })).toBeInTheDocument();
-      expect(container.querySelector('.map-context-target-cross')).toHaveStyle({ left: '90px', top: '110px' });
+      expect(getByRole('menuitem', { name: /80000\.00, 100000\.00/ })).toBeInTheDocument();
+      expect(harness.resolveAimPoint).toHaveBeenCalledOnce();
+      expect(harness.resolveScreenCoordinate).not.toHaveBeenCalled();
+      expect(harness.adapter.resolveScreenPoint).not.toHaveBeenCalled();
+      expect(container.querySelector('.map-context-target-cross')).not.toBeInTheDocument();
+      expect(container.querySelector('.map-center-crosshair')).toBeInTheDocument();
       fireEvent.pointerUp(map, { pointerType: 'touch', pointerId: 1, button: 0, clientX: 90, clientY: 110 });
     } finally {
       vi.runOnlyPendingTimers();

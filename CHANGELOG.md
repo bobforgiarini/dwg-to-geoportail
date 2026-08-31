@@ -2,6 +2,21 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.7.1] – 2026-08-31
+
+### Geändert
+
+- den DWG-/Upload-Button in den App-Kopf verschoben und den goldenen Settings-Button wieder rechts in der kompakten Kartensteuerung angeordnet
+- mobile Positionsaktionen verwenden bei einem Langdruck ausschließlich die LUREF-Position des festen roten Kartenmittelpunkt-Kreuzes; auf Mobilgeräten wird keine zusätzliche goldene Zielmarkierung erzeugt
+- den Desktop-Rechtsklick um eine schnelle Zielwahl zwischen „Position von hier“ mit goldener Markierung und „Position von der Mitte“ am roten Fadenkreuz erweitert
+- die Desktop-Detailansicht des Positionsmenüs erhält links neben der kopierbaren Koordinate einen kleinen quadratischen Zurück-Button, der ohne Schließen des Menüs zur Zielwahl zurückführt
+- Paket- und Kopfversion auf `0.7.1` angehoben
+
+### Prüfung
+
+- Regressionen für vertauschte Header-/Kartenaktionen, ausschließlich rote mobile Mittelpunktwahl, beide Desktop-Zielarten, Rücknavigation und Koordinatenkopie ergänzt beziehungsweise aktualisiert
+- Pan, Pinch, CAD-Auswahl, Messung und der synchrone MLightCAD-Kamera-Hotpath bleiben von der Positionswahl getrennt
+
 ## [0.7.0] – 2026-08-31
 
 ### Hinzugefügt

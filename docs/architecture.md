@@ -1,4 +1,4 @@
-# Architektur 0.7.0
+# Architektur 0.7.1
 
 ## Überblick
 
@@ -31,7 +31,7 @@ Die DWG wird nicht in `localStorage`, IndexedDB, Netlify Blobs oder einer Datenb
 
 Alle modalen Bedienflächen verwenden die gemeinsame `BottomSheet`-Komponente mit demselben Griff, derselben Animation, Safe-Area-Behandlung, Backdrop-Schließung und Escape-Unterstützung. Eine Kreuz-Schaltfläche im Drawer-Kopf ist nicht vorgesehen.
 
-Der goldene Settings-Button im App-Kopf öffnet ausschließlich Darstellungs- und Sichtbarkeitseinstellungen:
+Der goldene Settings-Button rechts in der kompakten Kartensteuerung öffnet ausschließlich Darstellungs- und Sichtbarkeitseinstellungen:
 
 - globale CAD-Deckkraft samt Karte-/Mix-/CAD-Presets
 - adaptive CAD-Qualität
@@ -40,17 +40,21 @@ Der goldene Settings-Button im App-Kopf öffnet ausschließlich Darstellungs- un
 
 Jede Wiederherstellungsaktion verwendet ihren eigenen Zähler. Die anderen Filterzustände bleiben erhalten. Waren Inhalte bereits vor dem Szenenaufbau workerseitig entfernt, führt die Wiederherstellung genau einen kontrollierten CAD-Neuaufbau aus; Kamera und Kartenansicht bleiben erhalten.
 
-Der Datei-Button in der Kartensteuerung öffnet den getrennten DWG-Drawer. Er besitzt den gemeinsamen Einstieg für Dateiauswahl, Entfernen und Ersetzen, zeigt Importfortschritt, Abbruch und Fehler und öffnet die bestehende DWG-Vorbereitung. Der Luxemburg-Filter gehört ebenfalls hierher. Ohne lokale Hauptdatei ist dieser Drawer der initiale Einstieg.
+Der goldene DWG-/Upload-Button im App-Kopf öffnet den getrennten DWG-Drawer. Er besitzt den gemeinsamen Einstieg für Dateiauswahl, Entfernen und Ersetzen, zeigt Importfortschritt, Abbruch und Fehler und öffnet die bestehende DWG-Vorbereitung. Der Luxemburg-Filter gehört ebenfalls hierher. Ohne lokale Hauptdatei ist dieser Drawer der initiale Einstieg.
+
+Damit liegen die häufige Dateiaktion im App-Kopf und die Darstellungsoptionen direkt bei den übrigen Kartenaktionen.
 
 Auf Desktop akzeptiert ausschließlich die Kartenfläche genau eine Datei mit der Endung `.dwg`. Der Drop verwendet denselben lokalen Importpfad wie die Dateiauswahl. Ist bereits eine Hauptzeichnung geladen, hält ein wiederverwendbares Bestätigungs-Sheet die neue Datei zurück, bis der Nutzer das Ersetzen bestätigt. Abbruch, mehrere Dateien und ungültige Dateitypen verändern weder Datei noch Kamera oder Sitzung. Touchgeräte und Drops außerhalb der Karte werden ignoriert.
 
 ## Positionsaktionen
 
-Ein Desktop-Rechtsklick auf die Karte erzeugt ein `MapContextTarget` aus Bildschirmposition und präziser LUREF-Koordinate. Auf einem grob bedienten Touchgerät löst ein Einfinger-Langdruck nach ungefähr 550 ms dieselbe Funktion aus. Eine Bewegung von mehr als zehn CSS-Pixeln, ein zweiter Finger, Pinch oder Pointer-Abbruch beendet den Timer, damit Pan, Zoom, CAD-Auswahl und Messung nicht konkurrieren.
+Ein Desktop-Rechtsklick auf die Karte öffnet zunächst eine kompakte Zielwahl. „Position von hier“ erzeugt ein `MapContextTarget` aus Pointerposition und präziser LUREF-Koordinate und markiert es temporär mit einem kleinen goldfarbenen Zweilinienkreuz. „Position von der Mitte“ verwendet die LUREF-Koordinate des dauerhaft sichtbaren roten Kartenmittelpunkt-Kreuzes und erzeugt keine weitere Markierung.
 
-Der Desktop zeigt ein kompaktes Menü am Klickpunkt, Mobilgeräte denselben Inhalt in einem `BottomSheet`. Ein temporäres goldfarbenes Kreuz aus genau einer horizontalen und vertikalen Linie markiert die Zielposition und wird mit dem Menü entfernt. Die LUREF-Anzeige und Clipboard-Nutzlast verwenden exakt `X.XX, Y.XX`.
+Nach der Desktop-Zielwahl zeigt das Detailmenü in seiner ersten Zeile links einen kleinen quadratischen Zurück-Button und rechts die kopierbare Koordinate. Der Zurück-Button führt innerhalb des offenen Menüs zur Zielwahl zurück. Die LUREF-Anzeige und Clipboard-Nutzlast verwenden exakt `X.XX, Y.XX`.
 
-Der interne URL-Builder transformiert die LUREF-Position für Google Maps, Apple Maps und Google Street View nach WGS84. Geoportail erhält die Koordinate in seiner erwarteten LUREF-Achsenreihenfolge. Externe Links werden erst nach einer ausdrücklichen Nutzeraktion in einem neuen Tab geöffnet; Apple Look Around wird mangels stabil dokumentiertem Deep Link nicht angeboten. Ohne DWG liefert OpenLayers die Bildschirmkoordinate, mit bereitem CAD wird derselbe präzise Bildschirm-zu-LUREF-Pfad wie bei Auswahl und CAD-Snap verwendet.
+Auf einem grob bedienten Touchgerät öffnet ein Einfinger-Langdruck nach ungefähr 550 ms das kompakte Positions-`BottomSheet`, verwendet aber immer die aktuelle LUREF-Koordinate des roten Kartenmittelpunkt-Kreuzes. Mobil gibt es weder die Desktop-Zielwahl noch ein goldfarbenes Zielkreuz oder eine andere zusätzliche Positionsmarkierung. Eine Bewegung von mehr als zehn CSS-Pixeln, ein zweiter Finger, Pinch oder Pointer-Abbruch beendet den Timer, damit Pan, Zoom, CAD-Auswahl und Messung nicht konkurrieren.
+
+Der interne URL-Builder transformiert die gewählte LUREF-Position für Google Maps, Apple Maps und Google Street View nach WGS84. Geoportail erhält die Koordinate in seiner erwarteten LUREF-Achsenreihenfolge. Externe Links werden erst nach einer ausdrücklichen Nutzeraktion in einem neuen Tab geöffnet; Apple Look Around wird mangels stabil dokumentiertem Deep Link nicht angeboten. Die Desktop-Klickposition nutzt mit bereitem CAD denselben präzisen Bildschirm-zu-LUREF-Pfad wie Auswahl und CAD-Snap; die Mittelpunktoption und die mobile Aktion übernehmen unmittelbar die Koordinate des roten Kartenmittelpunkts.
 
 ## Adaptiver DWG-Preflight
 

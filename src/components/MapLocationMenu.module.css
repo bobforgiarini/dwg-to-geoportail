@@ -48,6 +48,22 @@
 }
 
 .coordinateAction { background: #fff8ef; }
+.coordinateRow { display: flex; align-items: stretch; gap: 5px; }
+.coordinateRow .coordinateAction { min-width: 0; flex: 1; }
+.backAction {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--navy);
+  background: var(--surface-2);
+  border: 0;
+  border-radius: 7px;
+}
+.backAction:hover,
+.backAction:focus-visible { background: #e9eef2; outline: none; }
 .coordinateAction span { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .coordinateAction small { color: rgba(5, 28, 44, .56); font-size: 9px; font-weight: 800; letter-spacing: .07em; }
 .coordinateAction strong { overflow: hidden; font-size: 13px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
@@ -56,8 +72,9 @@
 .separator { height: 1px; margin: 4px 6px; background: var(--border); }
 .copyStatus { min-height: 0; padding: 0 9px; color: rgba(5, 28, 44, .64); font-size: 10px; font-weight: 700; }
 .copyStatus:not(:empty) { min-height: 16px; padding-top: 2px; }
+.hereSourceIcon { color: #b46d18; }
+.centerSourceIcon { color: #e22727; }
 
 @media (min-width: 760px) {
   .sheet { max-width: 390px !important; }
 }
-

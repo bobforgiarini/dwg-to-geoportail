@@ -9,20 +9,20 @@ describe('AppHeader', () => {
     await i18n.changeLanguage('de');
   });
 
-  it('uses the former viewer slot for a compact settings control', () => {
-    const onOpenSettings = vi.fn();
+  it('uses the former viewer slot for a compact DWG upload control', () => {
+    const onOpenDwgControls = vi.fn();
     const { getByRole, getByText, rerender } = render(
-      <AppHeader settingsOpen={false} onOpenSettings={onOpenSettings} />,
+      <AppHeader dwgControlsOpen={false} onOpenDwgControls={onOpenDwgControls} />,
     );
-    const settings = getByRole('button', { name: /Einstellungen/i });
+    const upload = getByRole('button', { name: i18n.t('dwgControlsTitle') });
 
     expect(getByText(`v${packageJson.version}`)).toBeInTheDocument();
-    expect(settings).toHaveAttribute('aria-expanded', 'false');
-    expect(settings).not.toHaveTextContent('OL');
-    fireEvent.click(settings);
-    expect(onOpenSettings).toHaveBeenCalledOnce();
+    expect(upload).toHaveAttribute('aria-expanded', 'false');
+    expect(upload).not.toHaveTextContent('OL');
+    fireEvent.click(upload);
+    expect(onOpenDwgControls).toHaveBeenCalledOnce();
 
-    rerender(<AppHeader settingsOpen onOpenSettings={onOpenSettings} />);
-    expect(settings).toHaveAttribute('aria-expanded', 'true');
+    rerender(<AppHeader dwgControlsOpen onOpenDwgControls={onOpenDwgControls} />);
+    expect(upload).toHaveAttribute('aria-expanded', 'true');
   });
 });

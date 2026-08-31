@@ -1,6 +1,8 @@
 import {
+  ArrowLeft,
   Check,
   Copy,
+  Crosshair,
   ExternalLink,
   Eye,
   Map,
@@ -32,12 +34,15 @@ export interface ScreenPoint {
 }
 
 export type MapLocationMenuPresentation = 'auto' | 'desktop' | 'mobile';
+export type DesktopMapLocationSource = 'choose' | 'here' | 'center';
 
 export interface MapLocationMenuProps {
   open: boolean;
   coordinate: LurefCoordinate | null;
   anchor?: ScreenPoint | null;
   presentation?: MapLocationMenuPresentation;
+  desktopSource?: DesktopMapLocationSource;
+  onDesktopSourceChange?: (source: DesktopMapLocationSource) => void;
   onClose: () => void;
   onCoordinateCopied?: (value: string) => void;
   copyCoordinate?: (value: string) => Promise<void>;
@@ -116,12 +121,14 @@ function LocationActions({
   copyStatus,
   onCopy,
   onOpenLink,
+  onBack,
 }: {
   coordinateText: string;
   links: MapLocationLinks;
   copyStatus: CopyStatus;
   onCopy: () => void;
   onOpenLink: () => void;
+  onBack?: () => void;
 }) {
   const { t } = useTranslation();
   const externalLinks = [
@@ -132,16 +139,30 @@ function LocationActions({
 
   return (
     <div className={styles.actions} role="menu" aria-label={t('mapContext.title')}>
-      <button
-        type="button"
-        className={`${styles.action} ${styles.coordinateAction}`}
-        role="menuitem"
-        onClick={onCopy}
-        aria-label={t('mapContext.copyCoordinates', { coordinate: coordinateText })}
-      >
-        {copyStatus === 'copied' ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
-        <span><small>LUREF</small><strong>{coordinateText}</strong></span>
-      </button>
+      <div className={styles.coordinateRow}>
+        {onBack && (
+          <button
+            type="button"
+            className={styles.backAction}
+            role="menuitem"
+            onClick={onBack}
+            aria-label={t('mapContext.back')}
+            title={t('mapContext.back')}
+          >
+            <ArrowLeft size={18} aria-hidden="true" />
+          </button>
+        )}
+        <button
+          type="button"
+          className={`${styles.action} ${styles.coordinateAction}`}
+          role="menuitem"
+          onClick={onCopy}
+          aria-label={t('mapContext.copyCoordinates', { coordinate: coordinateText })}
+        >
+          {copyStatus === 'copied' ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}
+          <span><small>LUREF</small><strong>{coordinateText}</strong></span>
+        </button>
+      </div>
       <span className={styles.copyStatus} role="status" aria-live="polite">
         {copyStatus === 'copied' ? t('mapContext.copied') : copyStatus === 'failed' ? t('mapContext.copyFailed') : ''}
       </span>
@@ -176,6 +197,36 @@ function LocationActions({
         <span>{t('mapContext.googleStreetView')}</span>
         <ExternalLink className={styles.externalIcon} size={15} aria-hidden="true" />
       </a>
+    </div>
+  );
+}
+
+function DesktopLocationSourceChooser({
+  onSelect,
+}: {
+  onSelect: (source: Exclude<DesktopMapLocationSource, 'choose'>) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className={styles.actions} role="menu" aria-label={t('mapContext.title')}>
+      <button
+        type="button"
+        className={styles.action}
+        role="menuitem"
+        onClick={() => onSelect('here')}
+      >
+        <Crosshair className={styles.hereSourceIcon} size={18} aria-hidden="true" />
+        <span>{t('mapContext.positionHere')}</span>
+      </button>
+      <button
+        type="button"
+        className={styles.action}
+        role="menuitem"
+        onClick={() => onSelect('center')}
+      >
+        <Crosshair className={styles.centerSourceIcon} size={18} aria-hidden="true" />
+        <span>{t('mapContext.positionCenter')}</span>
+      </button>
     </div>
   );
 }
@@ -247,6 +298,8 @@ export function MapLocationMenu({
   coordinate,
   anchor,
   presentation = 'auto',
+  desktopSource = 'here',
+  onDesktopSourceChange,
   onClose,
   onCoordinateCopied,
   copyCoordinate = writeClipboardText,
@@ -266,7 +319,8 @@ export function MapLocationMenu({
 
   useEffect(() => setCopyStatus('idle'), [coordinateText, open]);
 
-  if (!coordinate || !links) return null;
+  const choosingDesktopSource = resolvedPresentation === 'desktop' && desktopSource === 'choose';
+  if ((!coordinate || !links) && !choosingDesktopSource) return null;
   const copy = async () => {
     try {
       await copyCoordinate(coordinateText);
@@ -276,15 +330,18 @@ export function MapLocationMenu({
       setCopyStatus('failed');
     }
   };
-  const actions = (
+  const actions = coordinate && links ? (
     <LocationActions
       coordinateText={coordinateText}
       links={links}
       copyStatus={copyStatus}
       onCopy={() => void copy()}
       onOpenLink={onClose}
+      onBack={resolvedPresentation === 'desktop' && onDesktopSourceChange
+        ? () => onDesktopSourceChange('choose')
+        : undefined}
     />
-  );
+  ) : null;
 
   if (resolvedPresentation === 'mobile') {
     return (
@@ -302,8 +359,10 @@ export function MapLocationMenu({
   }
 
   return (
-    <DesktopLocationPopover open={open} anchor={anchor} onClose={onClose}>
-      {actions}
+    <DesktopLocationPopover key={desktopSource} open={open} anchor={anchor} onClose={onClose}>
+      {desktopSource === 'choose' && onDesktopSourceChange
+        ? <DesktopLocationSourceChooser onSelect={onDesktopSourceChange} />
+        : actions}
     </DesktopLocationPopover>
   );
 }

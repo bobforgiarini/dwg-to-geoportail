@@ -1,4 +1,4 @@
-import { Boxes, FileUp, Focus, Layers3, LocateFixed, Ruler, Square } from 'lucide-react';
+import { Boxes, Focus, Layers3, LocateFixed, Ruler, Settings2, Square } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { LocationFollowMode } from '../types/models';
 
@@ -8,13 +8,13 @@ interface Props {
   layerCount: number;
   blockCount: number;
   blocksOpen: boolean;
-  dwgControlsOpen: boolean;
+  settingsOpen: boolean;
   measurementActive: boolean;
   onLocation: () => void;
   onFitDrawing: () => void;
   onOpenLayerSheet: () => void;
   onOpenBlocks: () => void;
-  onToggleDwgControls: () => void;
+  onToggleSettings: () => void;
   onToggleMeasurement: () => void;
 }
 
@@ -24,13 +24,13 @@ export function MapActionControls({
   layerCount,
   blockCount,
   blocksOpen,
-  dwgControlsOpen,
+  settingsOpen,
   measurementActive,
   onLocation,
   onFitDrawing,
   onOpenLayerSheet,
   onOpenBlocks,
-  onToggleDwgControls,
+  onToggleSettings,
   onToggleMeasurement,
 }: Props) {
   const { t } = useTranslation();
@@ -65,13 +65,13 @@ export function MapActionControls({
         </button>
         <button
           type="button"
-          className={dwgControlsOpen ? 'active' : ''}
-          onClick={onToggleDwgControls}
-          aria-expanded={dwgControlsOpen}
-          aria-label={t('dwgControlsTitle')}
-          title={t('dwgControlsTitle')}
+          className={settingsOpen ? 'active' : ''}
+          onClick={onToggleSettings}
+          aria-expanded={settingsOpen}
+          aria-label={t('cadSettingsTitle')}
+          title={t('cadSettingsTitle')}
         >
-          <FileUp size={21} aria-hidden="true" />
+          <Settings2 size={21} aria-hidden="true" />
         </button>
       </div>
 

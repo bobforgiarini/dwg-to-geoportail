@@ -1,10 +1,10 @@
-# Test- und Abnahmeplan 0.7.0
+# Test- und Abnahmeplan 0.7.1
 
 ## Grundsatz
 
 Automatisierte Tests prüfen Datenstrukturen, Filterung, Zustandsautomaten und Lebenszyklus. Sie ersetzen weder den visuellen Vergleich mit einer bekannten LUREF-DWG noch einen echten Speichertest in iOS Safari. Private DWG-Dateien bleiben außerhalb des Repositorys und werden nicht an einen externen Dienst übertragen.
 
-Die unten aufgeführten automatisierten und manuellen Prüfungen sind die Abnahmebasis für Version 0.7.0. Die private Junglinster-DWG bleibt außerhalb des Repositorys. Prüfungen mit privaten XRef-DWGs und auf echter iPhone-Hardware bleiben lokale Abnahmen. Die endgültigen Test- und Buildzahlen werden aus dem Abschlusslauf übernommen und nicht aus einem älteren Release fortgeschrieben.
+Die unten aufgeführten automatisierten und manuellen Prüfungen sind die Abnahmebasis für Version 0.7.1. Die private Junglinster-DWG bleibt außerhalb des Repositorys. Prüfungen mit privaten XRef-DWGs und auf echter iPhone-Hardware bleiben lokale Abnahmen.
 
 ## Automatisierte Prüfung
 
@@ -12,6 +12,13 @@ Die unten aufgeführten automatisierten und manuellen Prüfungen sind die Abnahm
 npm test
 npm run build
 ```
+
+Abschlusslauf vom 31. August 2026:
+
+- Vitest: 51 Dateien, 276 Tests, alle bestanden
+- TypeScript und Vite-Produktionsbuild: erfolgreich, 2.956 Module transformiert
+- lokale Browserprüfung: Desktop 1.200 × 800 und Mobil 390 × 844; korrigierte Buttonpositionen, Desktop-Zielwahl, Zurücknavigation sowie ausschließlich rotes Mittelpunktkreuz auf Mobil bestätigt
+- Browserkonsole: keine Fehler oder Warnungen
 
 ### Preflight und Risikobewertung
 
@@ -77,8 +84,8 @@ Zusätzlich wird geprüft:
 - `CadLoadProfile` und Preflight-Bericht bleiben bei einem kontrollierten CAD-Neuaufbau erhalten; eine neue DWG setzt beide zurück
 - `/` löst den einzigen MLightCAD-CAD-Viewer auf; `/openlayers` wird permanent auf `/` umgeleitet
 - es existieren weder Viewerart noch Viewerwechsel im Sitzungskontext; der App-Kopf besitzt keinen OL-/MLightCAD-Umschalter
-- ein goldener Settings-Button im App-Kopf öffnet ausschließlich den Settings-Drawer; der DWG-Button in der Kartensteuerung öffnet ausschließlich den DWG-Drawer
-- die Version im App-Kopf entspricht `package.json` und zeigt für diesen Release `0.7.0`
+- ein goldener DWG-/Upload-Button im App-Kopf öffnet ausschließlich den DWG-Drawer; der goldene Settings-Button rechts in der Kartensteuerung öffnet ausschließlich den Settings-Drawer
+- die Version im App-Kopf entspricht `package.json` und zeigt für diesen Release `0.7.1`
 
 ### Gemeinsame Drawer und getrennte Wiederherstellung
 
@@ -111,9 +118,11 @@ Zusätzlich wird geprüft:
 - ohne vorhandene Hauptdatei verwendet der Drop denselben lokalen Importpfad wie die Dateiauswahl
 - mit vorhandener Datei öffnet ein Bestätigungs-Sheet; Abbrechen bewahrt Datei, Kamera und Sitzung, Bestätigen ersetzt die Haupt-DWG genau einmal
 - mehrere Dateien sowie Nicht-DWG-Dateien werden abgewiesen und im DWG-Drawer erklärt
-- ein Desktop-Rechtsklick ermittelt die LUREF-Koordinate an der tatsächlichen Pointerposition und öffnet das kompakte Positionsmenü dort
-- ein Einfinger-Langdruck öffnet nach ungefähr 550 ms denselben Inhalt als Bottom-Sheet; mehr als zehn CSS-Pixel Bewegung, Pinch, zweiter Finger oder Pointer-Abbruch verhindern das Öffnen
-- die Zielmarkierung besteht ausschließlich aus einer kleinen horizontalen und vertikalen goldfarbenen Linie und verschwindet beim Schließen
+- ein Desktop-Rechtsklick öffnet zuerst die schnelle Wahl „Position von hier“ beziehungsweise „Position von der Mitte“; die erste Option verwendet die tatsächliche Pointerposition, die zweite exakt den roten Kartenmittelpunkt
+- nur „Position von hier“ erzeugt eine kleine goldfarbene Zweilinienmarkierung; die Mittelpunktoption verwendet ausschließlich das bestehende rote Kreuz
+- das Desktop-Detailmenü zeigt links neben der kopierbaren Koordinate einen kleinen quadratischen Zurück-Button und kehrt damit ohne Schließen zur Zielwahl zurück
+- ein Einfinger-Langdruck öffnet nach ungefähr 550 ms das Positions-Bottom-Sheet ausschließlich für den roten Kartenmittelpunkt; Mobil zeigt weder eine Zielauswahl noch eine goldene oder sonstige zusätzliche Markierung
+- mehr als zehn CSS-Pixel Bewegung, Pinch, zweiter Finger oder Pointer-Abbruch verhindern das Öffnen des mobilen Sheets
 - die kopierte Koordinate entspricht exakt `X.XX, Y.XX`; erfolgreicher Clipboard-Zugriff und Fallback zeigen eine kurze Bestätigung
 - Geoportail verwendet die erwartete LUREF-Achsenreihenfolge; Google Maps, Apple Maps und Google Street View erhalten korrekt transformierte WGS84-Koordinaten
 - externe Ziele öffnen mit `noopener`/`noreferrer`; Apple Look Around wird nicht angeboten
@@ -331,18 +340,21 @@ Diese Schritte sind auf Desktop-Chrome, einem schmalen responsiven Viewport und 
 10. Auf Desktop die Maus über End-, Mittel- und Schnittpunkte bewegen, die Fangvorschau prüfen und zwei Punkte direkt per Klick setzen. Eine Maus-Dragbewegung darf keinen Punkt erzeugen.
 11. Mit Browser-Performancewerkzeugen prüfen, dass reine MLightCAD-Bewegung keine Snap-Suche, React-Zustandsaktualisierung oder Worker-Nachricht in den synchronen Kamera-Hotpath einfügt.
 
-### Manuelle UI- und Dateiabnahme 0.7.0
+### Manuelle UI- und Dateiabnahme 0.7.1
 
 1. `/` direkt und nach einem Browser-Reload öffnen; ausschließlich MLightCAD darf als CAD-Viewer erscheinen. `/openlayers` muss per HTTP 301 auf `/` zeigen.
-2. Settings im App-Kopf und DWG über die Kartensteuerung öffnen. Inhaltstrennung, identische Bottom-Sheet-Animation, Griff, Backdrop, Escape, Fokus und mobile Safe Area kontrollieren.
+2. DWG über den goldenen Button im App-Kopf und Settings über den goldenen Button rechts in der Kartensteuerung öffnen. Inhaltstrennung, identische Bottom-Sheet-Animation, Griff, Backdrop, Escape, Fokus und mobile Safe Area kontrollieren.
 3. Nacheinander ein Objekt, einen Layer und einen Block ausblenden. Die drei Zähler und Wiederherstellungsaktionen müssen unabhängig reagieren; die Wiederherstellung eines Typs darf die anderen beiden Zustände nicht löschen.
 4. Eine `.dwg` vom Desktop auf die Kartenfläche ziehen. Ohne bestehende Datei direkt importieren; mit bestehender Datei Replace zuerst abbrechen und danach bestätigen. Kamera und Sitzung müssen beim Abbruch unverändert bleiben.
 5. Mehrere Dateien und eine falsche Endung auf die Karte ziehen. Der DWG-Drawer muss eine verständliche Fehlermeldung zeigen, ohne die Hauptdatei zu ersetzen.
-6. Auf Desktop per Rechtsklick einen bekannten Punkt wählen, das goldene Zweilinienkreuz prüfen, die Koordinate kopieren und alle vier externen Ziele kontrollieren.
-7. Auf echter Touchhardware einen Einfinger-Langdruck ausführen. Danach mit Bewegung über zehn Pixel, zweitem Finger und Pinch jeweils sicherstellen, dass kein Positions-Sheet geöffnet wird und Pan/Zoom flüssig bleibt.
-8. Den Positions-Langdruck mit und ohne geladene DWG wiederholen. Zielkreuz, kopierte LUREF-Koordinate und externe Links müssen dieselbe gewählte Position verwenden.
-9. Den Filter „Luxemburg + 1 km Außenpuffer“ ein- und ausschalten und mit bekannten Grenzfixtures bei 999,99 m, 1.000 m und 1.000,01 m außerhalb vergleichen.
-10. Mit geöffnetem und geschlossenem Drawer Pan, Pinch, Mausrad und tiefen Zoom prüfen. Der Hotpath und die visuelle CAD-/Kartenkopplung dürfen gegenüber 0.6.1 nicht schlechter werden.
+6. Auf Desktop per Rechtsklick „Position von hier“ wählen, die goldene Zweilinienmarkierung prüfen und anschließend über den quadratischen Zurück-Button zur offenen Zielwahl zurückkehren.
+7. Danach „Position von der Mitte“ wählen. Koordinate und Links müssen dem roten Mittelpunkt entsprechen; eine zusätzliche goldene Markierung darf nicht erscheinen.
+8. Für beide Desktop-Ziele die Koordinate kopieren und Geoportail, Google Maps, Apple Maps sowie Google Street View kontrollieren.
+9. Auf echter Touchhardware die Karte so verschieben, dass das rote Kreuz über einem bekannten Punkt liegt, und einen Einfinger-Langdruck ausführen. Sheet, kopierte Koordinate und Links müssen ausschließlich diesen Kartenmittelpunkt verwenden; es darf keine goldene oder sonstige neue Markierung erscheinen.
+10. Den mobilen Langdruck mit Bewegung über zehn Pixel, zweitem Finger und Pinch wiederholen; dabei darf sich kein Positions-Sheet öffnen und Pan/Zoom muss flüssig bleiben.
+11. Den mobilen Mittelpunkt-Langdruck mit und ohne geladene DWG wiederholen. Rotes Kreuz, kopierte LUREF-Koordinate und externe Links müssen dieselbe Mittelpunktposition verwenden.
+12. Den Filter „Luxemburg + 1 km Außenpuffer“ ein- und ausschalten und mit bekannten Grenzfixtures bei 999,99 m, 1.000 m und 1.000,01 m außerhalb vergleichen.
+13. Mit geöffnetem und geschlossenem Drawer Pan, Pinch, Mausrad und tiefen Zoom prüfen. Der Hotpath und die visuelle CAD-/Kartenkopplung dürfen gegenüber 0.7.0 nicht schlechter werden.
 
 ## Nicht Teil der Abnahme
 

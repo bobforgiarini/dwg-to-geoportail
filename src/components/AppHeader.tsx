@@ -1,13 +1,13 @@
-import { Languages, MapPinned, Settings2 } from 'lucide-react';
+import { FileUp, Languages, MapPinned } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import packageJson from '../../package.json';
 
 interface Props {
-  settingsOpen: boolean;
-  onOpenSettings: () => void;
+  dwgControlsOpen: boolean;
+  onOpenDwgControls: () => void;
 }
 
-export function AppHeader({ settingsOpen, onOpenSettings }: Props) {
+export function AppHeader({ dwgControlsOpen, onOpenDwgControls }: Props) {
   const { t, i18n } = useTranslation();
 
   return (
@@ -19,13 +19,13 @@ export function AppHeader({ settingsOpen, onOpenSettings }: Props) {
       </div>
       <button
         type="button"
-        className={`header-settings-button ${settingsOpen ? 'active' : ''}`}
-        aria-label={t('cadSettingsTitle')}
-        title={t('cadSettingsTitle')}
-        aria-expanded={settingsOpen}
-        onClick={onOpenSettings}
+        className={`header-action-button ${dwgControlsOpen ? 'active' : ''}`}
+        aria-label={t('dwgControlsTitle')}
+        title={t('dwgControlsTitle')}
+        aria-expanded={dwgControlsOpen}
+        onClick={onOpenDwgControls}
       >
-        <Settings2 size={19} aria-hidden="true" />
+        <FileUp size={19} aria-hidden="true" />
       </button>
       <label className="language-control" aria-label={t('language')}>
         <Languages size={18} aria-hidden="true" />

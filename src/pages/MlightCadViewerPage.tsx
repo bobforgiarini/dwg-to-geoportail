@@ -14,7 +14,7 @@ import { LayerSheet } from '../components/LayerSheet';
 import { createLayerSheetItems, createLayerSheetLabels, isLayerHidden, layerIdentityMatches, mergeLoadedLayerSheetLayers } from '../components/layerSheetModel';
 import { MapActionControls } from '../components/MapActionControls';
 import { MapCenterCrosshair } from '../components/MapCenterCrosshair';
-import { MapLocationMenu, type ScreenPoint } from '../components/MapLocationMenu';
+import { MapLocationMenu, type DesktopMapLocationSource, type ScreenPoint } from '../components/MapLocationMenu';
 import { MapStatusBadges } from '../components/MapStatusBadges';
 import { MlightCadCanvas } from '../components/MlightCadCanvas';
 import { MlightCadMap, type MlightCadMapHandle } from '../components/MlightCadMap';
@@ -39,9 +39,11 @@ type ImportState = 'idle' | 'loading' | 'ready' | 'error' | 'cancelled';
 type DrawerState = 'blocks' | 'settings' | 'dwg' | 'object' | 'prepare' | 'prepare-failed' | null;
 type LayerSheetMode = 'loaded' | 'preparation' | null;
 interface MapContextTarget {
-  coordinate: LurefCoordinate;
   anchor: ScreenPoint;
   presentation: 'desktop' | 'mobile';
+  hereCoordinate: LurefCoordinate;
+  centerCoordinate: LurefCoordinate;
+  source: DesktopMapLocationSource;
 }
 const MLIGHTCAD_SNAP_AFTER_COORDINATE_DELAY_MS = 20;
 const DESKTOP_HOVER_SNAP_DELAY_MS = 40;
@@ -629,11 +631,33 @@ export default function MlightCadViewerPage() {
   };
   const openMapContext = (point: ScreenPoint, presentation: MapContextTarget['presentation']) => {
     if (measurementActive) return;
-    const nextCoordinate = resolveMapContextCoordinate(point);
-    if (!nextCoordinate) return;
+    const centerCoordinate = (
+      adapter && importState === 'ready' ? adapter.resolveAimPoint(false)?.coordinate : null
+    ) ?? mapCanvas.current?.resolveAimPoint()?.coordinate ?? null;
+    if (presentation === 'mobile') {
+      if (!centerCoordinate) return;
+      adapter?.clearSelection();
+      setSelection(null);
+      setMapContextTarget({
+        anchor: point,
+        presentation,
+        hereCoordinate: centerCoordinate,
+        centerCoordinate,
+        source: 'center',
+      });
+      return;
+    }
+    const hereCoordinate = resolveMapContextCoordinate(point);
+    if (!hereCoordinate) return;
     adapter?.clearSelection();
     setSelection(null);
-    setMapContextTarget({ coordinate: nextCoordinate, anchor: point, presentation });
+    setMapContextTarget({
+      anchor: point,
+      presentation,
+      hereCoordinate,
+      centerCoordinate: centerCoordinate ?? hereCoordinate,
+      source: 'choose',
+    });
   };
   const clearLongPress = (pointerId?: number) => {
     const pending = longPressPointer.current;
@@ -801,11 +825,11 @@ export default function MlightCadViewerPage() {
       onDrop={handleDrop}
     >
       <AppHeader
-        settingsOpen={drawerState === 'settings'}
-        onOpenSettings={() => {
+        dwgControlsOpen={drawerState === 'dwg'}
+        onOpenDwgControls={() => {
           if (measurementActive) closeMeasurement();
           setLayerSheetMode(null);
-          setDrawerState((current) => current === 'settings' ? null : 'settings');
+          setDrawerState((current) => current === 'dwg' ? null : 'dwg');
         }}
       />
       <MlightCadMap ref={mapCanvas} adapter={importState === 'ready' ? adapter : null} basemapHealth={session.basemapHealth} basemapHealthReporter={session.basemapHealthReporter}
@@ -828,7 +852,7 @@ export default function MlightCadViewerPage() {
       </div>
 
       <MapCenterCrosshair />
-      {mapContextTarget && (
+      {mapContextTarget?.presentation === 'desktop' && mapContextTarget.source === 'here' && (
         <span
           className="map-context-target-cross"
           style={{ left: mapContextTarget.anchor.x, top: mapContextTarget.anchor.y }}
@@ -845,14 +869,14 @@ export default function MlightCadViewerPage() {
         cadastreVisible={session.cadastreVisible} accuracy={location.state.accuracy} onToggleBasemap={session.toggleBasemapVisible}
         onToggleCadastre={session.toggleCadastreVisible} />
       <MapActionControls locationMode={location.state.follow} fitDisabled={!adapter || importState !== 'ready'} layerCount={layerSheetItems.length}
-        blockCount={displayedBlocks.length} blocksOpen={drawerState === 'blocks'} dwgControlsOpen={drawerState === 'dwg'}
+        blockCount={displayedBlocks.length} blocksOpen={drawerState === 'blocks'} settingsOpen={drawerState === 'settings'}
         measurementActive={measurementActive}
         onLocation={() => { if (measurementActive) clearSnapPreview(); locationAction(); }}
         onFitDrawing={() => { if (measurementActive) clearSnapPreview(); adapter?.fitDrawing(); }}
         onToggleMeasurement={toggleMeasurement}
         onOpenLayerSheet={() => { if (measurementActive) closeMeasurement(); setDrawerState(null); setLayerSheetMode('loaded'); }}
         onOpenBlocks={() => { if (measurementActive) closeMeasurement(); setLayerSheetMode(null); setBlockReturnToPreparation(false); setDrawerState('blocks'); }}
-        onToggleDwgControls={() => { if (measurementActive) closeMeasurement(); setLayerSheetMode(null); setDrawerState((current) => current === 'dwg' ? null : 'dwg'); }} />
+        onToggleSettings={() => { if (measurementActive) closeMeasurement(); setLayerSheetMode(null); setDrawerState((current) => current === 'settings' ? null : 'settings'); }} />
 
       <DistanceMeasurementSheet open={measurementActive} measurement={session.distanceMeasurement}
         snapKind={snapPreview?.snapKind} onClose={closeMeasurement} onSetPoint={setMeasurementPoint}
@@ -930,9 +954,17 @@ export default function MlightCadViewerPage() {
       <input ref={xrefInput} className="visually-hidden" type="file" multiple accept=".dwg,application/acad,application/x-dwg" onChange={(event) => handleXrefFiles(event.target.files)} />
       <MapLocationMenu
         open={Boolean(mapContextTarget)}
-        coordinate={mapContextTarget?.coordinate ?? null}
+        coordinate={mapContextTarget
+          ? mapContextTarget.source === 'center'
+            ? mapContextTarget.centerCoordinate
+            : mapContextTarget.source === 'here' ? mapContextTarget.hereCoordinate : null
+          : null}
         anchor={mapContextTarget?.anchor}
         presentation={mapContextTarget?.presentation ?? 'desktop'}
+        desktopSource={mapContextTarget?.source ?? 'here'}
+        onDesktopSourceChange={(source) => setMapContextTarget((current) => current && current.presentation === 'desktop'
+          ? { ...current, source }
+          : current)}
         onClose={closeMapContext}
       />
       <ConfirmationSheet

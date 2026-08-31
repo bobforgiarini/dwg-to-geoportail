@@ -22,7 +22,7 @@ describe('shared map UI', () => {
     const onFitDrawing = vi.fn();
     const onOpenLayerSheet = vi.fn();
     const onOpenBlocks = vi.fn();
-    const onToggleDwgControls = vi.fn();
+    const onToggleSettings = vi.fn();
     const onToggleMeasurement = vi.fn();
     const { container, getByRole } = render(
       <MapActionControls
@@ -31,13 +31,13 @@ describe('shared map UI', () => {
         layerCount={12}
         blockCount={4}
         blocksOpen={false}
-        dwgControlsOpen
+        settingsOpen
         measurementActive={false}
         onLocation={onLocation}
         onFitDrawing={onFitDrawing}
         onOpenLayerSheet={onOpenLayerSheet}
         onOpenBlocks={onOpenBlocks}
-        onToggleDwgControls={onToggleDwgControls}
+        onToggleSettings={onToggleSettings}
         onToggleMeasurement={onToggleMeasurement}
       />,
     );
@@ -47,7 +47,7 @@ describe('shared map UI', () => {
     expect(within(top).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
       i18n.t('layers'),
       i18n.t('blocksTitle'),
-      i18n.t('dwgControlsTitle'),
+      i18n.t('cadSettingsTitle'),
     ]);
     expect(within(bottom).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
       i18n.t('measurementOpen'),
@@ -60,12 +60,12 @@ describe('shared map UI', () => {
     fireEvent.click(getByRole('button', { name: i18n.t('fitDrawing') }));
     fireEvent.click(getByRole('button', { name: i18n.t('layers') }));
     fireEvent.click(getByRole('button', { name: i18n.t('blocksTitle') }));
-    fireEvent.click(getByRole('button', { name: i18n.t('dwgControlsTitle') }));
+    fireEvent.click(getByRole('button', { name: i18n.t('cadSettingsTitle') }));
     expect(onLocation).toHaveBeenCalledOnce();
     expect(onFitDrawing).toHaveBeenCalledOnce();
     expect(onOpenLayerSheet).toHaveBeenCalledOnce();
     expect(onOpenBlocks).toHaveBeenCalledOnce();
-    expect(onToggleDwgControls).toHaveBeenCalledOnce();
+    expect(onToggleSettings).toHaveBeenCalledOnce();
     expect(onToggleMeasurement).toHaveBeenCalledOnce();
   });
 

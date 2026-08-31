@@ -42,6 +42,44 @@ describe('MapLocationMenu', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it('switches from the desktop target choice to coordinates and back', () => {
+    const onDesktopSourceChange = vi.fn();
+    const { getByRole, queryByRole, rerender } = render(
+      <MapLocationMenu
+        open
+        coordinate={null}
+        anchor={{ x: 120, y: 160 }}
+        presentation="desktop"
+        desktopSource="choose"
+        onDesktopSourceChange={onDesktopSourceChange}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(getByRole('menuitem', { name: 'Position here (gold)' })).toBeInTheDocument();
+    expect(getByRole('menuitem', { name: 'Position from center (red)' })).toBeInTheDocument();
+    expect(queryByRole('menuitem', { name: /Copy LUREF/ })).not.toBeInTheDocument();
+    fireEvent.click(getByRole('menuitem', { name: 'Position here (gold)' }));
+    expect(onDesktopSourceChange).toHaveBeenCalledWith('here');
+
+    rerender(
+      <MapLocationMenu
+        open
+        coordinate={[80_000, 100_000]}
+        anchor={{ x: 120, y: 160 }}
+        presentation="desktop"
+        desktopSource="here"
+        onDesktopSourceChange={onDesktopSourceChange}
+        onClose={vi.fn()}
+      />,
+    );
+    const back = getByRole('menuitem', { name: 'Back' });
+    expect(back.className).toContain('backAction');
+    expect(getByRole('menuitem', { name: /Copy LUREF/ })).toBeInTheDocument();
+    fireEvent.click(back);
+    expect(onDesktopSourceChange).toHaveBeenLastCalledWith('choose');
+  });
+
   it('uses the browser clipboard API when available', async () => {
     const previous = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
     const writeText = vi.fn(async () => undefined);
