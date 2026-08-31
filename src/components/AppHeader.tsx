@@ -1,14 +1,14 @@
-import { Boxes, Languages, MapPinned } from 'lucide-react';
+import { Languages, MapPinned, Settings2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import packageJson from '../../package.json';
-import { useCadSession, type ViewerKind } from '../session/CadSessionContext';
 
-export function AppHeader() {
+interface Props {
+  settingsOpen: boolean;
+  onOpenSettings: () => void;
+}
+
+export function AppHeader({ settingsOpen, onOpenSettings }: Props) {
   const { t, i18n } = useTranslation();
-  const { activeViewer, getViewerHref, setViewer } = useCadSession();
-
-  const targetViewer: ViewerKind = activeViewer === 'legacy' ? 'mlightcad' : 'legacy';
-  const viewerToggleLabel = activeViewer === 'legacy' ? t('switchToMlight') : t('switchToLegacy');
 
   return (
     <header className="app-header">
@@ -17,19 +17,16 @@ export function AppHeader() {
         <strong>{t('appName')}</strong>
         <span>v{packageJson.version}</span>
       </div>
-      <a
-        className="viewer-toggle"
-        href={getViewerHref(targetViewer)}
-        aria-label={viewerToggleLabel}
-        title={viewerToggleLabel}
-        onClick={(event) => {
-          event.preventDefault();
-          setViewer(targetViewer);
-        }}
+      <button
+        type="button"
+        className={`header-settings-button ${settingsOpen ? 'active' : ''}`}
+        aria-label={t('cadSettingsTitle')}
+        title={t('cadSettingsTitle')}
+        aria-expanded={settingsOpen}
+        onClick={onOpenSettings}
       >
-        {targetViewer === 'legacy' ? <MapPinned size={18} aria-hidden="true" /> : <Boxes size={18} aria-hidden="true" />}
-        <span>{targetViewer === 'legacy' ? 'OL' : 'ML'}</span>
-      </a>
+        <Settings2 size={19} aria-hidden="true" />
+      </button>
       <label className="language-control" aria-label={t('language')}>
         <Languages size={18} aria-hidden="true" />
         <select value={i18n.resolvedLanguage ?? 'de'} onChange={(event) => void i18n.changeLanguage(event.target.value)}>

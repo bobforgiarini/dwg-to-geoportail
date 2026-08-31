@@ -1,23 +1,8 @@
-import type Feature from 'ol/Feature';
-import type Geometry from 'ol/geom/Geometry';
-import type { CadOverlayBlock, DwgPreflightReport } from '../lib/cad/preflightTypes';
-
 export interface CadOverlayLayer {
   id: string;
   name: string;
   visible: boolean;
   featureCount: number;
-}
-
-export interface DwgImportResult {
-  file: { name: string; size: number; lastModified: number };
-  lurefExtent: [number, number, number, number] | null;
-  layers: CadOverlayLayer[];
-  blocks: CadOverlayBlock[];
-  preflight: DwgPreflightReport | null;
-  features: Feature<Geometry>[];
-  autoHiddenFeatureIds: string[];
-  warnings: string[];
 }
 
 export interface SelectedCadObject {

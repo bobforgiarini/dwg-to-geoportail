@@ -15,7 +15,7 @@ describe('patchLibreDwgInitialMemory', () => {
   });
 
   it('keeps the MLightCAD API and its Emscripten runtime colocated in the release directory', () => {
-    const packageRoot = resolve('node_modules/@mlightcad/libredwg-converter/node_modules/@mlightcad/libredwg-web');
+    const packageRoot = resolve('node_modules/@mlightcad/libredwg-web');
     const apiSource = readFileSync(resolve(packageRoot, 'dist/libredwg-web.js'), 'utf8');
     const relocated = relocateMlightLibreDwgApiImports(apiSource);
 

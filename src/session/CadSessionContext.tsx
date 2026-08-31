@@ -41,16 +41,6 @@ import type {
   DistanceMeasurementState,
   MeasurementPoint,
 } from '../types/models';
-import {
-  getViewerHref,
-  navigateBrowserToViewer,
-  resolveViewerKind,
-  type ViewerKind,
-  type ViewerNavigationOptions,
-} from '../lib/viewerRouting';
-
-export type { ViewerKind } from '../lib/viewerRouting';
-
 export interface CadSession {
   /** The original local file. It is held in React memory only. */
   file: File | null;
@@ -64,12 +54,11 @@ export interface CadSession {
   annotationScaleId: string | null;
   /** Luxembourg plus 1 km conservative model filter. */
   spatialFilterEnabled: boolean;
-  activeViewer: ViewerKind;
-  /** Shared visibility of the Geoportail background in both viewers. */
+  /** Visibility of the Geoportail background. */
   basemapVisible: boolean;
   /** Optional Geoportail cadastral plan overlay shared by both viewers. */
   cadastreVisible: boolean;
-  /** Shared Geoportail source/health state; survives CAD viewer switches. */
+  /** Shared Geoportail source/health state. */
   basemapHealth: BasemapHealthState;
   preflightReport: DwgPreflightReport | null;
   loadProfile: CadLoadProfile;
@@ -78,9 +67,9 @@ export interface CadSession {
   /** Shared CAD-only appearance; it never changes the Geoportail layer. */
   cadAppearance: CadAppearanceSettings;
   hiddenObjectIds: string[];
-  /** Session-only front/back overrides shared by both CAD viewers. */
+  /** Session-only front/back overrides. */
   objectDrawOrder: CadObjectDrawOrder;
-  /** One session-only 2D LUREF measurement shared by both viewer routes. */
+  /** One session-only 2D LUREF measurement. */
   distanceMeasurement: DistanceMeasurementState;
   /** Marker left by a previous hard tab termination; contains metadata only. */
   recoveryMarker: DwgImportRecoveryMarker | null;
@@ -94,8 +83,6 @@ export interface CadSessionContextValue extends CadSession {
   setPreferredXrefFile: (xrefId: string, fileId: string) => void;
   setAnnotationScaleId: (scaleId: string | null) => void;
   setSpatialFilterEnabled: (enabled: boolean) => void;
-  setViewer: (viewer: ViewerKind, options?: ViewerNavigationOptions) => void;
-  getViewerHref: (viewer: ViewerKind) => string;
   setBasemapVisible: (visible: boolean) => void;
   toggleBasemapVisible: () => void;
   setCadastreVisible: (visible: boolean) => void;
@@ -114,6 +101,8 @@ export interface CadSessionContextValue extends CadSession {
   setObjectHidden: (objectId: string, hidden: boolean) => void;
   setObjectDrawOrder: (groupKey: string, tier: CadObjectDrawOrderTier) => void;
   restoreHiddenObjects: () => void;
+  restoreHiddenLayers: () => void;
+  restoreHiddenBlocks: () => void;
   startMeasurement: () => void;
   commitMeasurementPoint: (point: MeasurementPoint) => void;
   restartMeasurement: () => void;
@@ -124,10 +113,6 @@ export interface CadSessionContextValue extends CadSession {
 }
 
 const CadSessionContext = createContext<CadSessionContextValue | null>(null);
-
-function readInitialViewer(): ViewerKind {
-  return typeof window === 'undefined' ? 'mlightcad' : resolveViewerKind(window.location.pathname);
-}
 
 const EMPTY_LOAD_PROFILE: CadLoadProfile = {
   mode: 'full',
@@ -149,7 +134,6 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
   const [preferredXrefFileIds, setPreferredXrefFileIds] = useState<Record<string, string>>({});
   const [annotationScaleId, setAnnotationScaleId] = useState<string | null>(null);
   const [spatialFilterEnabled, setSpatialFilterEnabled] = useState(true);
-  const [activeViewer, setActiveViewer] = useState<ViewerKind>(readInitialViewer);
   const [basemapVisible, setBasemapVisible] = useState(true);
   const [cadastreVisible, setCadastreVisible] = useState(false);
   const [basemapHealthSuspended, setBasemapHealthSuspended] = useState(false);
@@ -190,12 +174,6 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
     () => basemapController.createReporter(),
     [basemapController],
   );
-
-  useEffect(() => {
-    const handlePopState = () => setActiveViewer(resolveViewerKind(window.location.pathname));
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
 
   useEffect(() => {
     const syncOnline = () => basemapController.setOnline(navigator.onLine);
@@ -312,6 +290,20 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
     setHiddenObjectIds((current) => updateVisibility(current, objectId, !hidden));
   }, []);
   const restoreHiddenObjects = useCallback(() => setHiddenObjectIds([]), []);
+  const restoreHiddenLayers = useCallback(() => {
+    setLoadProfileState((current) => ({
+      ...current,
+      mode: current.hiddenBlockNames.length || current.hiddenEntityCategories.length ? 'filtered' : 'full',
+      hiddenLayerIds: [],
+    }));
+  }, []);
+  const restoreHiddenBlocks = useCallback(() => {
+    setLoadProfileState((current) => ({
+      ...current,
+      mode: current.hiddenLayerIds.length || current.hiddenEntityCategories.length ? 'filtered' : 'full',
+      hiddenBlockNames: [],
+    }));
+  }, []);
   const setObjectDrawOrder = useCallback((groupKey: string, tier: CadObjectDrawOrderTier) => {
     setObjectDrawOrderState((current) => moveCadObjectDrawOrder(current, groupKey, tier));
   }, []);
@@ -338,11 +330,6 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
     if (file) setFileRevision((currentRevision) => currentRevision + 1);
   }, [file]);
 
-  const setViewer = useCallback((viewer: ViewerKind, options?: ViewerNavigationOptions) => {
-    navigateBrowserToViewer(viewer, options);
-    setActiveViewer(viewer);
-  }, []);
-
   const toggleBasemapVisible = useCallback(() => {
     setBasemapVisible((visible) => !visible);
   }, []);
@@ -359,7 +346,6 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       preferredXrefFileIds,
       annotationScaleId,
       spatialFilterEnabled,
-      activeViewer,
       basemapVisible,
       cadastreVisible,
       basemapHealth,
@@ -380,8 +366,6 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       setPreferredXrefFile,
       setAnnotationScaleId,
       setSpatialFilterEnabled,
-      setViewer,
-      getViewerHref,
       setBasemapVisible,
       toggleBasemapVisible,
       setCadastreVisible,
@@ -398,6 +382,8 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       setObjectHidden,
       setObjectDrawOrder,
       restoreHiddenObjects,
+      restoreHiddenLayers,
+      restoreHiddenBlocks,
       startMeasurement,
       commitMeasurementPoint,
       restartMeasurement,
@@ -406,7 +392,7 @@ export function CadSessionProvider({ children }: PropsWithChildren) {
       clearRecoveryPreparationRequirement,
       reloadFile,
     }),
-    [activeViewer, addXrefFiles, annotationScaleId, basemapHealth, basemapHealthReporter, basemapVisible, cadAppearance, cadRenderQuality, cadTextVisible, cadastreVisible, cancelMeasurement, clearFile, clearRecoveryPreparationRequirement, commitMeasurementPoint, distanceMeasurement, file, fileRevision, hiddenObjectIds, loadProfile, objectDrawOrder, preferredXrefFileIds, preflightReport, recoveryMarker, recoveryPreparationRequired, reloadFile, resetLoadProfile, restartMeasurement, restoreHiddenObjects, setBlockProfileVisible, setCadAppearance, setFile, setLayerProfileVisible, setLoadProfile, setMeasurementSnapEnabled, setObjectDrawOrder, setObjectHidden, setPreferredXrefFile, setViewer, spatialFilterEnabled, startMeasurement, toggleBasemapVisible, toggleCadastreVisible, xrefFiles],
+    [addXrefFiles, annotationScaleId, basemapHealth, basemapHealthReporter, basemapVisible, cadAppearance, cadRenderQuality, cadTextVisible, cadastreVisible, cancelMeasurement, clearFile, clearRecoveryPreparationRequirement, commitMeasurementPoint, distanceMeasurement, file, fileRevision, hiddenObjectIds, loadProfile, objectDrawOrder, preferredXrefFileIds, preflightReport, recoveryMarker, recoveryPreparationRequired, reloadFile, resetLoadProfile, restartMeasurement, restoreHiddenBlocks, restoreHiddenLayers, restoreHiddenObjects, setBlockProfileVisible, setCadAppearance, setFile, setLayerProfileVisible, setLoadProfile, setMeasurementSnapEnabled, setObjectDrawOrder, setObjectHidden, setPreferredXrefFile, spatialFilterEnabled, startMeasurement, toggleBasemapVisible, toggleCadastreVisible, xrefFiles],
   );
 
   return <CadSessionContext.Provider value={value}>{children}</CadSessionContext.Provider>;

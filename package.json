@@ -1,7 +1,7 @@
 {
   "name": "dwg-to-geoportail",
   "private": true,
-  "version": "0.6.1",
+  "version": "0.7.0",
   "type": "module",
   "license": "AGPL-3.0-only",
   "scripts": {
@@ -12,10 +12,10 @@
     "test:watch": "vitest --configLoader runner"
   },
   "dependencies": {
-    "@flyfish-dev/cad-viewer": "0.8.0",
     "@mlightcad/cad-simple-viewer": "1.6.3",
     "@mlightcad/data-model": "1.14.2",
     "@mlightcad/libredwg-converter": "3.14.2",
+    "@mlightcad/libredwg-web": "0.7.10",
     "@mlightcad/mtext-renderer": "0.12.4",
     "@mlightcad/three-renderer": "1.6.3",
     "i18next": "25.5.2",

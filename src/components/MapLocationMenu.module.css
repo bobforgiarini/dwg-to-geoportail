@@ -1,0 +1,63 @@
+.popover {
+  position: fixed;
+  z-index: 80;
+  width: min(290px, calc(100vw - 16px));
+  padding: 6px;
+  color: var(--navy);
+  background: rgba(255, 255, 255, .98);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 14px 34px rgba(5, 28, 44, .24);
+  backdrop-filter: blur(12px);
+}
+
+.sheet {
+  max-height: min(66vh, 430px);
+  max-height: min(66dvh, 430px);
+  padding: 0 10px calc(10px + env(safe-area-inset-bottom));
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.action {
+  width: 100%;
+  min-height: 44px;
+  padding: 7px 9px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--navy);
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  text-align: left;
+  text-decoration: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.action:hover,
+.action:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+
+.coordinateAction { background: #fff8ef; }
+.coordinateAction span { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.coordinateAction small { color: rgba(5, 28, 44, .56); font-size: 9px; font-weight: 800; letter-spacing: .07em; }
+.coordinateAction strong { overflow: hidden; font-size: 13px; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+
+.externalIcon { margin-left: auto; color: rgba(5, 28, 44, .46); }
+.separator { height: 1px; margin: 4px 6px; background: var(--border); }
+.copyStatus { min-height: 0; padding: 0 9px; color: rgba(5, 28, 44, .64); font-size: 10px; font-weight: 700; }
+.copyStatus:not(:empty) { min-height: 16px; padding-top: 2px; }
+
+@media (min-width: 760px) {
+  .sheet { max-width: 390px !important; }
+}
+

@@ -1,12 +1,9 @@
 import type { ReactNode } from 'react';
-import { FileUp, ListChecks, RotateCcw, Trash2, Type, X } from 'lucide-react';
+import { FileUp, ListChecks, Trash2, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { BottomSheet } from './BottomSheet';
-import { CadOpacityControl } from './CadOpacityControl';
-import { CadRenderQualityControl } from './CadRenderQualityControl';
 import { CadSpatialFilterControl } from './CadSpatialFilterControl';
 import { LoadingSpinner } from './LoadingSpinner';
-import type { CadRenderQualityMode } from '../lib/mlightcad/renderQuality';
 
 interface Props {
   open: boolean;
@@ -16,28 +13,19 @@ interface Props {
   loadingTitle: string;
   progressLabel: string;
   message: string | null;
-  opacity: number;
   preparationAvailable?: boolean;
-  spatialFilterEnabled?: boolean;
-  renderQuality?: CadRenderQualityMode;
-  cadTextVisible: boolean;
-  hiddenObjectCount: number;
-  controlsDisabled: boolean;
+  spatialFilterEnabled: boolean;
   footer?: ReactNode;
   onClose: () => void;
   onDismissMessage: () => void;
   onChooseFile: () => void;
   onRemoveFile: () => void;
   onCancel: () => void;
-  onOpacityChange: (value: number) => void;
   onOpenPreparation?: () => void;
-  onSpatialFilterChange?: (enabled: boolean) => void;
-  onRenderQualityChange?: (value: CadRenderQualityMode) => void;
-  onToggleTexts: () => void;
-  onRestoreHidden: () => void;
+  onSpatialFilterChange: (enabled: boolean) => void;
 }
 
-export function CadControlSheet({
+export function DwgControlSheet({
   open,
   file,
   entityCount,
@@ -45,25 +33,16 @@ export function CadControlSheet({
   loadingTitle,
   progressLabel,
   message,
-  opacity,
   preparationAvailable = false,
   spatialFilterEnabled,
-  renderQuality,
-  cadTextVisible,
-  hiddenObjectCount,
-  controlsDisabled,
   footer,
   onClose,
   onDismissMessage,
   onChooseFile,
   onRemoveFile,
   onCancel,
-  onOpacityChange,
   onOpenPreparation,
   onSpatialFilterChange,
-  onRenderQualityChange,
-  onToggleTexts,
-  onRestoreHidden,
 }: Props) {
   const { t } = useTranslation();
 
@@ -71,15 +50,13 @@ export function CadControlSheet({
     <BottomSheet
       open={open}
       modal
-      className="cad-control-sheet"
-      ariaLabel={t('cadControlsTitle')}
+      className="cad-control-sheet dwg-control-sheet"
+      ariaLabel={t('dwgControlsTitle')}
       closeLabel={t('close')}
       onClose={onClose}
     >
       <header className="sheet-header compact-sheet-header">
-        <div>
-          <h2>{t('cadControlsTitle')}</h2>
-        </div>
+        <h2>{t('dwgControlsTitle')}</h2>
       </header>
 
       {message && (
@@ -89,8 +66,8 @@ export function CadControlSheet({
         </div>
       )}
 
-      <section className="cad-control-section" aria-labelledby="dwg-control-title">
-        <h3 id="dwg-control-title">{t('dwgFile')}</h3>
+      <section className="cad-control-section" aria-labelledby="dwg-file-control-title">
+        <h3 id="dwg-file-control-title">{t('dwgFile')}</h3>
         {loading ? (
           <div className="loading-row" role="status" aria-live="polite">
             <LoadingSpinner />
@@ -121,34 +98,12 @@ export function CadControlSheet({
         )}
       </section>
 
-      <section className="cad-control-section" aria-labelledby="display-control-title">
-        <h3 id="display-control-title">{t('cadDisplay')}</h3>
-        <CadOpacityControl value={opacity} onChange={onOpacityChange} />
-        {spatialFilterEnabled !== undefined && onSpatialFilterChange && (
-          <CadSpatialFilterControl
-            enabled={spatialFilterEnabled}
-            disabled={loading}
-            onChange={onSpatialFilterChange}
-          />
-        )}
-        {renderQuality && onRenderQualityChange && (
-          <CadRenderQualityControl value={renderQuality} onChange={onRenderQualityChange} />
-        )}
-        <div className="cad-display-actions">
-          <button
-            className={!cadTextVisible ? 'active' : ''}
-            onClick={onToggleTexts}
-            disabled={controlsDisabled}
-          >
-            <Type size={18} aria-hidden="true" />
-            <span>{cadTextVisible ? t('hideTexts') : t('showTexts')}</span>
-          </button>
-          <button onClick={onRestoreHidden} disabled={controlsDisabled || hiddenObjectCount === 0}>
-            <RotateCcw size={18} aria-hidden="true" />
-            <span>{t('showHidden', { count: hiddenObjectCount })}</span>
-            {hiddenObjectCount > 0 && <strong>{hiddenObjectCount}</strong>}
-          </button>
-        </div>
+      <section className="cad-control-section" aria-label={t('spatialFilter.title')}>
+        <CadSpatialFilterControl
+          enabled={spatialFilterEnabled}
+          disabled={loading}
+          onChange={onSpatialFilterChange}
+        />
       </section>
 
       {footer}

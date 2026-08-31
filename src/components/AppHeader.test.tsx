@@ -1,22 +1,28 @@
 import { fireEvent, render } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
-import '../i18n';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../i18n';
 import packageJson from '../../package.json';
-import { CadSessionProvider } from '../session/CadSessionContext';
 import { AppHeader } from './AppHeader';
 
 describe('AppHeader', () => {
-  beforeEach(() => window.history.replaceState(null, '', '/'));
+  beforeEach(async () => {
+    await i18n.changeLanguage('de');
+  });
 
-  it('uses one compact control to switch between viewers', () => {
-    const { getByRole, getByText } = render(<CadSessionProvider><AppHeader /></CadSessionProvider>);
-    const toLegacy = getByRole('link', { name: /OpenLayers/i });
+  it('uses the former viewer slot for a compact settings control', () => {
+    const onOpenSettings = vi.fn();
+    const { getByRole, getByText, rerender } = render(
+      <AppHeader settingsOpen={false} onOpenSettings={onOpenSettings} />,
+    );
+    const settings = getByRole('button', { name: /Einstellungen/i });
 
     expect(getByText(`v${packageJson.version}`)).toBeInTheDocument();
-    expect(toLegacy).toHaveTextContent('OL');
-    fireEvent.click(toLegacy);
+    expect(settings).toHaveAttribute('aria-expanded', 'false');
+    expect(settings).not.toHaveTextContent('OL');
+    fireEvent.click(settings);
+    expect(onOpenSettings).toHaveBeenCalledOnce();
 
-    expect(window.location.pathname).toBe('/openlayers');
-    expect(getByRole('link', { name: /MLightCAD/i })).toHaveTextContent('ML');
+    rerender(<AppHeader settingsOpen onOpenSettings={onOpenSettings} />);
+    expect(settings).toHaveAttribute('aria-expanded', 'true');
   });
 });

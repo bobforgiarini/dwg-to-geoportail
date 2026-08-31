@@ -80,7 +80,7 @@ describe('CancellableLibreDwgConverter worker integration', () => {
     });
     expect(client.execute).toHaveBeenCalledWith(
       expect.any(ArrayBuffer),
-      expect.objectContaining({ wasmBaseUrl: '/mlightcad-workers/0.3.0' }),
+      expect.objectContaining({ wasmBaseUrl: '/mlightcad-workers/0.7.0' }),
       expect.objectContaining({ onPreflight: expect.any(Function) }),
       30_000,
     );

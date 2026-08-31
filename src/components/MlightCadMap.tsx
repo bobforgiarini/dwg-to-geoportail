@@ -47,6 +47,7 @@ interface Props {
 
 export interface MlightCadMapHandle {
   resolveAimPoint: () => MeasurementPoint | null;
+  resolveScreenCoordinate: (clientPoint: { x: number; y: number }) => [number, number] | null;
 }
 
 const MOBILE_TILE_CACHE_SIZE = 32;
@@ -210,6 +211,14 @@ export const MlightCadMap = forwardRef<MlightCadMapHandle, Props>(function Mligh
       if (!center || !Number.isFinite(center[0]) || !Number.isFinite(center[1])) return null;
       return { coordinate: [center[0], center[1]], source: 'aim' };
     },
+    resolveScreenCoordinate: ({ x, y }) => {
+      const map = mapRef.current;
+      if (!map) return null;
+      const bounds = map.getViewport().getBoundingClientRect();
+      const coordinate = map.getCoordinateFromPixel([x - bounds.left, y - bounds.top]);
+      if (!coordinate || !Number.isFinite(coordinate[0]) || !Number.isFinite(coordinate[1])) return null;
+      return [coordinate[0], coordinate[1]];
+    },
   }), []);
 
   useEffect(() => {
@@ -369,5 +378,5 @@ export const MlightCadMap = forwardRef<MlightCadMapHandle, Props>(function Mligh
     }
   }, [location.follow, location.position, locationSource, mlightControlsActive]);
 
-  return <div ref={target} className="map-canvas mlightcad-map-canvas" role="application" aria-label="Geoportail" />;
+  return <div ref={target} className="map-canvas mlightcad-map-canvas" data-map-surface role="application" aria-label="Geoportail" />;
 });

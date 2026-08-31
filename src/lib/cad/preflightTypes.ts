@@ -1,4 +1,4 @@
-import type { CadDocument } from '@flyfish-dev/cad-viewer';
+import type { CadDocument } from './cadDocumentTypes';
 import type { CadSpatialFilterReport } from './luxembourgSpatialFilter';
 
 export type CadBlockKind = 'named' | 'anonymous' | 'xref';

@@ -1,4 +1,4 @@
-import { Boxes, Focus, Layers3, LocateFixed, Ruler, SlidersHorizontal, Square } from 'lucide-react';
+import { Boxes, FileUp, Focus, Layers3, LocateFixed, Ruler, Square } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { LocationFollowMode } from '../types/models';
 
@@ -8,14 +8,13 @@ interface Props {
   layerCount: number;
   blockCount: number;
   blocksOpen: boolean;
-  cadControlsOpen: boolean;
+  dwgControlsOpen: boolean;
   measurementActive: boolean;
-  hiddenObjectCount: number;
   onLocation: () => void;
   onFitDrawing: () => void;
-  onOpenLayers: () => void;
+  onOpenLayerSheet: () => void;
   onOpenBlocks: () => void;
-  onToggleCadControls: () => void;
+  onToggleDwgControls: () => void;
   onToggleMeasurement: () => void;
 }
 
@@ -25,14 +24,13 @@ export function MapActionControls({
   layerCount,
   blockCount,
   blocksOpen,
-  cadControlsOpen,
+  dwgControlsOpen,
   measurementActive,
-  hiddenObjectCount,
   onLocation,
   onFitDrawing,
-  onOpenLayers,
+  onOpenLayerSheet,
   onOpenBlocks,
-  onToggleCadControls,
+  onToggleDwgControls,
   onToggleMeasurement,
 }: Props) {
   const { t } = useTranslation();
@@ -45,7 +43,7 @@ export function MapActionControls({
       <div className="map-action-group map-action-group-top">
         <button
           type="button"
-          onClick={onOpenLayers}
+          onClick={onOpenLayerSheet}
           disabled={layerCount === 0}
           aria-label={t('layers')}
           title={t('layers')}
@@ -67,14 +65,13 @@ export function MapActionControls({
         </button>
         <button
           type="button"
-          className={cadControlsOpen ? 'active' : ''}
-          onClick={onToggleCadControls}
-          aria-expanded={cadControlsOpen}
-          aria-label={t('openCadControls')}
-          title={t('openCadControls')}
+          className={dwgControlsOpen ? 'active' : ''}
+          onClick={onToggleDwgControls}
+          aria-expanded={dwgControlsOpen}
+          aria-label={t('dwgControlsTitle')}
+          title={t('dwgControlsTitle')}
         >
-          <SlidersHorizontal size={21} aria-hidden="true" />
-          {hiddenObjectCount > 0 && <span className="map-action-count">{hiddenObjectCount}</span>}
+          <FileUp size={21} aria-hidden="true" />
         </button>
       </div>
 

@@ -2,6 +2,33 @@
 
 Alle relevanten Änderungen an DWG to Geoportail werden hier dokumentiert.
 
+## [0.7.0] – 2026-08-31
+
+### Hinzugefügt
+
+- eigenständigen Settings-Drawer im App-Kopf ergänzt; er bündelt CAD-Deckkraft, Qualitätsstufe, Textsichtbarkeit und getrennte Wiederherstellung von Objekten, Layern und Blöcken mit eigenen Zählern
+- separaten DWG-Drawer für Dateiauswahl, Entfernen, Ersetzen, Importstatus, Abbruch, Vorbereitung und den eindeutig bezeichneten Filter „Luxemburg + 1 km Außenpuffer“ ergänzt
+- lokalen Desktop-Drag-and-drop-Einstieg für genau eine `.dwg` auf der Kartenfläche ergänzt; eine bestehende Zeichnung wird erst nach Bestätigung ersetzt
+- Positionsmenü per Desktop-Rechtsklick und mobiles Positions-Sheet per Einfinger-Langdruck ergänzt; LUREF-Koordinaten lassen sich im Format `X.XX, Y.XX` kopieren und in Geoportail, Google Maps, Apple Maps oder Google Street View öffnen
+- temporäres goldfarbenes Zweilinienkreuz für die im Positionsmenü gewählte Stelle ergänzt
+
+### Geändert
+
+- MLightCAD ist der einzige CAD-Viewer unter `/`; der bisherige eigenständige OpenLayers-/Flyfish-CAD-Viewer, seine Importpipeline, Umschaltung und Laufzeitabhängigkeit wurden entfernt
+- `/openlayers` wird vor dem SPA-Fallback permanent auf `/` umgeleitet; OpenLayers bleibt als interne Kartenbasis für Geoportail, Kataster, GPS, Messgeometrie und die synchrone MLightCAD-Kamerakopplung erhalten
+- Datei-, Replace- und Drag-and-drop-Einstiege verwenden denselben lokalen Importpfad; ungültige oder mehrere gedroppte Dateien werden im DWG-Drawer erklärt und verändern die bestehende Sitzung nicht
+- getrennte Wiederherstellungsaktionen bewahren jeweils die übrigen Objekt-, Layer- und Blockfilter; nur zuvor workerseitig entfernte Inhalte lösen genau einen kontrollierten CAD-Neuaufbau mit erhaltener Kamera aus
+- Luxemburg-Filtertext und Dokumentation stellen klar, dass Luxemburg selbst sowie der Bereich bis einschließlich 1.000 Meter außerhalb der Landesgrenze erhalten bleiben
+- Paket- und Kopfversion auf `0.7.0` angehoben
+
+### Prüfung
+
+- Tests für Single-Viewer-Root, permanenten Legacy-Redirect, geteilte Drawer, getrennte Wiederherstellung, Drag-and-drop-Bestätigung, Positionslinks, Koordinatenkopie und mobile Langdruck-Abbruchbedingungen ergänzt beziehungsweise aktualisiert
+- 51 Testdateien mit 275 bestandenen Tests sowie den vollständigen TypeScript-/Vite-Produktionsbuild erfolgreich ausgeführt
+- Produktionsbuild liefert ausschließlich die versionierten MLightCAD-/LibreDWG-Assets unter `/mlightcad-workers/0.7.0/`; ein Legacy-WASM-Verzeichnis wird nicht mehr erzeugt
+- Produktionsvorschau bei 390 × 844 und 1.200 × 800 CSS-Pixeln geprüft: beide getrennten Drawer, Backdrop-Schließen und das Desktop-Positionsmenü funktionieren ohne Browserfehler
+- die unveränderte synchrone Kameraabfolge `viewChanged → setCenter/setResolution → renderSync()` sowie die Abwesenheit der Flyfish-/Legacy-CAD-Pipeline bleiben durch Regression und Produktionsgraph abgesichert
+
 ## [0.6.1] – 2026-08-28
 
 ### Geändert

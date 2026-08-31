@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../i18n';
 import { BottomSheet } from './BottomSheet';
-import { CadControlSheet } from './CadControlSheet';
 import { LayerSheet } from './LayerSheet';
 import { createLayerSheetLabels } from './layerSheetModel';
 import { LoadingSpinner } from './LoadingSpinner';
@@ -21,9 +20,9 @@ describe('shared map UI', () => {
   it('groups layer and CAD actions separately from location and fit actions', () => {
     const onLocation = vi.fn();
     const onFitDrawing = vi.fn();
-    const onOpenLayers = vi.fn();
+    const onOpenLayerSheet = vi.fn();
     const onOpenBlocks = vi.fn();
-    const onToggleCadControls = vi.fn();
+    const onToggleDwgControls = vi.fn();
     const onToggleMeasurement = vi.fn();
     const { container, getByRole } = render(
       <MapActionControls
@@ -32,14 +31,13 @@ describe('shared map UI', () => {
         layerCount={12}
         blockCount={4}
         blocksOpen={false}
-        cadControlsOpen
+        dwgControlsOpen
         measurementActive={false}
-        hiddenObjectCount={3}
         onLocation={onLocation}
         onFitDrawing={onFitDrawing}
-        onOpenLayers={onOpenLayers}
+        onOpenLayerSheet={onOpenLayerSheet}
         onOpenBlocks={onOpenBlocks}
-        onToggleCadControls={onToggleCadControls}
+        onToggleDwgControls={onToggleDwgControls}
         onToggleMeasurement={onToggleMeasurement}
       />,
     );
@@ -49,7 +47,7 @@ describe('shared map UI', () => {
     expect(within(top).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
       i18n.t('layers'),
       i18n.t('blocksTitle'),
-      i18n.t('openCadControls'),
+      i18n.t('dwgControlsTitle'),
     ]);
     expect(within(bottom).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
       i18n.t('measurementOpen'),
@@ -62,12 +60,12 @@ describe('shared map UI', () => {
     fireEvent.click(getByRole('button', { name: i18n.t('fitDrawing') }));
     fireEvent.click(getByRole('button', { name: i18n.t('layers') }));
     fireEvent.click(getByRole('button', { name: i18n.t('blocksTitle') }));
-    fireEvent.click(getByRole('button', { name: i18n.t('openCadControls') }));
+    fireEvent.click(getByRole('button', { name: i18n.t('dwgControlsTitle') }));
     expect(onLocation).toHaveBeenCalledOnce();
     expect(onFitDrawing).toHaveBeenCalledOnce();
-    expect(onOpenLayers).toHaveBeenCalledOnce();
+    expect(onOpenLayerSheet).toHaveBeenCalledOnce();
     expect(onOpenBlocks).toHaveBeenCalledOnce();
-    expect(onToggleCadControls).toHaveBeenCalledOnce();
+    expect(onToggleDwgControls).toHaveBeenCalledOnce();
     expect(onToggleMeasurement).toHaveBeenCalledOnce();
   });
 
@@ -124,71 +122,6 @@ describe('shared map UI', () => {
     expect(crosshair?.querySelector('svg')).toBeInTheDocument();
     expect(crosshair?.querySelector('circle')).not.toBeInTheDocument();
     expect(crosshair?.querySelectorAll('path')).toHaveLength(2);
-  });
-
-  it('offers preparation settings without rendering the removed appearance profile', () => {
-    const onOpenPreparation = vi.fn();
-    const { getByRole, queryByText } = render(
-      <CadControlSheet
-        open
-        file={new File([new Uint8Array(12)], 'drawing.dwg')}
-        entityCount={7}
-        loading={false}
-        loadingTitle=""
-        progressLabel=""
-        message={null}
-        opacity={70}
-        preparationAvailable
-        cadTextVisible
-        hiddenObjectCount={0}
-        controlsDisabled={false}
-        onClose={vi.fn()}
-        onDismissMessage={vi.fn()}
-        onChooseFile={vi.fn()}
-        onRemoveFile={vi.fn()}
-        onCancel={vi.fn()}
-        onOpacityChange={vi.fn()}
-        onOpenPreparation={onOpenPreparation}
-        onToggleTexts={vi.fn()}
-        onRestoreHidden={vi.fn()}
-      />,
-    );
-    fireEvent.click(getByRole('button', { name: i18n.t('openPreparation') }));
-    expect(onOpenPreparation).toHaveBeenCalledOnce();
-    expect(queryByText(i18n.t('appearance.title'))).not.toBeInTheDocument();
-  });
-
-  it('uses the fixed span spinner in the accessible CAD loading row', () => {
-    const { container, getByRole } = render(
-      <CadControlSheet
-        open
-        file={null}
-        entityCount={0}
-        loading
-        loadingTitle="DWG wird verarbeitet"
-        progressLabel="CAD wird aufgebaut · 42%"
-        message={null}
-        opacity={70}
-        cadTextVisible
-        hiddenObjectCount={0}
-        controlsDisabled
-        onClose={vi.fn()}
-        onDismissMessage={vi.fn()}
-        onChooseFile={vi.fn()}
-        onRemoveFile={vi.fn()}
-        onCancel={vi.fn()}
-        onOpacityChange={vi.fn()}
-        onToggleTexts={vi.fn()}
-        onRestoreHidden={vi.fn()}
-      />,
-    );
-
-    const status = getByRole('status');
-    const spinner = status.querySelector('.loading-spinner') as HTMLElement;
-    expect(spinner.tagName).toBe('SPAN');
-    expect(spinner).toHaveClass('loading-spinner');
-    expect(container.querySelector('.compact-sheet-header button')).not.toBeInTheDocument();
-    expect(getByRole('dialog').querySelectorAll('.sheet-handle-button')).toHaveLength(1);
   });
 
   it('uses only the shared handle to close the layer drawer', () => {

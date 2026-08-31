@@ -1,4 +1,4 @@
-import type { CadBlock, CadDocument, CadEntity } from '@flyfish-dev/cad-viewer';
+import type { CadBlock, CadDocument, CadEntity } from './cadDocumentTypes';
 import { cadEntityCategories, isCadXrefBlock } from './cadPreflight';
 import type { CadDocumentFilterResult, CadEntityCategory, CadLoadProfile, DwgPreflightWarning } from './preflightTypes';
 

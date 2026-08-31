@@ -5,8 +5,8 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { extname, resolve } from 'node:path';
 import { patchLibreDwgInitialMemory, relocateMlightLibreDwgApiImports } from './build/patchLibreDwgMemory';
 
-const releaseAssetVersion = '0.3.0';
-const mlightLibreDwgDirectory = resolve('node_modules/@mlightcad/libredwg-converter/node_modules/@mlightcad/libredwg-web');
+const releaseAssetVersion = '0.7.0';
+const mlightLibreDwgDirectory = resolve('node_modules/@mlightcad/libredwg-web');
 const mlightCadAssets = new Map([
   ['libredwg-parser-worker.js', resolve('node_modules/@mlightcad/libredwg-converter/dist/libredwg-parser-worker.js')],
   ['libredwg-web-api.js', resolve(mlightLibreDwgDirectory, 'dist/libredwg-web.js')],

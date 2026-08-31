@@ -1,4 +1,4 @@
-import type { CadBlock, CadDocument, CadEntity, CadPoint3D } from '@flyfish-dev/cad-viewer';
+import type { CadBlock, CadDocument, CadEntity, CadPoint3D } from './cadDocumentTypes';
 import boundaryAsset from './data/luxembourgBoundary.epsg2169.json';
 
 export type CadAabb = readonly [minX: number, minY: number, maxX: number, maxY: number];

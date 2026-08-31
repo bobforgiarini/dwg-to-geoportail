@@ -1,18 +1,20 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { LocateFixed } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { transform } from 'ol/proj';
 import { useTranslation } from 'react-i18next';
 import { AppHeader } from '../components/AppHeader';
 import { BlockSheet } from '../components/BlockSheet';
 import { createBlockSheetItems, createBlockSheetLabels } from '../components/blockSheetModel';
 import { BottomSheet } from '../components/BottomSheet';
-import { CadControlSheet } from '../components/CadControlSheet';
+import { CadSettingsSheet } from '../components/CadSettingsSheet';
+import { ConfirmationSheet } from '../components/ConfirmationSheet';
+import { DwgControlSheet } from '../components/DwgControlSheet';
 import { DwgPreparationSheet } from '../components/DwgPreparationSheet';
 import { DistanceMeasurementSheet } from '../components/DistanceMeasurementSheet';
 import { LayerSheet } from '../components/LayerSheet';
 import { createLayerSheetItems, createLayerSheetLabels, isLayerHidden, layerIdentityMatches, mergeLoadedLayerSheetLayers } from '../components/layerSheetModel';
 import { MapActionControls } from '../components/MapActionControls';
 import { MapCenterCrosshair } from '../components/MapCenterCrosshair';
+import { MapLocationMenu, type ScreenPoint } from '../components/MapLocationMenu';
 import { MapStatusBadges } from '../components/MapStatusBadges';
 import { MlightCadCanvas } from '../components/MlightCadCanvas';
 import { MlightCadMap, type MlightCadMapHandle } from '../components/MlightCadMap';
@@ -31,19 +33,31 @@ import type { MlightCadViewerAdapter } from '../lib/mlightcad/MlightCadViewerAda
 import { DEFAULT_MLIGHTCAD_OPACITY } from '../lib/mlightcad/opacity';
 import type { MlightCadCamera, MlightCadLoadOptions, MlightCadPreparationResult, MlightCadProgress, MlightCadReady } from '../lib/mlightcad/types';
 import { useCadSession } from '../session/CadSessionContext';
-import type { CadOverlayLayer, MeasurementPoint, SelectedCadObject } from '../types/models';
+import type { CadOverlayLayer, LurefCoordinate, MeasurementPoint, SelectedCadObject } from '../types/models';
 
 type ImportState = 'idle' | 'loading' | 'ready' | 'error' | 'cancelled';
-type DrawerState = 'blocks' | 'controls' | 'object' | 'prepare' | 'prepare-failed' | null;
+type DrawerState = 'blocks' | 'settings' | 'dwg' | 'object' | 'prepare' | 'prepare-failed' | null;
 type LayerSheetMode = 'loaded' | 'preparation' | null;
+interface MapContextTarget {
+  coordinate: LurefCoordinate;
+  anchor: ScreenPoint;
+  presentation: 'desktop' | 'mobile';
+}
 const MLIGHTCAD_SNAP_AFTER_COORDINATE_DELAY_MS = 20;
 const DESKTOP_HOVER_SNAP_DELAY_MS = 40;
 const DESKTOP_CLICK_MOVE_TOLERANCE_PX = 5;
+const MOBILE_CONTEXT_HOLD_MS = 550;
+const MOBILE_CONTEXT_MOVE_TOLERANCE_PX = 10;
+const MOBILE_CONTEXT_SELECTION_SUPPRESSION_MS = 250;
 
 function isDesktopMeasurementPointer(event: ReactPointerEvent<HTMLElement>): boolean {
   return event.pointerType === 'mouse'
     && typeof window.matchMedia === 'function'
     && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+}
+
+function isMapSurfaceTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest('[data-map-surface]'));
 }
 
 function progressLabel(progress: MlightCadProgress, t: (key: string) => string): string {
@@ -81,6 +95,16 @@ export default function MlightCadViewerPage() {
     startY: number;
     moved: boolean;
   } | null>(null);
+  const longPressPointer = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+  const activeTouchPointers = useRef(new Set<number>());
+  const contextLongPressFired = useRef<number | null>(null);
+  const suppressCadSelection = useRef(false);
+  const dragEnterDepth = useRef(0);
   const cameraToRestore = useRef<MlightCadCamera | null>(null);
   const locallyAppliedDrawOrderAdapter = useRef<MlightCadViewerAdapter | null>(null);
   const [adapter, setAdapter] = useState<MlightCadViewerAdapter | null>(null);
@@ -94,7 +118,7 @@ export default function MlightCadViewerPage() {
   const [progress, setProgress] = useState<MlightCadProgress>({ phase: 'workers', percentage: null });
   const [messageKey, setMessageKey] = useState<string | null>(null);
   const [drawerState, setDrawerState] = useState<DrawerState>(() => (
-    !session.file && session.distanceMeasurement.phase === 'inactive' ? 'controls' : null
+    !session.file && session.distanceMeasurement.phase === 'inactive' ? 'dwg' : null
   ));
   const [layerSheetMode, setLayerSheetMode] = useState<LayerSheetMode>(null);
   const [coordinate, setCoordinate] = useState<[number, number] | null>(null);
@@ -105,6 +129,9 @@ export default function MlightCadViewerPage() {
   const [blockReloadPending, setBlockReloadPending] = useState(false);
   const [layerReloadPending, setLayerReloadPending] = useState(false);
   const [basemapSuspended, setBasemapSuspended] = useState(false);
+  const [mapContextTarget, setMapContextTarget] = useState<MapContextTarget | null>(null);
+  const [pendingDroppedFile, setPendingDroppedFile] = useState<File | null>(null);
+  const [dwgDragActive, setDwgDragActive] = useState(false);
 
   useEffect(() => {
     session.setBasemapHealthSuspended(basemapSuspended);
@@ -125,6 +152,9 @@ export default function MlightCadViewerPage() {
     desktopHoverTimer.current = null;
     desktopHoverPoint.current = null;
     desktopMeasurementPointer.current = null;
+    if (longPressPointer.current) clearTimeout(longPressPointer.current.timer);
+    longPressPointer.current = null;
+    activeTouchPointers.current.clear();
   }, []);
 
   useEffect(() => {
@@ -286,7 +316,7 @@ export default function MlightCadViewerPage() {
     if (!file.name.toLowerCase().endsWith('.dwg')) {
       setMessageKey('invalidFile'); if (fileInput.current) fileInput.current.value = ''; return;
     }
-    cameraToRestore.current = null; setBlockReloadPending(false); setLayerReloadPending(false); session.setFile(file); setDrawerState('controls');
+    cameraToRestore.current = null; setBlockReloadPending(false); setLayerReloadPending(false); session.setFile(file); setDrawerState('dwg');
     if (fileInput.current) fileInput.current.value = '';
   };
   const handleXrefFiles = (files: FileList | null) => {
@@ -312,12 +342,12 @@ export default function MlightCadViewerPage() {
   const handleError = (error: unknown) => {
     clearDwgImportMarker(activeImportMarker.current); activeImportMarker.current = null;
     session.clearRecoveryPreparationRequirement(); setBasemapSuspended(false); console.error('MLightCAD import failed', error);
-    if (isAbortError(error)) { setImportState('cancelled'); setMessageKey('importCancelled'); setDrawerState('controls'); return; }
+    if (isAbortError(error)) { setImportState('cancelled'); setMessageKey('importCancelled'); setDrawerState('dwg'); return; }
     setImportState('error');
     if (!preflightReceived.current && !(error instanceof Error && error.message === 'MLIGHTCAD_WORKERS_UNAVAILABLE') && !isUnreadableFileError(error)) {
       setMessageKey(null); setDrawerState('prepare-failed'); return;
     }
-    setDrawerState('controls');
+    setDrawerState('dwg');
     setMessageKey(error instanceof Error && error.message === 'MLIGHTCAD_WORKERS_UNAVAILABLE'
       ? 'mlightWorkersUnavailable' : isUnreadableFileError(error) ? 'fileNotReadable' : 'importFailed');
   };
@@ -325,7 +355,7 @@ export default function MlightCadViewerPage() {
   const cancelImport = () => {
     preparationResolver.current?.({ decision: 'cancel' }); preparationResolver.current = null; void adapter?.cancel();
     clearDwgImportMarker(activeImportMarker.current); activeImportMarker.current = null;
-    session.clearRecoveryPreparationRequirement(); setBasemapSuspended(false); setImportState('cancelled'); setMessageKey('importCancelled'); setDrawerState('controls');
+    session.clearRecoveryPreparationRequirement(); setBasemapSuspended(false); setImportState('cancelled'); setMessageKey('importCancelled'); setDrawerState('dwg');
   };
   const removeDwg = () => {
     preparationResolver.current?.({ decision: 'cancel' }); preparationResolver.current = null; void adapter?.cancel();
@@ -334,7 +364,10 @@ export default function MlightCadViewerPage() {
   };
 
   const handleSelection = (next: SelectedCadObject | null) => {
-    if (measurementActive) return;
+    if (measurementActive || suppressCadSelection.current) {
+      if (next) adapter?.clearSelection();
+      return;
+    }
     setSelection(next); setDrawOrderMessageKey(null); if (next) setDrawerState('object'); else setDrawerState((current) => current === 'object' ? null : current);
   };
   const closeSelection = () => { adapter?.clearSelection(); setSelection(null); setDrawerState(null); };
@@ -411,12 +444,24 @@ export default function MlightCadViewerPage() {
 
   const captureCameraForReload = () => { cameraToRestore.current = latestCamera.current; };
   const applyBlockChanges = () => { captureCameraForReload(); setBlockReloadPending(false); session.reloadFile(); };
-  const restoreAllHidden = () => {
-    const reloadRequired = session.loadProfile.mode === 'filtered';
-    adapter?.restoreHiddenObjects(); adapter?.setAllLayersVisible(true);
+  const restoreHiddenObjects = () => {
+    adapter?.restoreHiddenObjects();
+    session.restoreHiddenObjects();
+  };
+  const restoreHiddenLayers = () => {
+    const reloadRequired = session.loadProfile.hiddenLayerIds.length > 0;
+    adapter?.setAllLayersVisible(true);
+    session.restoreHiddenLayers();
+    setLayers((current) => current.map((layer) => ({ ...layer, visible: true })));
+    setLayerReloadPending(false);
+    if (reloadRequired) { captureCameraForReload(); session.reloadFile(); }
+  };
+  const restoreHiddenBlocks = () => {
+    const reloadRequired = session.loadProfile.hiddenBlockNames.length > 0;
     for (const block of displayedBlocks) adapter?.setBlockVisible(block.name, true);
-    session.restoreHiddenObjects(); session.resetLoadProfile(); setBlocks((current) => current.map((block) => ({ ...block, visible: true })));
-    setBlockReloadPending(false); setLayerReloadPending(false);
+    session.restoreHiddenBlocks();
+    setBlocks((current) => current.map((block) => ({ ...block, visible: true })));
+    setBlockReloadPending(false);
     if (reloadRequired) { captureCameraForReload(); session.reloadFile(); }
   };
   const toggleTexts = () => {
@@ -575,6 +620,132 @@ export default function MlightCadViewerPage() {
     desktopMeasurementPointer.current = null;
   };
 
+  const closeMapContext = useCallback(() => setMapContextTarget(null), []);
+  const resolveMapContextCoordinate = (point: ScreenPoint): LurefCoordinate | null => {
+    const cadPoint = adapter && importState === 'ready'
+      ? adapter.resolveScreenPoint(point, false)?.coordinate
+      : null;
+    return cadPoint ?? mapCanvas.current?.resolveScreenCoordinate(point) ?? null;
+  };
+  const openMapContext = (point: ScreenPoint, presentation: MapContextTarget['presentation']) => {
+    if (measurementActive) return;
+    const nextCoordinate = resolveMapContextCoordinate(point);
+    if (!nextCoordinate) return;
+    adapter?.clearSelection();
+    setSelection(null);
+    setMapContextTarget({ coordinate: nextCoordinate, anchor: point, presentation });
+  };
+  const clearLongPress = (pointerId?: number) => {
+    const pending = longPressPointer.current;
+    if (!pending || (pointerId !== undefined && pending.pointerId !== pointerId)) return;
+    clearTimeout(pending.timer);
+    longPressPointer.current = null;
+  };
+  const handlePagePointerDownCapture = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType !== 'touch') return;
+    activeTouchPointers.current.add(event.pointerId);
+    clearLongPress();
+    if (
+      activeTouchPointers.current.size !== 1
+      || measurementActive
+      || !isMapSurfaceTarget(event.target)
+    ) return;
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const timer = setTimeout(() => {
+      const pending = longPressPointer.current;
+      if (!pending || pending.pointerId !== pointerId || activeTouchPointers.current.size !== 1) return;
+      longPressPointer.current = null;
+      contextLongPressFired.current = pointerId;
+      suppressCadSelection.current = true;
+      openMapContext({ x: startX, y: startY }, 'mobile');
+    }, MOBILE_CONTEXT_HOLD_MS);
+    longPressPointer.current = { pointerId, startX, startY, timer };
+  };
+  const handlePagePointerMoveCapture = (event: ReactPointerEvent<HTMLElement>) => {
+    const pending = longPressPointer.current;
+    if (!pending || pending.pointerId !== event.pointerId) return;
+    const dx = event.clientX - pending.startX;
+    const dy = event.clientY - pending.startY;
+    if (dx * dx + dy * dy > MOBILE_CONTEXT_MOVE_TOLERANCE_PX ** 2) clearLongPress(event.pointerId);
+  };
+  const finishTouchPointer = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerType !== 'touch') return;
+    activeTouchPointers.current.delete(event.pointerId);
+    clearLongPress(event.pointerId);
+    if (contextLongPressFired.current !== event.pointerId) return;
+    contextLongPressFired.current = null;
+    setTimeout(() => {
+      suppressCadSelection.current = false;
+      adapter?.clearSelection();
+      setSelection(null);
+    }, MOBILE_CONTEXT_SELECTION_SUPPRESSION_MS);
+  };
+  const handleMapContextMenu = (event: ReactPointerEvent<HTMLElement> | ReactMouseEvent<HTMLElement>) => {
+    if (!isMapSurfaceTarget(event.target)) return;
+    event.preventDefault();
+    if (!desktopFinePointer.current || measurementActive) return;
+    openMapContext({ x: event.clientX, y: event.clientY }, 'desktop');
+  };
+  const isFileDrag = (event: ReactDragEvent<HTMLElement>) => (
+    desktopFinePointer.current && Array.from(event.dataTransfer.types).includes('Files')
+  );
+  const handleDragEnter = (event: ReactDragEvent<HTMLElement>) => {
+    if (!isFileDrag(event) || (!dwgDragActive && !isMapSurfaceTarget(event.target))) return;
+    event.preventDefault();
+    dragEnterDepth.current += 1;
+    setDwgDragActive(true);
+  };
+  const handleDragOver = (event: ReactDragEvent<HTMLElement>) => {
+    if (!isFileDrag(event) || (!dwgDragActive && !isMapSurfaceTarget(event.target))) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  };
+  const handleDragLeave = (event: ReactDragEvent<HTMLElement>) => {
+    if (!isFileDrag(event) || dragEnterDepth.current === 0) return;
+    dragEnterDepth.current = Math.max(0, dragEnterDepth.current - 1);
+    if (dragEnterDepth.current === 0) setDwgDragActive(false);
+  };
+  const handleDrop = (event: ReactDragEvent<HTMLElement>) => {
+    if (!isFileDrag(event)) return;
+    if (!isMapSurfaceTarget(event.target)) {
+      if (dwgDragActive) event.preventDefault();
+      dragEnterDepth.current = 0;
+      setDwgDragActive(false);
+      return;
+    }
+    event.preventDefault();
+    dragEnterDepth.current = 0;
+    setDwgDragActive(false);
+    const files = [...event.dataTransfer.files];
+    if (files.length !== 1) {
+      setMessageKey('dwgDrop.singleFile');
+      setDrawerState('dwg');
+      return;
+    }
+    const [file] = files;
+    if (!file.name.toLocaleLowerCase('en-US').endsWith('.dwg')) {
+      setMessageKey('invalidFile');
+      setDrawerState('dwg');
+      return;
+    }
+    closeMapContext();
+    if (session.file) setPendingDroppedFile(file);
+    else handleFile(file);
+  };
+
+  useEffect(() => {
+    if (!mapContextTarget) return;
+    const closeOnViewportChange = () => closeMapContext();
+    window.addEventListener('resize', closeOnViewportChange);
+    return () => window.removeEventListener('resize', closeOnViewportChange);
+  }, [closeMapContext, mapContextTarget]);
+
+  useEffect(() => {
+    if (drawerState || layerSheetMode || measurementActive) closeMapContext();
+  }, [closeMapContext, drawerState, layerSheetMode, measurementActive]);
+
   const layerSheetLayers = useMemo(() => layerSheetMode === 'preparation'
     ? (preparationReport?.layers.map((layer) => ({ id: layer.id, name: layer.name, visible: !(pendingProfile?.hiddenLayerIds.includes(layer.id) ?? false), featureCount: layer.expandedEntityCount })) ?? [])
     : mergeLoadedLayerSheetLayers(session.preflightReport?.layers, layers, session.loadProfile.hiddenLayerIds), [
@@ -616,8 +787,27 @@ export default function MlightCadViewerPage() {
   const mlightControlsActive = Boolean(adapter && importState === 'ready');
 
   return (
-    <main className={`app-shell mlightcad-page ${drawerState || layerSheetMode || measurementActive ? 'drawer-open' : 'drawer-closed'}`}>
-      <AppHeader />
+    <main
+      className={`app-shell mlightcad-page ${drawerState || layerSheetMode || measurementActive ? 'drawer-open' : 'drawer-closed'}`}
+      onContextMenuCapture={handleMapContextMenu}
+      onPointerDownCapture={handlePagePointerDownCapture}
+      onPointerMoveCapture={handlePagePointerMoveCapture}
+      onPointerUpCapture={finishTouchPointer}
+      onPointerCancelCapture={finishTouchPointer}
+      onWheelCapture={closeMapContext}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <AppHeader
+        settingsOpen={drawerState === 'settings'}
+        onOpenSettings={() => {
+          if (measurementActive) closeMeasurement();
+          setLayerSheetMode(null);
+          setDrawerState((current) => current === 'settings' ? null : 'settings');
+        }}
+      />
       <MlightCadMap ref={mapCanvas} adapter={importState === 'ready' ? adapter : null} basemapHealth={session.basemapHealth} basemapHealthReporter={session.basemapHealthReporter}
         basemapVisible={session.basemapVisible} cadastreVisible={session.cadastreVisible} basemapSuspended={basemapSuspended} mlightControlsActive={mlightControlsActive}
         cadOpacity={opacity}
@@ -627,7 +817,7 @@ export default function MlightCadViewerPage() {
           session.commitMeasurementPoint(point);
           clearSnapPreview();
         }} />
-      <div className={`mlightcad-interaction-layer ${mlightControlsActive ? 'mlightcad-active' : 'openlayers-active'}`}
+      <div data-map-surface className={`mlightcad-interaction-layer ${mlightControlsActive ? 'mlightcad-active' : 'map-active'}`}
         onPointerDown={handleCadPointerDown} onPointerMove={handleCadPointerMove}
         onPointerUp={handleCadPointerUp} onPointerCancel={handleCadPointerCancel}
         onPointerLeave={(event) => { if (isDesktopMeasurementPointer(event) && !pointerActive.current) clearSnapPreview(); }}
@@ -638,19 +828,31 @@ export default function MlightCadViewerPage() {
       </div>
 
       <MapCenterCrosshair />
+      {mapContextTarget && (
+        <span
+          className="map-context-target-cross"
+          style={{ left: mapContextTarget.anchor.x, top: mapContextTarget.anchor.y }}
+          aria-hidden="true"
+        />
+      )}
+      {dwgDragActive && (
+        <div className="dwg-drop-overlay" aria-hidden="true">
+          <span>{t('dwgDrop.hint')}</span>
+        </div>
+      )}
 
       <MapStatusBadges basemapHealth={session.basemapHealth} basemapVisible={session.basemapVisible} coordinate={coordinate}
         cadastreVisible={session.cadastreVisible} accuracy={location.state.accuracy} onToggleBasemap={session.toggleBasemapVisible}
         onToggleCadastre={session.toggleCadastreVisible} />
       <MapActionControls locationMode={location.state.follow} fitDisabled={!adapter || importState !== 'ready'} layerCount={layerSheetItems.length}
-        blockCount={displayedBlocks.length} blocksOpen={drawerState === 'blocks'} cadControlsOpen={drawerState === 'controls'}
+        blockCount={displayedBlocks.length} blocksOpen={drawerState === 'blocks'} dwgControlsOpen={drawerState === 'dwg'}
         measurementActive={measurementActive}
-        hiddenObjectCount={session.hiddenObjectIds.length} onLocation={() => { if (measurementActive) clearSnapPreview(); locationAction(); }}
+        onLocation={() => { if (measurementActive) clearSnapPreview(); locationAction(); }}
         onFitDrawing={() => { if (measurementActive) clearSnapPreview(); adapter?.fitDrawing(); }}
         onToggleMeasurement={toggleMeasurement}
-        onOpenLayers={() => { if (measurementActive) closeMeasurement(); setDrawerState(null); setLayerSheetMode('loaded'); }}
+        onOpenLayerSheet={() => { if (measurementActive) closeMeasurement(); setDrawerState(null); setLayerSheetMode('loaded'); }}
         onOpenBlocks={() => { if (measurementActive) closeMeasurement(); setLayerSheetMode(null); setBlockReturnToPreparation(false); setDrawerState('blocks'); }}
-        onToggleCadControls={() => { if (measurementActive) closeMeasurement(); setLayerSheetMode(null); setDrawerState((current) => current === 'controls' ? null : 'controls'); }} />
+        onToggleDwgControls={() => { if (measurementActive) closeMeasurement(); setLayerSheetMode(null); setDrawerState((current) => current === 'dwg' ? null : 'dwg'); }} />
 
       <DistanceMeasurementSheet open={measurementActive} measurement={session.distanceMeasurement}
         snapKind={snapPreview?.snapKind} onClose={closeMeasurement} onSetPoint={setMeasurementPoint}
@@ -669,38 +871,85 @@ export default function MlightCadViewerPage() {
         </div>
       </BottomSheet>
 
-      <CadControlSheet open={drawerState === 'controls'} file={session.file} entityCount={entityCount} loading={importState === 'loading'}
-        loadingTitle={t('importingMlight')} progressLabel={progressLabel(progress, t)} message={messageKey ? t(messageKey) : null}
-        opacity={opacity} preparationAvailable={Boolean(session.preflightReport)} cadTextVisible={session.cadTextVisible} hiddenObjectCount={session.hiddenObjectIds.length}
+      <CadSettingsSheet
+        open={drawerState === 'settings'}
+        opacity={opacity}
+        renderQuality={session.cadRenderQuality}
+        cadTextVisible={session.cadTextVisible}
+        hiddenObjectCount={session.hiddenObjectIds.length}
+        hiddenLayerCount={session.loadProfile.hiddenLayerIds.length}
+        hiddenBlockCount={session.loadProfile.hiddenBlockNames.length}
+        controlsDisabled={!adapter || importState !== 'ready'}
+        onClose={() => setDrawerState(null)}
+        onOpacityChange={setOpacity}
+        onRenderQualityChange={session.setCadRenderQuality}
+        onToggleTexts={toggleTexts}
+        onRestoreHiddenObjects={restoreHiddenObjects}
+        onRestoreHiddenLayers={restoreHiddenLayers}
+        onRestoreHiddenBlocks={restoreHiddenBlocks}
+      />
+
+      <DwgControlSheet
+        open={drawerState === 'dwg'}
+        file={session.file}
+        entityCount={entityCount}
+        loading={importState === 'loading'}
+        loadingTitle={t('importingMlight')}
+        progressLabel={progressLabel(progress, t)}
+        message={messageKey ? t(messageKey) : null}
+        preparationAvailable={Boolean(session.preflightReport)}
         spatialFilterEnabled={session.spatialFilterEnabled}
-        renderQuality={session.cadRenderQuality} onRenderQualityChange={session.setCadRenderQuality}
-        controlsDisabled={!adapter || importState !== 'ready'} onClose={() => setDrawerState(null)} onDismissMessage={() => setMessageKey(null)}
-        onChooseFile={chooseFile} onRemoveFile={removeDwg} onCancel={cancelImport} onOpacityChange={setOpacity} onOpenPreparation={openPreparation}
+        onClose={() => setDrawerState(null)}
+        onDismissMessage={() => setMessageKey(null)}
+        onChooseFile={chooseFile}
+        onRemoveFile={removeDwg}
+        onCancel={cancelImport}
+        onOpenPreparation={openPreparation}
         onSpatialFilterChange={(enabled) => {
-          captureCameraForReload();
           session.setSpatialFilterEnabled(enabled);
+          if (!session.file) return;
+          captureCameraForReload();
           session.reloadFile();
         }}
-        onToggleTexts={toggleTexts} onRestoreHidden={restoreAllHidden}
-        footer={<>
-          {location.state.follow === 'paused' && <button className="follow-banner" onClick={location.resume}><LocateFixed size={17} />{t('locationPaused')} · {t('locationResume')}</button>}
-          {fontWarnings.length > 0 && (
-            <details className="warnings">
-              <summary>{t('warnings')} ({fontWarnings.length})</summary>
-              <ul>{fontWarnings.map((warning, index) => (
-                <li key={`${warning.fontName ?? 'font'}:${index}`}>
-                  {t('fontSubstitutionWarning', {
-                    font: warning.fontName ?? '—',
-                    count: warning.affectedCharacterCount ?? 0,
-                  })}
-                </li>
-              ))}</ul>
-            </details>
-          )}
-        </>} />
+        footer={fontWarnings.length > 0 ? (
+          <details className="warnings">
+            <summary>{t('warnings')} ({fontWarnings.length})</summary>
+            <ul>{fontWarnings.map((warning, index) => (
+              <li key={`${warning.fontName ?? 'font'}:${index}`}>
+                {t('fontSubstitutionWarning', {
+                  font: warning.fontName ?? '—',
+                  count: warning.affectedCharacterCount ?? 0,
+                })}
+              </li>
+            ))}</ul>
+          </details>
+        ) : undefined}
+      />
 
       <input ref={fileInput} className="visually-hidden" type="file" accept=".dwg,application/acad,application/x-dwg" onChange={(event) => handleFile(event.target.files?.[0])} />
       <input ref={xrefInput} className="visually-hidden" type="file" multiple accept=".dwg,application/acad,application/x-dwg" onChange={(event) => handleXrefFiles(event.target.files)} />
+      <MapLocationMenu
+        open={Boolean(mapContextTarget)}
+        coordinate={mapContextTarget?.coordinate ?? null}
+        anchor={mapContextTarget?.anchor}
+        presentation={mapContextTarget?.presentation ?? 'desktop'}
+        onClose={closeMapContext}
+      />
+      <ConfirmationSheet
+        open={Boolean(pendingDroppedFile)}
+        title={t('confirmation.replaceDwgTitle')}
+        description={t('confirmation.replaceDwgDescription', {
+          current: session.file?.name ?? '',
+          next: pendingDroppedFile?.name ?? '',
+        })}
+        confirmLabel={t('confirmation.replaceDwgConfirm')}
+        onClose={() => setPendingDroppedFile(null)}
+        onConfirm={() => {
+          const next = pendingDroppedFile;
+          setPendingDroppedFile(null);
+          if (next) handleFile(next);
+        }}
+      />
       <SiteBanner />
       <DwgPreparationSheet open={drawerState === 'prepare' || drawerState === 'prepare-failed'} report={preparationReport} profile={pendingProfile}
         failed={drawerState === 'prepare-failed'} onLoadFull={() => finishPreparation({ decision: 'full' })}
@@ -709,7 +958,7 @@ export default function MlightCadViewerPage() {
         onEditLayers={() => { setDrawerState(null); setLayerSheetMode('preparation'); }} onEditBlocks={() => { setBlockReturnToPreparation(true); setDrawerState('blocks'); }}
         onCancel={() => finishPreparation({ decision: 'cancel' })}
         onTryFull={() => { preparationResolver.current = null; setForceFullAttempt(true); setDrawerState(null); session.reloadFile(); }}
-        onDesktopCheck={() => { setMessageKey('preparation.desktopAdvice'); setDrawerState('controls'); }}
+        onDesktopCheck={() => { setMessageKey('preparation.desktopAdvice'); setDrawerState('dwg'); }}
         spatialFilterEnabled={session.spatialFilterEnabled}
         onSpatialFilterChange={session.setSpatialFilterEnabled}
         annotationScaleId={session.annotationScaleId}

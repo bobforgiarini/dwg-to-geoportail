@@ -1,4 +1,4 @@
-import type { CadBlock, CadDocument, CadEntity, CadEntityKind, CadLayer } from '@flyfish-dev/cad-viewer';
+import type { CadBlock, CadDocument, CadEntity, CadEntityKind, CadLayer } from '../cad/cadDocumentTypes';
 import type {
   DwgBlockRecordTableEntry,
   DwgDatabase,

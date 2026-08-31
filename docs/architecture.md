@@ -1,4 +1,4 @@
-# Architektur 0.6.1
+# Architektur 0.7.0
 
 ## Überblick
 
@@ -7,44 +7,67 @@ DWG to Geoportail ist eine statisch auslieferbare React-Single-Page-App ohne Bac
 | Route | CAD-Pipeline | Kartendarstellung |
 | --- | --- | --- |
 | `/` | MLightCAD, LibreDWG-Konverter und Three.js | transparenter CAD-WebGL-Canvas über OpenLayers in `EPSG:2169` |
-| `/openlayers` | `@flyfish-dev/cad-viewer`, anwendungseigene Normalisierung und OpenLayers-Vektorfeatures | OpenLayers in `EPSG:3857` |
 
-`RootApp` hält beide Routen im gemeinsamen `CadSessionProvider`. MLightCAD ist der Standard-Viewer und wird serverseitig beziehungsweise ohne Browserpfad als Ausgangszustand verwendet. Die frühere Route `/mlightcad` bleibt als kompatibler MLightCAD-Einstieg erhalten; `/openlayers` wählt ausschließlich die Legacy-Pipeline. Beide Viewer werden mit `React.lazy` als getrennte Routenmodule geladen. Immer nur ein CAD-Renderer ist gemountet; ein Viewerwechsel wartet auf den vollständigen Dispose-Pfad des vorherigen Renderers.
+`RootApp` mountet ausschließlich den MLightCAD-Viewer im gemeinsamen `CadSessionProvider`. `/openlayers` wird auf Hosting-Ebene permanent auf `/` umgeleitet. OpenLayers bleibt kein eigener CAD-Viewer, sondern die Kartenbasis für Geoportail, Kataster, GPS, Messgeometrie und die synchrone Kamera-Kopplung. Es existieren höchstens ein CAD-Renderer, ein Parser-Worker und ein WebGL-Kontext.
 
 ## Sitzung, Privatsphäre und Wiederanlauf
 
 Die Sitzung hält ausschließlich im React-Arbeitsspeicher:
 
 - die originale lokale Haupt-`File`-Referenz, lokal ergänzte XRef-Dateien und ihre Revision
-- den aktiven Viewer
 - den letzten `DwgPreflightReport`
 - das `CadLoadProfile` mit ausgeblendeten Layern, Blöcken und Objektgruppen
 - den gewählten Annotationsmaßstab und die Einstellung des Luxemburg-Filters
 - globale CAD- und Füllungsdeckkraft sowie das Darstellungsprofil
 - Text-, Objekt- und Zeichenreihenfolgezustände
 
-Eine neue Datei setzt diese CAD-Zustände zurück. Beim Viewerwechsel bleibt das Profil erhalten, die Datei wird jedoch im Ziel-Viewer neu verarbeitet. Dadurch existieren nicht gleichzeitig zwei große CAD-Dokumente.
+Eine neue Datei setzt diese CAD-Zustände zurück. Ein kontrollierter CAD-Neuaufbau verwendet dieselbe lokale Datei und dasselbe Ladeprofil, ohne gleichzeitig zwei große CAD-Dokumente zu halten.
 
 Vor einem Import schreibt `importRecovery` einen kleinen Marker mit Dateiname, Dateigröße und Startzeit in `localStorage`. Er enthält weder Dateibytes noch Geometrien. Nach Erfolg oder geordnetem Abbruch wird er gelöscht. Bleibt er nach einem harten Browser-/Tab-Abbruch zurück, empfiehlt die App beim nächsten Besuch eine vorbereitete Darstellung; die lokale Datei muss erneut ausgewählt werden.
 
 Die DWG wird nicht in `localStorage`, IndexedDB, Netlify Blobs oder einer Datenbank gespeichert und nicht an Geoportail, jsDelivr oder einen Anwendungsserver übertragen.
 
+## Oberfläche und DWG-Einstieg
+
+Alle modalen Bedienflächen verwenden die gemeinsame `BottomSheet`-Komponente mit demselben Griff, derselben Animation, Safe-Area-Behandlung, Backdrop-Schließung und Escape-Unterstützung. Eine Kreuz-Schaltfläche im Drawer-Kopf ist nicht vorgesehen.
+
+Der goldene Settings-Button im App-Kopf öffnet ausschließlich Darstellungs- und Sichtbarkeitseinstellungen:
+
+- globale CAD-Deckkraft samt Karte-/Mix-/CAD-Presets
+- adaptive CAD-Qualität
+- CAD-Texte ein- beziehungsweise ausblenden
+- verborgene Objekte, Layer und Blöcke jeweils getrennt wiederherstellen
+
+Jede Wiederherstellungsaktion verwendet ihren eigenen Zähler. Die anderen Filterzustände bleiben erhalten. Waren Inhalte bereits vor dem Szenenaufbau workerseitig entfernt, führt die Wiederherstellung genau einen kontrollierten CAD-Neuaufbau aus; Kamera und Kartenansicht bleiben erhalten.
+
+Der Datei-Button in der Kartensteuerung öffnet den getrennten DWG-Drawer. Er besitzt den gemeinsamen Einstieg für Dateiauswahl, Entfernen und Ersetzen, zeigt Importfortschritt, Abbruch und Fehler und öffnet die bestehende DWG-Vorbereitung. Der Luxemburg-Filter gehört ebenfalls hierher. Ohne lokale Hauptdatei ist dieser Drawer der initiale Einstieg.
+
+Auf Desktop akzeptiert ausschließlich die Kartenfläche genau eine Datei mit der Endung `.dwg`. Der Drop verwendet denselben lokalen Importpfad wie die Dateiauswahl. Ist bereits eine Hauptzeichnung geladen, hält ein wiederverwendbares Bestätigungs-Sheet die neue Datei zurück, bis der Nutzer das Ersetzen bestätigt. Abbruch, mehrere Dateien und ungültige Dateitypen verändern weder Datei noch Kamera oder Sitzung. Touchgeräte und Drops außerhalb der Karte werden ignoriert.
+
+## Positionsaktionen
+
+Ein Desktop-Rechtsklick auf die Karte erzeugt ein `MapContextTarget` aus Bildschirmposition und präziser LUREF-Koordinate. Auf einem grob bedienten Touchgerät löst ein Einfinger-Langdruck nach ungefähr 550 ms dieselbe Funktion aus. Eine Bewegung von mehr als zehn CSS-Pixeln, ein zweiter Finger, Pinch oder Pointer-Abbruch beendet den Timer, damit Pan, Zoom, CAD-Auswahl und Messung nicht konkurrieren.
+
+Der Desktop zeigt ein kompaktes Menü am Klickpunkt, Mobilgeräte denselben Inhalt in einem `BottomSheet`. Ein temporäres goldfarbenes Kreuz aus genau einer horizontalen und vertikalen Linie markiert die Zielposition und wird mit dem Menü entfernt. Die LUREF-Anzeige und Clipboard-Nutzlast verwenden exakt `X.XX, Y.XX`.
+
+Der interne URL-Builder transformiert die LUREF-Position für Google Maps, Apple Maps und Google Street View nach WGS84. Geoportail erhält die Koordinate in seiner erwarteten LUREF-Achsenreihenfolge. Externe Links werden erst nach einer ausdrücklichen Nutzeraktion in einem neuen Tab geöffnet; Apple Look Around wird mangels stabil dokumentiertem Deep Link nicht angeboten. Ohne DWG liefert OpenLayers die Bildschirmkoordinate, mit bereitem CAD wird derselbe präzise Bildschirm-zu-LUREF-Pfad wie bei Auswahl und CAD-Snap verwendet.
+
 ## Adaptiver DWG-Preflight
 
-Der Preflight dient als speichersparende Entscheidung vor dem teuren Aufbau von OpenLayers-Features beziehungsweise MLightCAD-Datenbank und Three.js-Szene:
+Der Preflight dient als speichersparende Entscheidung vor dem teuren Aufbau der MLightCAD-Datenbank und Three.js-Szene:
 
 1. Ein anwendungseigener, versionsgebundener Module-Worker liest und parst die Datei mit LibreDWG nativ.
 2. Solange die native Struktur noch verfügbar ist, werden Annotationsmaßstäbe und externe Referenzen untersucht; lokal ergänzte XRefs werden sequenziell und zyklusgeschützt aufgelöst.
 3. Aufgelöste Referenzen werden mit getrennten `XRefName|…`-Namensräumen in das Arbeitsmodell zusammengeführt.
-4. Der konservative Luxemburg-Filter bewertet transformierte Ausdehnungen gegen das lokale, um 1.000 Meter erweiterte ACT-Grenzpolygon.
+4. Der konservative Luxemburg-Filter bewertet transformierte Ausdehnungen gegen das lokale ACT-Grenzpolygon samt exakt 1.000 Meter großem Außenpuffer.
 5. Noch im Worker erzeugt `analyzeCadDocument` einen kompakten Bericht über Layer, erreichbare Blockdefinitionen und -instanzen, rekursive Expansion, Objektarten und geschätzte Renderlast.
 6. Liegt die Schätzung innerhalb des Gerätebudgets, läuft der Import automatisch vollständig weiter.
 7. Bei erhöhter Last pausiert die Anwendung im Vorbereitungssheet.
 8. Der Nutzer kann vollständig laden, das empfohlene Profil übernehmen, die Layer-/Blockauswahl anpassen oder abbrechen.
 9. Layer-, Block- und Objektgruppenfilter werden noch im Worker auf die rohe `DwgDatabase` angewendet.
-10. Erst die gefilterte Datenbank passiert die Structured-Clone-Grenze zum Hauptthread und geht in die renderer-spezifische Feature-, Datenbank- und Szenenerzeugung ein.
+10. Erst die gefilterte Datenbank passiert die Structured-Clone-Grenze zum Hauptthread und geht in die MLightCAD-Datenbank- und Szenenerzeugung ein.
 
-Beide Routen verwenden für diesen Handshake dieselbe MLightCAD-/LibreDWG-0.7.10-Rohdatenpipeline. Der Legacy-Pfad normalisiert das gefilterte, strukturell kompatible Ergebnis anschließend mit `@flyfish-dev/cad-viewer`; der MLightCAD-Pfad baut daraus seine AcDb-Datenbank und Three.js-Szene. Die verwendeten 0.7.9-/0.7.10-Datenstrukturen sind für die konsumierten Layer-, Block-, Entity-, Header- und Objektfelder kompatibel. Nicht konvertierbare LibreDWG-Entitäten fließen als Proxy-/Unknown-Zahl in Bericht und Risikoschätzung ein.
+Der Handshake verwendet die direkt festgeschriebene MLightCAD-/LibreDWG-0.7.10-Rohdatenpipeline. Ein kleines anwendungseigenes CAD-Strukturmodell entkoppelt Preflight und Filterung von einem konkreten Rendererpaket; die schweren Geometrieobjekte bleiben dabei über `raw` referenziert. Das gefilterte Ergebnis wird anschließend als AcDb-Datenbank und Three.js-Szene aufgebaut. Nicht konvertierbare LibreDWG-Entitäten fließen als Proxy-/Unknown-Zahl in Bericht und Risikoschätzung ein.
 
 Eine Dateigröße allein löst weder eine Sperre noch zwingend den Vorbereitungssheet aus. In die Risikobewertung fließen außerdem ein:
 
@@ -101,21 +124,21 @@ Die eigentliche Entfernung übernimmt anschließend der vorhandene struktur-erha
 
 ## Luxemburg-Filter
 
-Das generierte Asset `src/lib/cad/data/luxembourgBoundary.epsg2169.json` enthält ausschließlich die aus dem offiziellen ACT-Datensatz abgeleitete Landesgeometrie in `EPSG:2169`. Der Generator dokumentiert Quellhash, Projektion, Vereinfachungstoleranz von fünf Metern und den exakt 1.000 Meter großen Prüfbereich. Zur Laufzeit findet kein Datendownload statt.
+Das generierte Asset `src/lib/cad/data/luxembourgBoundary.epsg2169.json` enthält ausschließlich die aus dem offiziellen ACT-Datensatz abgeleitete Landesgeometrie in `EPSG:2169`. Der Generator dokumentiert Quellhash, Projektion, Vereinfachungstoleranz von fünf Metern und den exakt 1.000 Meter großen Außenpuffer. Zur Laufzeit findet kein Datendownload statt.
 
-Nach XRef-/Annotationsvorbereitung berechnet die Pipeline konservative transformierte AABBs für direkte Modellobjekte und rekursive INSERTs. Nur ein sicher vollständig außerhalb des Grenzpolygons samt Toleranz liegendes Objekt wird entfernt. Berührende, schneidende und nicht sicher bestimmbare Objekte bleiben vollständig erhalten. Anschließend werden nicht mehr erreichbare Blockdefinitionen entfernt. Der Filter ist bei einer neuen Haupt-DWG aktiviert und bleibt vom `CadLoadProfile` getrennt, sodass „Vollständig laden“ ihn nicht stillschweigend überschreibt. Details und Reproduktion stehen in [luxembourg-boundary-filter.md](luxembourg-boundary-filter.md).
+Nach XRef-/Annotationsvorbereitung berechnet die Pipeline konservative transformierte AABBs für direkte Modellobjekte und rekursive INSERTs. Luxemburg selbst und der Bereich bis einschließlich 1.000 Meter außerhalb der Landesgrenze werden behalten. Nur ein sicher vollständig weiter außerhalb liegendes Objekt wird entfernt. Berührende, schneidende und nicht sicher bestimmbare Objekte bleiben vollständig erhalten. Anschließend werden nicht mehr erreichbare Blockdefinitionen entfernt. Der Filter ist bei einer neuen Haupt-DWG aktiviert und bleibt vom `CadLoadProfile` getrennt, sodass „Vollständig laden“ ihn nicht stillschweigend überschreibt. Details und Reproduktion stehen in [luxembourg-boundary-filter.md](luxembourg-boundary-filter.md).
 
 ## Darstellung und Zeichenreihenfolge
 
-`CadAppearanceSettings` trennt das Profil von der globalen CAD-Deckkraft. `Original` verwendet unveränderte Farben und 100 Prozent Füllungsdeckkraft. `Karte` erhöht den Kontrast der Linien-/Textdarstellung und startet mit 35 Prozent für echte Fill-, HATCH- und SOLID-Materialien. Der Füllungsregler verändert weder leere WebGL-Pixel noch Orthofoto, Linien oder Texte. In OpenLayers wird die Füllfarbe im vorhandenen Style berechnet; in MLightCAD verwaltet ein eigener Materialcontroller ausschließlich erkannte Füllmaterialien und stellt deren Ursprungszustand beim Dispose wieder her. Die `Map`-, `View`- und CAD-Geometriestrukturen werden dafür nicht neu erzeugt.
+`CadAppearanceSettings` trennt das Profil von der globalen CAD-Deckkraft. `Original` verwendet unveränderte Farben und 100 Prozent Füllungsdeckkraft. `Karte` erhöht den Kontrast der Linien-/Textdarstellung und startet mit 35 Prozent für echte Fill-, HATCH- und SOLID-Materialien. Der Füllungsregler verändert weder leere WebGL-Pixel noch Orthofoto, Linien oder Texte. In MLightCAD verwaltet ein eigener Materialcontroller ausschließlich erkannte Füllmaterialien und stellt deren Ursprungszustand beim Dispose wieder her. Die `Map`-, `View`- und CAD-Geometriestrukturen werden dafür nicht neu erzeugt.
 
 Die zugrunde liegende Appearance-Schnittstelle bleibt für Sitzungskompatibilität bestehen. Seit 0.5.1 zeigt der CAD-Drawer jedoch keine Profil- oder Füllungssteuerung mehr; die vom Nutzer gewünschte kompakte Oberfläche behält nur die globale CAD-Deckkraft.
 
-Der sitzungsweite `CadObjectDrawOrder` führt geordnete `front`- und `back`-Schlüssel. Mehrteilige logische Objekte teilen einen stabilen `drawOrderGroupKey`; Unterobjekte wiederverwendeter Blockdefinitionen werden bewusst definitionsweit gruppiert. OpenLayers berechnet daraus einen `Style.zIndex` und ruft je Aktion genau einmal `cadLayer.changed()` auf. MLightCAD verwendet begrenzte Preview-Fragmente in festen Vorder-/Hintergrund-Tiers und entsorgt ersetzte Geometrien und Materialien. Die Budgets betragen je Aktion/gesamt 128/384 Fragmente auf Mobilgeräten und 256/512 auf Desktop. Eine Überschreitung verändert die Szene nicht und wird lokalisiert gemeldet. Während Pan oder Zoom findet keine Reihenfolgearbeit statt.
+Der sitzungsweite `CadObjectDrawOrder` führt geordnete `front`- und `back`-Schlüssel. Mehrteilige logische Objekte teilen einen stabilen `drawOrderGroupKey`; Unterobjekte wiederverwendeter Blockdefinitionen werden bewusst definitionsweit gruppiert. MLightCAD verwendet begrenzte Preview-Fragmente in festen Vorder-/Hintergrund-Tiers und entsorgt ersetzte Geometrien und Materialien. Die Budgets betragen je Aktion/gesamt 128/384 Fragmente auf Mobilgeräten und 256/512 auf Desktop. Eine Überschreitung verändert die Szene nicht und wird lokalisiert gemeldet. Während Pan oder Zoom findet keine Reihenfolgearbeit statt.
 
 ## Layer-, Block-Drawer und Sichtbarkeitsmodell
 
-Beide Viewer verwenden `LayerSheet` und `BlockSheet` auf Basis derselben `BottomSheet`-Komponente und desselben kompakten Drawer-Layouts. Griff, Animation, Außenklick, Escape-Verhalten, Suchfeld, Aktionszeile, Typografie und Touchziele bleiben dadurch identisch; es gibt keine Kreuz-Schaltfläche im Drawer-Kopf.
+Der Viewer verwendet `LayerSheet` und `BlockSheet` auf Basis derselben `BottomSheet`-Komponente und desselben kompakten Drawer-Layouts. Griff, Animation, Außenklick, Escape-Verhalten, Suchfeld, Aktionszeile, Typografie und Touchziele bleiben dadurch identisch; es gibt keine Kreuz-Schaltfläche im Drawer-Kopf.
 
 Der Layer-Drawer zeigt:
 
@@ -126,7 +149,7 @@ Der Layer-Drawer zeigt:
 - eine aus Objektzahl und Gerätebudget abgeleitete Belastungseinstufung `niedrig`, `mittel` oder `hoch`
 - einen Neuladehinweis für Layer, die durch das aktuelle Ladeprofil nicht im aufgebauten Modell vorhanden sind
 
-Sichtbarkeitsänderungen an bereits aufgebauten Layern wirken unmittelbar. Ist ein Layer im Worker vor dem Szenen- beziehungsweise Featureaufbau gefiltert worden, kennzeichnet der Drawer den nötigen CAD-Neuaufbau. „Änderungen anwenden“ sammelt diese strukturellen Änderungen und startet genau einen kontrollierten Neuaufbau aus der weiterhin lokalen Originaldatei.
+Sichtbarkeitsänderungen an bereits aufgebauten Layern wirken unmittelbar. Ist ein Layer im Worker vor dem Szenenaufbau gefiltert worden, kennzeichnet der Drawer den nötigen CAD-Neuaufbau. „Änderungen anwenden“ sammelt diese strukturellen Änderungen und startet genau einen kontrollierten Neuaufbau aus der weiterhin lokalen Originaldatei.
 
 Der Block-Drawer zeigt:
 
@@ -137,9 +160,9 @@ Der Block-Drawer zeigt:
 - getrennt gekennzeichnete XRefs
 - Instanzen, rekursive Objektzahl, enthaltene Texte/Hatches, Hauptlayer und geschätzte Belastung
 
-Ein direkt im Modellbereich eingesetzter Block kann nach dem Laden unmittelbar in der Szene beziehungsweise im Featurestil geschaltet werden. Das Ausschalten eines verschachtelten oder bereits aus dem Modell gefilterten Blocks ändert die Struktur; „Änderungen anwenden“ verarbeitet deshalb nur das CAD-Dokument neu. Karte, GPS, Kartenmittelpunkt, Zoom, Deckkraft und geöffneter Drawer bleiben dabei erhalten.
+Ein direkt im Modellbereich eingesetzter Block kann nach dem Laden unmittelbar in der Szene geschaltet werden. Das Ausschalten eines verschachtelten oder bereits aus dem Modell gefilterten Blocks ändert die Struktur; „Änderungen anwenden“ verarbeitet deshalb nur das CAD-Dokument neu. Karte, GPS, Kartenmittelpunkt, Zoom, Deckkraft und geöffneter Drawer bleiben dabei erhalten.
 
-OpenLayers-Features tragen ihren rekursiven `blockPath`. Der Objekt-Drawer zeigt diesen Pfad und kann Objekt, wirksamen Layer oder Block ausblenden. Layer-, Block-, Text- und Objektzustände werden sitzungsweit geteilt, auch wenn die konkrete Entitäts-ID beider Parser nicht zwingend identisch ist.
+MLightCAD-Auswahlobjekte tragen ihren rekursiven `blockPath`. Der Objekt-Drawer zeigt diesen Pfad und kann Objekt, wirksamen Layer oder Block ausblenden. Layer-, Block-, Text- und Objektzustände werden sitzungsweit erhalten.
 
 ### Drawer-Lebenszyklus und Layer-Hotpath
 
@@ -148,12 +171,6 @@ Layer- und Block-Drawer verwenden denselben verzögerten Inhaltslebenszyklus. Be
 Für den geladenen Layer-Drawer werden Preflight- und Renderer-Daten nicht mehr durch eine lineare Suche pro Preflight-Layer verbunden. Kanonische Layer-ID und Layername werden einmal in einer `Map`, verborgene Identitäten einmal in einem `Set` indiziert. Danach wird jede Layerliste nur noch linear durchlaufen. Die Zusammenführung sinkt damit für `L` Layer von `O(L²)` auf `O(L)`; unterschiedliche ID-/Namensdarstellungen und die höhere Objektzahl aus Preflight oder Renderer bleiben erhalten.
 
 Die abgeleitete Layerliste, die daraus erzeugten Drawer-Einträge und die übersetzten Beschriftungen sind memoisiert. Jede Layerzeile ist als eigene React-Komponente memoisiert und erhält einen stabilen Sichtbarkeits-Callback. Eine einzelne Layer-Umschaltung rendert dadurch nur die geänderte Zeile neu und nicht alle unveränderten Zeilen einer großen Zeichnung.
-
-## Bestehende OpenLayers-Pipeline
-
-Der Legacy-Pfad übernimmt die bereits im gemeinsamen Module-Worker gefilterte `DwgDatabase`, normalisiert sie mit `normalizeDwgDatabase` und übergibt sie anschließend an `convertCadDocument`. Die Konvertierung löst INSERTs rekursiv auf, transformiert LUREF-Geometrien von `EPSG:2169` nach `EPSG:3857` und erzeugt stabile OpenLayers-Feature-Metadaten einschließlich `layerId`, CAD-Typ und `blockPath`.
-
-Unterstützt werden unter anderem Linien, Polylinien mit Bulge-Bögen, Kreise, Bögen, Ellipsen, Splines als Approximation, Punkte, Texte, Solid-/Hatch-Umrisse und rekursive Blöcke. Nicht rekonstruierbare Schraffuren, Papierbereiche, Z-/3D-Inhalte, fehlende oder zyklische Blöcke und unbekannte Typen werden als Hinweise gemeldet.
 
 ## MLightCAD-Pipeline und Kamerabrücke
 
@@ -167,11 +184,11 @@ Das synchrone `renderSync()` kann programmgesteuert ein OpenLayers-`moveend` aus
 
 GPS wird zuerst nach LUREF transformiert. Marker, Genauigkeitskreis und eine autoritative CAD-Zentrierung verwenden anschließend dieselben Meterkoordinaten wie Zeichnung und Karte.
 
-Ohne bereites CAD-Dokument bedient OpenLayers die Karte. Nach `ready` übernimmt MLightCAD Pan und Zoom. Die MLightCAD-Ansicht bleibt nordfixiert; der drehbare Legacy-Viewer behält seinen Nordpfeil.
+Ohne bereites CAD-Dokument bedient OpenLayers die Karte. Nach `ready` übernimmt MLightCAD Pan und Zoom. Die Ansicht bleibt nordfixiert.
 
 ## 2D-Distanzmessung und CAD-Snap
 
-Die Messung ist ein gemeinsamer sitzungsweiter Zustand in `CadSession`. Sie kennt die Phasen inaktiv, ersten Punkt setzen, zweiten Punkt setzen und abgeschlossen sowie die beiden optionalen `MeasurementPoint`-Werte und den CAD-Snap-Schalter. Der Zustand bleibt beim Wechsel zwischen `/` und `/openlayers` erhalten. Eine neu ausgewählte Haupt-DWG setzt eine laufende oder abgeschlossene Messung zurück; ein reiner Viewerwechsel tut dies nicht.
+Die Messung ist ein sitzungsweiter Zustand in `CadSession`. Sie kennt die Phasen inaktiv, ersten Punkt setzen, zweiten Punkt setzen und abgeschlossen sowie die beiden optionalen `MeasurementPoint`-Werte und den CAD-Snap-Schalter. Eine neu ausgewählte Haupt-DWG setzt eine laufende oder abgeschlossene Messung zurück.
 
 Das rote Aim ist ein viewportfestes Overlay in der Mitte des tatsächlichen Karten- beziehungsweise CAD-Canvasbereichs. Auf Mobilgeräten beginnt dieser Bereich unterhalb des App-Headers; auf Desktop entspricht er dem gesamten Map-Viewport. Die angezeigten Mittelpunktkoordinaten und der gesetzte mobile Messpunkt beziehen sich dadurch auf dieselbe Bildschirmposition. Touchbedienung bestätigt einen Punkt ausschließlich über die mindestens 44 CSS-Pixel große Aktion im gemeinsamen Bottom-Sheet; ein Tap, Pan oder Pinch setzt niemals direkt einen Punkt. Auf Desktop kann zusätzlich mit einer feinen Maus direkt in Karte oder CAD geklickt werden.
 
@@ -181,13 +198,9 @@ Die Distanz wird ohne CRS-Umweg euklidisch in `EPSG:2169` berechnet:
 
 Da LUREF Meter als Einheit verwendet, ist das Ergebnis direkt ein Meterwert. Die Oberfläche zeigt mindestens drei und höchstens vier Nachkommastellen. Der gemeinsame Sheet verwendet dieselbe `BottomSheet`-Basis wie Layer und Blöcke und enthält ohne sichtbaren Titel oder Anleitung nur CAD-Snap, die aktuelle Punktaktion und nach Abschluss das Ergebnis. Der aktive `Ruler`-Schalter und der zugängliche Sheet-Griff beenden den Modus; währenddessen ist die normale CAD-Objektauswahl deaktiviert.
 
-### OpenLayers-Snap
-
-Der Legacy-Viewer ermittelt Kandidaten nur aus sichtbaren CAD-Features. Innerhalb eines Fangradius von 18 CSS-Pixeln werden Endpunkte, Stützpunkte, Schnittpunkte, Segmentmittelpunkte, Kreismittelpunkte und der geometrisch nächste Punkt ausgewertet. Zur Laufzeit sind die Kandidaten auf 48 Features und die untersuchten Linienabschnitte auf 512 Segmente begrenzt. Mobil wird die Fangvorschau erst 120 ms nach Bewegungsende gegen das Aim berechnet; während `pointerdrag` findet keine Snap-Suche statt. Auf Desktop löst ein Fine-Pointer-Hover höchstens einmal pro Animationsframe gegen die Mausposition auf und ein Mausklick übernimmt dort den nächsten Messpunkt.
-
 ### MLightCAD-Snap
 
-Der Standardviewer verwendet den nativen MLightCAD-OSNAP ebenfalls mit 18 CSS-Pixeln Fangradius. Ein Visibility Gate verwirft Ergebnisse aus ausgeblendeten Layern, Blöcken, Texten oder Objekten. Mobil wird die feste Aim-Position verwendet. Auf Desktop transformiert `resolveScreenPoint` ausschließlich bei Mouse-Hover oder Klick die konkrete Canvasposition; eine kurze Begrenzung auf 40 ms verhindert unnötige OSNAP-Abfragen. Punkt-, Linien- und Fangvorschau liegen als leichte, wiederverwendete Three.js-Geometrie über der CAD-Szene und werden beim Beenden, Viewerwechsel oder Dispose freigegeben.
+Der Viewer verwendet den nativen MLightCAD-OSNAP mit 18 CSS-Pixeln Fangradius. Ein Visibility Gate verwirft Ergebnisse aus ausgeblendeten Layern, Blöcken, Texten oder Objekten. Mobil wird die feste Aim-Position verwendet. Auf Desktop transformiert `resolveScreenPoint` ausschließlich bei Mouse-Hover oder Klick die konkrete Canvasposition; eine kurze Begrenzung auf 40 ms verhindert unnötige OSNAP-Abfragen. Punkt-, Linien- und Fangvorschau liegen als leichte, wiederverwendete Three.js-Geometrie über der CAD-Szene und werden beim Beenden oder Dispose freigegeben.
 
 Der verbindliche Kamera-Hotpath bleibt unangetastet: `viewChanged → setCenter/setResolution → renderSync()` läuft synchron im selben Ereignis. Zwischen Kamerameldung und `renderSync()` erfolgen weder Snap-Berechnung noch React-State-Aktualisierung, Worker-Nachricht oder zusätzliche CRS-Transformation. Die nachlaufende Aim-/Snap-Vorschau ist davon getrennt; sie beeinflusst die Bildkopplung von CAD und Karte nicht.
 
@@ -216,13 +229,13 @@ Die OpenLayers-Basiskarte darunter gehört ausdrücklich nicht zu dieser Auswahl
 
 Das verwendete LibreDWG-WASM wurde upstream mit `ALLOW_MEMORY_GROWTH` und hohem Anfangsspeicher ausgeliefert. `build/patchLibreDwgMemory.ts` ändert beim Vite-Build reproduzierbar nur den deklarierten Minimalwert der linearen WASM-Speichertabelle auf 2.048 Seiten beziehungsweise 128 MiB. Das vorhandene Maximum und kontrolliertes Wachstum bleiben erhalten. Ein Test validiert das erzeugte WebAssembly-Modul und verhindert, dass ein später geändertes oder inkompatibles Upstream-Binary unbemerkt ausgeliefert wird.
 
-Die Quellpakete und Lizenzbedingungen werden dadurch nicht ersetzt; der Patch ist eine anwendungseigene Buildtransformation der ausgelieferten Binärdatei. Beide Viewer verwenden dieselbe versionsgebundene Laufzeit unter `/mlightcad-workers/0.3.0/`. Die frühere Flyfish-WASM-Kopie unter `/wasm/` ist seit dem gemeinsamen Preflight-Worker nicht mehr Teil des Builds. Ein neuer Releasepfad verhindert die Wiederverwendung eines alten immutable gecachten 0.2.x-WASM.
+Die Quellpakete und Lizenzbedingungen werden dadurch nicht ersetzt; der Patch ist eine anwendungseigene Buildtransformation der ausgelieferten Binärdatei. Der Viewer verwendet die versionsgebundene Laufzeit unter `/mlightcad-workers/0.3.0/`. Ein Releasepfad verhindert die Wiederverwendung eines alten immutable gecachten 0.2.x-WASM.
 
-Bei Mobilgeräten werden Karten- und CAD-Pixelratio reduziert und der Kartenkachelcache begrenzt. Ein Viewerwechsel darf erst nach abgeschlossener Freigabe fortfahren. Dispose beendet Worker, Listener und Animationsschleifen, löst Dokument- und Dateireferenzen, leert Szene und Renderlisten, gibt Renderer und WebGL-Kontext frei und entfernt den Canvas. Zielzustand sind höchstens ein aktiver Parser-Worker und ein CAD-WebGL-Kontext.
+Bei Mobilgeräten werden Karten- und CAD-Pixelratio reduziert und der Kartenkachelcache begrenzt. Vor einem CAD-Neuaufbau wird der vollständige Dispose abgewartet. Dispose beendet Worker, Listener und Animationsschleifen, löst Dokument- und Dateireferenzen, leert Szene und Renderlisten, gibt Renderer und WebGL-Kontext frei und entfernt den Canvas. Zielzustand sind höchstens ein aktiver Parser-Worker und ein CAD-WebGL-Kontext.
 
 ## Geoportail-Ausfallsicherheit
 
-Beide Viewer teilen einen `BasemapHealthController` mit den Zuständen `loading`, `ready`, `retrying`, `offline` und `unavailable`. WMTS `ortho_2025` über `GLOBAL_WEBMERCATOR_4_V3` bleibt bevorzugt; WMS `ortho_latest` verwendet denselben offiziellen Open-Data-Endpunkt `https://wmts1.geoportail.lu/opendata/service`.
+Die OpenLayers-Basiskarte verwendet einen `BasemapHealthController` mit den Zuständen `loading`, `ready`, `retrying`, `offline` und `unavailable`. WMTS `ortho_2025` über `GLOBAL_WEBMERCATOR_4_V3` bleibt bevorzugt; WMS `ortho_latest` verwendet denselben offiziellen Open-Data-Endpunkt `https://wmts1.geoportail.lu/opendata/service`.
 
 Der Controller veröffentlicht nur tatsächliche Zustandsänderungen. Weitere erfolgreiche Kacheln im bereits erreichten Zustand `ready` lösen daher keine erneute React-Aktualisierung aus.
 
@@ -237,11 +250,11 @@ Der Wechsel folgt einer kontrollierten Zustandsmaschine:
 
 Die Satelliten-Statuskarte zeigt den gemeinsamen Zustand. Auch bei `offline` oder `unavailable` bleiben CAD, Layer, Blöcke, Auswahl, GPS-Zustand und die bewusst schwarze Kartenfläche bedienbar.
 
-Die optionalen PCN-Kataster-Layer `parcels` und `parcels_labels` liegen als zwei gemeinsame OpenLayers-Overlays oberhalb der Orthofoto-Basis und unter CAD sowie GPS. Sie verwenden ausschließlich den offiziellen WMTS-Endpunkt, PNG-Transparenz und das Matrix-Set `GLOBAL_WEBMERCATOR_4_V3`; für diese beiden Overlays ist kein WMS-Fallback konfiguriert. Satellit und Kataster lassen sich unabhängig schalten; beide Zustände bleiben beim Viewerwechsel erhalten. Das feste rote Fadenkreuz ist ein reines, nicht interaktives DOM-Overlay aus einer horizontalen und einer vertikalen roten Linie mit 14 Pixel Kantenmaß am CSS-Viewportmittelpunkt. Es liegt oberhalb von Karte und CAD, aber unter Kartenaktionen, Site-Banner und Drawern. Die bereits nachlaufend aktualisierte LUREF-Statuskarte verwendet denselben Kartenmittelpunkt, ohne den synchronen MLightCAD-Kamera-Hotpath zu verändern.
+Die optionalen PCN-Kataster-Layer `parcels` und `parcels_labels` liegen als zwei OpenLayers-Overlays oberhalb der Orthofoto-Basis und unter CAD sowie GPS. Sie verwenden ausschließlich den offiziellen WMTS-Endpunkt, PNG-Transparenz und das Matrix-Set `GLOBAL_WEBMERCATOR_4_V3`; für diese beiden Overlays ist kein WMS-Fallback konfiguriert. Satellit und Kataster lassen sich unabhängig schalten; beide Zustände bleiben in der Sitzung erhalten. Das feste rote Fadenkreuz ist ein reines, nicht interaktives DOM-Overlay aus einer horizontalen und einer vertikalen roten Linie mit 14 Pixel Kantenmaß am CSS-Viewportmittelpunkt. Es liegt oberhalb von Karte und CAD, aber unter Kartenaktionen, Site-Banner und Drawern. Die bereits nachlaufend aktualisierte LUREF-Statuskarte verwendet denselben Kartenmittelpunkt, ohne den synchronen MLightCAD-Kamera-Hotpath zu verändern.
 
 ## Statische und externe Ressourcen
 
-- `/mlightcad-workers/0.3.0/`: gemeinsamer Preflight-Worker, MLightCAD-Parser-/MText-Ressourcen, LibreDWG-API samt Emscripten-Laufzeit und gepatchtes LibreDWG-WASM
+- `/mlightcad-workers/0.3.0/`: Preflight-Worker, MLightCAD-Parser-/MText-Ressourcen, LibreDWG-API samt Emscripten-Laufzeit und gepatchtes LibreDWG-WASM
 - `src/lib/cad/data/luxembourgBoundary.epsg2169.json`: lokal generierte ACT-Landesgrenze in LUREF mit Herkunfts- und Buildmetadaten
 - `https://cdn.jsdelivr.net/gh/mlightcad/cad-data@main/`: unterstützende MLightCAD-CAD-/Schriftressourcen
 - Geoportail Open Data: WMTS-/WMS-Kartenbilder und WMTS-Recovery-Proben
@@ -250,7 +263,7 @@ Nur statische App- und Viewerdateien werden gebaut und auf Netlify ausgeliefert.
 
 ## Bekannte Grenzen
 
-- Beide Routen setzen absolute 2D-LUREF-Koordinaten voraus; es gibt keine automatische Georeferenzierung lokaler CAD-Koordinaten.
+- Der Viewer setzt absolute 2D-LUREF-Koordinaten voraus; es gibt keine automatische Georeferenzierung lokaler CAD-Koordinaten.
 - Lokale XRefs werden bestmöglich zusammengeführt. XCLIP, Papierlayouts, proprietäre Custom-/Proxy-Entities, nicht lokal bereitgestellte Referenzen und 3D-Darstellung gehören nicht zum positiven Abnahmeumfang.
 - Nicht eindeutige oder beschädigte Annotationskontexte bleiben fail-open unverändert; dadurch kann eine Zeichnung weiterhin mehrere Maßstabsdarstellungen enthalten.
 - Nach dem Öffnen des MLightCAD-Dokuments übernimmt der Adapter die vom Renderer bereitgestellten `missedFonts`, fasst Vorkommen je Schrift zusammen und ergänzt lokalisierte Hinweise im Importbericht. Da diese Information erst nach dem Renderstart verfügbar ist und nur erkannte Renderer-Verwendungen umfasst, bleibt sie ausdrücklich bestmöglich.
@@ -258,4 +271,4 @@ Nur statische App- und Viewerdateien werden gebaut und auf Netlify ausgeliefert.
 - „Vollständig laden“ kann trotz Warnung den Speicherrahmen eines Geräts überschreiten. Besonders iOS Safari kann einen Tab hart beenden, bevor JavaScript noch einen Fehlerdialog anzeigen kann.
 - Ein gefilterter Layer oder verschachtelter Block benötigt zum Wiedereinblenden einen erneuten CAD-Aufbau aus der lokal ausgewählten Originaldatei.
 - Preflight-Schätzungen sind absichtlich konservative Näherungen und kein garantierter Speicher- oder Laufzeitwert.
-- Die Distanzmessung ist auf die ebene 2D-LUREF-Geometrie beschränkt. Der leichte Snap berücksichtigt nur sichtbare, vom aktiven Viewer bereitgestellte CAD-Geometrie innerhalb von 18 CSS-Pixeln; er ersetzt keine vollständige CAD-Konstruktionsfanglogik.
+- Die Distanzmessung ist auf die ebene 2D-LUREF-Geometrie beschränkt. Der leichte Snap berücksichtigt nur sichtbare MLightCAD-Geometrie innerhalb von 18 CSS-Pixeln; er ersetzt keine vollständige CAD-Konstruktionsfanglogik.

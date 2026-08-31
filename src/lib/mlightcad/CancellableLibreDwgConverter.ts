@@ -8,7 +8,7 @@ import { MlightDwgPreparationWorkerClient } from './MlightDwgPreparationWorkerCl
 import type { MlightCadPreparationResult } from './types';
 import type { CadDwgSource } from '../cad/xrefBundle';
 
-const MLIGHTCAD_WASM_BASE_URL = '/mlightcad-workers/0.3.0';
+const MLIGHTCAD_WASM_BASE_URL = '/mlightcad-workers/0.7.0';
 
 export interface CancellableLibreDwgPreparation {
   file?: DwgPreflightOptions['file'];

@@ -1,4 +1,4 @@
-import type { CadDocument, CadEntity } from '@flyfish-dev/cad-viewer';
+import type { CadDocument, CadEntity } from './cadDocumentTypes';
 import { describe, expect, it } from 'vitest';
 import {
   LUXEMBOURG_SPATIAL_FILTER_METADATA,
@@ -48,6 +48,12 @@ describe('classifyAabbAgainstBufferedPolygon', () => {
   it('only classifies a complete box outside after the metric buffer', () => {
     expect(classifyAabbAgainstBufferedPolygon([11.01, 4, 12, 6], square, 1)).toBe('outside');
     expect(classifyAabbAgainstBufferedPolygon([10.8, 10.8, 11, 11], square, 1)).toBe('outside');
+  });
+
+  it('keeps the exact 1 km exterior tolerance and removes only objects beyond it', () => {
+    expect(classifyAabbAgainstBufferedPolygon([1_009.99, 5, 1_009.99, 5], square, 1_000)).toBe('retained');
+    expect(classifyAabbAgainstBufferedPolygon([1_010, 5, 1_010, 5], square, 1_000)).toBe('retained');
+    expect(classifyAabbAgainstBufferedPolygon([1_010.01, 5, 1_010.01, 5], square, 1_000)).toBe('outside');
   });
 
   it('retains a polygon that is fully contained by a large AABB', () => {

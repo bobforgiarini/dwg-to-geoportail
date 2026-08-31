@@ -32,28 +32,7 @@ describe('CadSessionProvider', () => {
     expect(result.current.fileRevision).toBe(3);
   });
 
-  it('retains the file while switching renderers and following popstate', () => {
-    const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
-    const file = new File(['drawing'], 'drawing.dwg');
-
-    act(() => result.current.setFile(file));
-    act(() => result.current.setViewer('legacy'));
-
-    expect(result.current.activeViewer).toBe('legacy');
-    expect(result.current.file).toBe(file);
-    expect(window.location.pathname).toBe('/openlayers');
-
-    act(() => {
-      window.history.replaceState(null, '', '/');
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    });
-
-    expect(result.current.activeViewer).toBe('mlightcad');
-    expect(result.current.file).toBe(file);
-    expect(result.current.fileRevision).toBe(1);
-  });
-
-  it('shares basemap and cadastre visibility while switching renderers', () => {
+  it('updates basemap and cadastre visibility independently', () => {
     const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
 
     expect(result.current.basemapVisible).toBe(true);
@@ -63,32 +42,25 @@ describe('CadSessionProvider', () => {
     expect(result.current.basemapVisible).toBe(false);
     expect(result.current.cadastreVisible).toBe(true);
 
-    act(() => result.current.setViewer('legacy'));
-    expect(result.current.basemapVisible).toBe(false);
-    expect(result.current.cadastreVisible).toBe(true);
-
     act(() => result.current.setBasemapVisible(true));
     act(() => result.current.setCadastreVisible(false));
     expect(result.current.basemapVisible).toBe(true);
     expect(result.current.cadastreVisible).toBe(false);
   });
 
-  it('retains the selected MLightCAD quality while switching renderers', () => {
+  it('retains the selected MLightCAD quality in the session', () => {
     const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
 
     expect(result.current.cadRenderQuality).toBe('auto');
     act(() => result.current.setCadRenderQuality('sharp'));
-    act(() => result.current.setViewer('legacy'));
-
     expect(result.current.cadRenderQuality).toBe('sharp');
   });
 
-  it('shares draw order across viewers and resets it only for a new DWG', () => {
+  it('retains draw order across reloads and resets it only for a new DWG', () => {
     const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
     const file = new File(['drawing'], 'drawing.dwg');
     act(() => result.current.setFile(file));
     act(() => result.current.setObjectDrawOrder('symbol::42', 'front'));
-    act(() => result.current.setViewer('legacy'));
     expect(result.current.objectDrawOrder).toEqual({ front: ['symbol::42'], back: [] });
 
     act(() => result.current.reloadFile());
@@ -101,7 +73,7 @@ describe('CadSessionProvider', () => {
     expect(result.current.objectDrawOrder).toEqual({ front: [], back: [] });
   });
 
-  it('shares one active LUREF measurement across viewer switches and CAD reloads', () => {
+  it('retains one active LUREF measurement across CAD reloads', () => {
     const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
     act(() => result.current.setFile(new File(['drawing'], 'drawing.dwg')));
 
@@ -110,7 +82,6 @@ describe('CadSessionProvider', () => {
       coordinate: [80_000, 70_000],
       source: 'aim',
     }));
-    act(() => result.current.setViewer('legacy'));
     act(() => result.current.reloadFile());
 
     expect(result.current.distanceMeasurement).toEqual({
@@ -149,7 +120,7 @@ describe('CadSessionProvider', () => {
     });
   });
 
-  it('shares local XRefs, annotation scale and the Luxembourg filter across viewers and reloads', () => {
+  it('retains local XRefs, annotation scale and the Luxembourg filter across reloads', () => {
     const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
     const root = new File(['root'], 'root.dwg', { lastModified: 1 });
     const xref = new File(['xref'], 'Road.dwg', { lastModified: 2 });
@@ -160,7 +131,6 @@ describe('CadSessionProvider', () => {
     act(() => result.current.setPreferredXrefFile('root:xref-road', 'road:4:2'));
     act(() => result.current.setAnnotationScaleId('scale-500'));
     act(() => result.current.setSpatialFilterEnabled(false));
-    act(() => result.current.setViewer('legacy'));
 
     expect(result.current.xrefFiles).toEqual([xref]);
     expect(result.current.preferredXrefFileIds).toEqual({ 'root:xref-road': 'road:4:2' });
@@ -195,7 +165,7 @@ describe('CadSessionProvider', () => {
     expect(result.current.spatialFilterEnabled).toBe(true);
   });
 
-  it('retains Geoportail health while switching renderers', () => {
+  it('retains Geoportail health in the single-viewer session', () => {
     const { result } = renderHook(() => useCadSession(), { wrapper: Wrapper });
     const generation = result.current.basemapHealth.generation;
 
@@ -205,7 +175,6 @@ describe('CadSessionProvider', () => {
     });
     expect(result.current.basemapHealth).toMatchObject({ mode: 'wmts', status: 'ready' });
 
-    act(() => result.current.setViewer('legacy'));
     expect(result.current.basemapHealth).toMatchObject({ mode: 'wmts', status: 'ready' });
   });
 

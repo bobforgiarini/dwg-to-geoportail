@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CadDocument, CadEntity } from '@flyfish-dev/cad-viewer';
+import type { CadDocument, CadEntity } from './cadDocumentTypes';
 import { analyzeCadDocument } from './cadPreflight';
 import { filterCadDocument } from './filterCadDocument';
 import type { CadLoadProfile } from './preflightTypes';

@@ -1,4 +1,4 @@
-import type { CadBlock, CadDocument, CadEntity, CadLayer } from '@flyfish-dev/cad-viewer';
+import type { CadBlock, CadDocument, CadEntity, CadLayer } from './cadDocumentTypes';
 import type {
   CadBlockKind,
   CadEntityCategory,
